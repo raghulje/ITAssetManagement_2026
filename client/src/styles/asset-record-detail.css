@@ -383,17 +383,22 @@
   overflow-x: auto;
   overflow-y: hidden;
   border-bottom: 1px solid var(--vad-border);
-  padding: 0 2px;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  padding: 0 4px;
+  scroll-padding-inline: 12px;
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
 }
 
 .vad-tabs::-webkit-scrollbar {
-  display: none;
-  height: 0;
-  width: 0;
+  display: block;
+  height: 3px;
+}
+
+.vad-tabs::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
 }
 
 .vad-tabs button {
@@ -988,4 +993,16 @@ a.vad-link-btn {
   .vad-info-grid--2,
   .vad-info-grid--3 { grid-template-columns: 1fr; }
   .vad-title-block h1 { font-size: 1.45rem; }
+  .vad-tabs {
+    margin: 0 -4px;
+    padding: 0 8px 2px;
+  }
+  .vad-tabs button {
+    padding: 12px 12px;
+    min-height: 44px;
+    font-size: 13px;
+  }
+  .vad-page {
+    gap: 12px;
+  }
 }

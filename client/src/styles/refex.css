@@ -275,6 +275,8 @@ img { max-width: 100%; }
   color: var(--main-theme-color);
   background: #e8f7f5;
 }
+.domain-toggle-short { display: none; }
+.domain-toggle-full { display: inline; }
 .domain-toggle button.is-active {
   background: var(--main-theme-color);
   color: #fff;
@@ -713,10 +715,38 @@ a:hover .small-box .icon {
 @media (max-width: 767px) {
   .col-xs-6, .col-sm-6, .col-md-3, .col-md-4, .col-md-5, .col-md-6, .col-md-7, .col-md-8, .col-lg-2, .col-lg-3 { width: 100%; }
   .header-search { display: none; }
-  .domain-toggle { margin-left: 8px; }
-  .domain-toggle button { min-width: 52px; padding: 0 10px; }
+  .main-header .logo {
+    padding: 0 8px;
+    max-width: 118px;
+  }
+  .main-header .logo img {
+    height: 28px;
+  }
+  .main-header .navbar {
+    padding: 0 6px;
+    gap: 6px;
+    min-width: 0;
+  }
+  .domain-toggle {
+    margin-left: 0;
+    margin-right: 0;
+    height: 34px;
+    flex-shrink: 0;
+  }
+  .domain-toggle button {
+    min-width: 0;
+    padding: 0 9px;
+    font-size: 11px;
+  }
+  .domain-toggle-full { display: none; }
+  .domain-toggle-short { display: inline; }
+  .navbar-custom-menu { min-width: 0; }
   .navbar-nav > li:not(.dropdown) { display: none; }
   .navbar-nav > li.dropdown { display: flex; }
+  .nav-icon-btn {
+    height: 36px;
+    padding: 0 10px;
+  }
 }
 
 /* Buttons */
@@ -1195,9 +1225,27 @@ input[type="date"].form-control::-webkit-calendar-picker-indicator {
   gap: 8px;
   align-items: flex-start;
   flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
 }
 .master-select-row .app-select {
   flex: 1 1 220px;
+  min-width: 0;
+}
+.master-select-row > .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.master-select-add {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.master-select-add .form-control {
+  flex: 1 1 220px;
+  min-width: 0;
 }
 .help-block { display: block; margin-top: 5px; margin-bottom: 0; color: var(--text-help); font-size: 12px; }
 .required::after { content: " *"; color: #dc2626; }
@@ -4034,13 +4082,21 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   .domain-toggle {
     margin-left: 6px;
     height: 36px;
+    flex-shrink: 0;
   }
   .domain-toggle button {
-    min-width: 46px;
+    min-width: 0;
     padding: 0 10px;
     font-size: 11px;
     min-height: 36px;
   }
+  .domain-toggle-full { display: none; }
+  .domain-toggle-short { display: inline; }
+  .main-header .logo {
+    max-width: 140px;
+    padding: 0 10px;
+  }
+  .main-header .logo img { height: 30px; }
   .header-search input {
     width: 100%;
     min-width: 0;
@@ -4215,11 +4271,67 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
     flex-wrap: nowrap;
     gap: 6px;
     padding-bottom: 4px;
+    scroll-padding-inline: 8px;
+    overscroll-behavior-x: contain;
   }
   .detail-tab {
     flex: 0 0 auto;
     white-space: nowrap;
     min-height: 40px;
+  }
+
+  .master-select-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .master-select-row .app-select {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  .master-select-row > .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+  .master-select-add {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .master-select-add .form-control,
+  .master-select-add .btn {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+  .master-select-add .btn { min-height: 44px; }
+
+  .file-field {
+    max-width: none;
+  }
+  .received-condition-multi,
+  .received-condition-uploads .btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .box-tools {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .box-tools .btn,
+  .box-tools a.btn {
+    flex: 1 1 calc(50% - 4px);
+    min-height: 40px;
+    justify-content: center;
+  }
+
+  .page-form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .page-form-actions .btn,
+  .page-form-actions a.btn {
+    width: 100%;
+    min-height: 44px;
   }
   .detail-fields {
     grid-template-columns: 1fr;
@@ -5571,9 +5683,9 @@ button.space-nav-card {
     padding-left: 10px;
     padding-right: 6px;
   }
-  .domain-toggle { margin-left: 4px; }
+  .domain-toggle { margin-left: 0; }
   .domain-toggle button {
-    min-width: 42px;
+    min-width: 0;
     padding: 0 8px;
   }
 
@@ -5583,6 +5695,10 @@ button.space-nav-card {
   }
   .content-kicker {
     width: 100%;
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   }
   .content-header-copy .page-back-btn {
     min-height: 44px;

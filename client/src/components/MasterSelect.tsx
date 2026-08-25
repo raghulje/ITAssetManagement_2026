@@ -94,10 +94,9 @@ export function MasterSelect({
       </div>
 
       {adding ? (
-        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="master-select-add">
           <input
             className="form-control"
-            style={{ flex: '1 1 220px' }}
             placeholder={`New ${label.toLowerCase()} name`}
             value={name}
             onChange={(e) => setName(e.target.value)}

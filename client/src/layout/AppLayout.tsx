@@ -385,6 +385,7 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
                 type="button"
                 className={activeDomain === 'it' ? 'is-active' : ''}
                 onClick={() => setActiveDomain('it')}
+                aria-label="IT assets"
               >
                 IT
               </button>
@@ -392,8 +393,11 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
                 type="button"
                 className={activeDomain === 'admin' ? 'is-active' : ''}
                 onClick={() => setActiveDomain('admin')}
+                aria-label="Admin assets"
+                title="Admin"
               >
-                Admin
+                <span className="domain-toggle-full">Admin</span>
+                <span className="domain-toggle-short" aria-hidden>Adm</span>
               </button>
             </div>
           ) : null}
