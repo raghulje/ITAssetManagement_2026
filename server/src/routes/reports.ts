@@ -851,6 +851,16 @@ settingsRouter.get('/saml', async (_req, res) => {
   })
 })
 
+/** Pending vs already-applied numbered SQL files (admin / settings.view). */
+settingsRouter.get('/migrations', async (_req, res) => {
+  try {
+    const { listSchemaMigrationStatus } = await import('../services/schemaMigrate.js')
+    return okItem(res, await listSchemaMigrationStatus())
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Could not list migrations', 500)
+  }
+})
+
 /** Apply pending SQL files from server/src/db/mysql (admin / settings.edit). */
 settingsRouter.post('/run-migrations', async (req, res) => {
   try {
@@ -874,6 +884,29 @@ settingsRouter.post('/run-migrations', async (req, res) => {
     )
   } catch (e) {
     return fail(res, e instanceof Error ? e.message : 'Schema migration failed', 500)
+  }
+})
+
+/** Seed office floors / cabins / Admin-domain inventory (idempotent). */
+settingsRouter.post('/seed-admin-spaces', async (req, res) => {
+  try {
+    const { seedAdminSpaces } = await import('../../scripts/seed-admin-spaces.js')
+    const result = await seedAdminSpaces()
+    await logAction({
+      userId: req.user?.id,
+      actionType: 'seed_admin_spaces',
+      itemType: 'settings',
+      itemId: 1,
+      note: `Floors +${result.new_this_run.floors}, spaces +${result.new_this_run.spaces}, assets +${result.new_this_run.assets}`,
+      meta: result,
+    })
+    return okMessage(
+      res,
+      `Office & Admin inventory seed complete — new floors ${result.new_this_run.floors}, spaces ${result.new_this_run.spaces}, assets ${result.new_this_run.assets}, qty items ${result.new_this_run.qty}.`,
+      result,
+    )
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Office seed failed', 500)
   }
 })
 

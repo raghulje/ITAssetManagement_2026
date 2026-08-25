@@ -14,10 +14,8 @@ import { fileURLToPath } from 'node:url'
 import { all, get, run, now } from '../src/db/index.js'
 import { allocateAssetTag } from '../src/services/assetTag.js'
 
-dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.env') })
-
-const ts = now()
 const SEED_NOTE = 'SEED_ADMIN_SPACES'
+let ts = now()
 const OFFICE_NAMES = {
   nunga: 'Refex Tower-Nungambakkam',
   bazullah: 'Bazullah -T.Nagar',
@@ -214,12 +212,14 @@ async function ensureQty(
   return { created: true }
 }
 
-const company = await get<{ id: number; name: string }>(`
+export async function seedAdminSpaces() {
+  ts = now()
+  const company = await get<{ id: number; name: string }>(`
   SELECT id, name FROM companies
   WHERE deleted_at IS NULL AND name = 'Refex Industries Limited'
   LIMIT 1
 `)
-if (!company) throw new Error('Refex Industries Limited company not found')
+  if (!company) throw new Error('Refex Industries Limited company not found')
 
 const adminDomain = await domainId('admin')
 const siteType = await typeId('SITE')
@@ -423,24 +423,38 @@ const itOnBazullah = await get<{ c: number }>(`
     AND domain_id = (SELECT id FROM asset_domains WHERE code = 'it' AND deleted_at IS NULL LIMIT 1)
 `, [bazId, bazId])
 
-console.log(JSON.stringify({
-  db: (await get<{ d: string }>('SELECT DATABASE() as d'))?.d,
-  company: company.name,
-  offices,
-  new_this_run: created,
-  totals: {
-    floors: Number(floorCount?.c || 0),
-    spaces: Number(spaceCount?.c || 0),
-    admin_assets: Number(adminAssets?.c || 0),
-    admin_accessories: Number(adminAcc?.c || 0),
-    admin_consumables: Number(adminCons?.c || 0),
-    admin_components: Number(adminComp?.c || 0),
-  },
-  it_assets_still_on_office_root: {
-    nungambakkam: Number(itOnTower?.c || 0),
-    bazullah: Number(itOnBazullah?.c || 0),
-  },
-  note: 'Existing IT assets on Refex Tower were not moved.',
-}, null, 2))
+  return {
+    db: (await get<{ d: string }>('SELECT DATABASE() as d'))?.d,
+    company: company.name,
+    offices,
+    new_this_run: created,
+    totals: {
+      floors: Number(floorCount?.c || 0),
+      spaces: Number(spaceCount?.c || 0),
+      admin_assets: Number(adminAssets?.c || 0),
+      admin_accessories: Number(adminAcc?.c || 0),
+      admin_consumables: Number(adminCons?.c || 0),
+      admin_components: Number(adminComp?.c || 0),
+    },
+    it_assets_still_on_office_root: {
+      nungambakkam: Number(itOnTower?.c || 0),
+      bazullah: Number(itOnBazullah?.c || 0),
+    },
+    note: 'Existing IT assets on Refex Tower were not moved.',
+  }
+}
 
-process.exit(0)
+const isDirect = process.argv[1]
+  && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])
+if (isDirect) {
+  dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.env') })
+  seedAdminSpaces()
+    .then((r) => {
+      console.log(JSON.stringify(r, null, 2))
+      process.exit(0)
+    })
+    .catch((e) => {
+      console.error(e instanceof Error ? e.message : e)
+      process.exit(1)
+    })
+}

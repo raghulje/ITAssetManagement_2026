@@ -447,6 +447,8 @@ export function SettingsGeneral() {
   const [tagMigrateBusy, setTagMigrateBusy] = useState(false)
   const [tagRegenBusy, setTagRegenBusy] = useState(false)
   const [schemaMigrateBusy, setSchemaMigrateBusy] = useState(false)
+  const [spaceSeedBusy, setSpaceSeedBusy] = useState(false)
+  const [migStatus, setMigStatus] = useState<{ pending: string[]; applied: string[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [saml, setSaml] = useState<{
     enabled?: boolean
@@ -474,6 +476,9 @@ export function SettingsGeneral() {
     }>('/settings/saml')
       .then((s) => setSaml(s))
       .catch(() => setSaml(null))
+    api<{ pending: string[]; applied: string[] }>('/settings/migrations')
+      .then((s) => setMigStatus({ pending: s.pending || [], applied: s.applied || [] }))
+      .catch(() => setMigStatus(null))
   }, [])
 
   const submit = async (e: FormEvent) => {
@@ -601,17 +606,24 @@ export function SettingsGeneral() {
 
       <Box title="Database migrations" type="primary">
         <p className="help-block" style={{ marginTop: 0 }}>
-          Applies pending SQL files from <code>server/src/db/mysql</code> (e.g. map location columns,
-          received-condition photos). Safe to re-run — already-applied versions are skipped.
-          Deploy/pull the new code first, then click this on production.
+          Applies pending SQL files from <code>server/src/db/mysql</code> — domains, typed locations,
+          spaces, blank QR/barcode labels, and older schema updates. Safe to re-run; already-applied
+          versions are skipped. Deploy/pull the new code first, then click this.
         </p>
+        {migStatus ? (
+          <p className="help-block">
+            {migStatus.pending.length
+              ? <>Pending: <code>{migStatus.pending.join(', ')}</code></>
+              : 'All numbered migrations are already applied.'}
+          </p>
+        ) : null}
         <button
           type="button"
           className="btn btn-theme"
           disabled={schemaMigrateBusy || !canEdit}
           onClick={() => {
             if (!window.confirm(
-              'Run pending database migrations on this server?\n\nThis updates the MySQL schema (new columns/kinds).',
+              'Run pending database migrations on this server?\n\nThis updates the MySQL schema (new tables/columns for spaces, labels, domains, etc.).',
             )) return
             setSchemaMigrateBusy(true)
             setError('')
@@ -624,6 +636,10 @@ export function SettingsGeneral() {
                 const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'Migrations complete'
                 setOkMsg(msg)
                 toast.success(msg)
+                return api<{ pending: string[]; applied: string[] }>('/settings/migrations')
+              })
+              .then((s) => {
+                if (s) setMigStatus({ pending: s.pending || [], applied: s.applied || [] })
               })
               .catch((err: Error) => {
                 setError(err.message)
@@ -633,6 +649,47 @@ export function SettingsGeneral() {
           }}
         >
           {schemaMigrateBusy ? 'Migrating…' : 'Run pending DB migrations'}
+        </button>
+      </Box>
+
+      <Box title="Seed office floors & Admin inventory" type="primary">
+        <p className="help-block" style={{ marginTop: 0 }}>
+          After migrations, click this to create floors, cabins, meeting rooms, workstations, and
+          Admin-domain furniture on <strong>Refex Tower-Nungambakkam</strong> and{' '}
+          <strong>Bazullah -T.Nagar</strong>. Safe to re-run. Does not move existing IT assets
+          and does not reparent those office locations.
+        </p>
+        <button
+          type="button"
+          className="btn btn-theme"
+          disabled={spaceSeedBusy || !canEdit}
+          onClick={() => {
+            if (!window.confirm(
+              'Seed office floors and Admin inventory?\n\nCreates floors/cabins/meeting rooms and Admin furniture on Nungambakkam and Bazullah. Existing IT assets stay where they are.',
+            )) return
+            setSpaceSeedBusy(true)
+            setError('')
+            setOkMsg('')
+            api<{
+              messages?: string[]
+              payload?: {
+                new_this_run?: { floors?: number; spaces?: number; assets?: number; qty?: number }
+                totals?: Record<string, number>
+              }
+            }>('/settings/seed-admin-spaces', { method: 'POST' })
+              .then((res) => {
+                const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'Office seed complete'
+                setOkMsg(msg)
+                toast.success(msg)
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setSpaceSeedBusy(false))
+          }}
+        >
+          {spaceSeedBusy ? 'Seeding…' : 'Seed office floors & Admin inventory'}
         </button>
       </Box>
 

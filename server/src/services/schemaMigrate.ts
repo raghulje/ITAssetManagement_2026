@@ -11,6 +11,42 @@ export type SchemaMigrateResult = {
   table_count: number
 }
 
+export type SchemaMigrateStatus = {
+  pending: string[]
+  applied: string[]
+}
+
+function mysqlMigrationsDir() {
+  return path.join(__dirname, '../db/mysql')
+}
+
+/** Numbered files the admin button will apply (001 always re-runs and is omitted). */
+export function listedMigrationVersions(): string[] {
+  return fs.readdirSync(mysqlMigrationsDir())
+    .filter((f) => f.endsWith('.sql') && /^\d{3}_/.test(f) && !f.startsWith('001'))
+    .sort()
+    .map((f) => f.replace(/\.sql$/, ''))
+}
+
+export async function listSchemaMigrationStatus(): Promise<SchemaMigrateStatus> {
+  const versions = listedMigrationVersions()
+  const { all } = await import('../db/index.js')
+  let appliedRows: Array<{ version: string }> = []
+  try {
+    appliedRows = await all<{ version: string }>(`SELECT version FROM schema_migrations`)
+  } catch {
+    appliedRows = []
+  }
+  const appliedSet = new Set(appliedRows.map((r) => String(r.version)))
+  const applied: string[] = []
+  const pending: string[] = []
+  for (const v of versions) {
+    if (appliedSet.has(v)) applied.push(v)
+    else pending.push(v)
+  }
+  return { pending, applied }
+}
+
 /** Apply pending SQL files under db/mysql (same logic as CLI migrate). */
 export async function runPendingSchemaMigrations(): Promise<SchemaMigrateResult> {
   const host = process.env.DB_HOST || 'localhost'
@@ -44,7 +80,7 @@ export async function runPendingSchemaMigrations(): Promise<SchemaMigrateResult>
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `).catch(() => undefined)
 
-    const dir = path.join(__dirname, '../db/mysql')
+    const dir = mysqlMigrationsDir()
     const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
     const applied: string[] = []
     const skipped: string[] = []
