@@ -17,6 +17,7 @@ const emptyCounts: DashCounts = {
   components: 0,
   users: 0,
   employees: 0,
+  employees_active: 0,
   deployed: 0,
   rtd: 0,
   audit_due: 0,
@@ -58,7 +59,13 @@ export default function Dashboard() {
         <SmallBox to="/accessories" count={counts.accessories} label="Accessories" color="bg-orange" icon="fas fa-keyboard" />
         <SmallBox to="/consumables" count={counts.consumables} label="Consumables" color="bg-purple" icon="fas fa-tint" />
         <SmallBox to="/components" count={counts.components} label="Components" color="bg-olive" icon="fas fa-hdd" />
-        <SmallBox to="/employees" count={counts.employees || counts.users} label="Employees" color="bg-navy" icon="fas fa-users" />
+        <SmallBox
+          to="/employees?active=1"
+          count={counts.employees_active ?? counts.employees ?? counts.users}
+          label="Active employees"
+          color="bg-navy"
+          icon="fas fa-users"
+        />
       </div>
 
       <div className="module-insights-title" style={{ marginTop: 4 }}>Asset inventory snapshot</div>

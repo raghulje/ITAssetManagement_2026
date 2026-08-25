@@ -366,43 +366,47 @@ export function EmployeeDetail() {
     [assignmentHistory],
   )
 
-  const renderHistoryTable = (rows: Row[], emptyText: string) => (
-    <table className="table table-striped">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Action</th>
-          <th>Item</th>
-          <th>Module</th>
-          <th>Domain</th>
-          <th>Performed By</th>
-          <th>Reason</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0 && (
-          <tr><td colSpan={7} className="text-muted">{emptyText}</td></tr>
-        )}
-        {rows.map((h) => (
-          <tr key={String(h.id)}>
-            <td style={{ whiteSpace: 'nowrap' }} title={String(h.action_date || '')}>
-              {formatAppDateTime(h.action_date)}
-            </td>
-            <td>{String(h.action_label || actionLabel(String(h.action || h.action_type || '')))}</td>
-            <td>
-              {h.item_id && String(h.module || h.item_type) === 'asset'
-                ? <Link to={assetLink(Number(h.item_id))}>{String(h.item_name || `Asset #${h.item_id}`)}</Link>
-                : String(h.item_name || '—')}
-            </td>
-            <td>{String(h.module_label || h.module || h.item_type || '—')}</td>
-            <td>{domainLabel((h.domain as { code?: string } | null)?.code)}</td>
-            <td>{String(h.performed_by || h.admin || '—')}</td>
-            <td>{String(h.note || '—')}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
+  const renderHistoryTable = (rows: Row[], emptyText: string) => {
+    if (rows.length === 0) {
+      return <p className="text-muted mb-0">{emptyText}</p>
+    }
+    return (
+      <div className="table-responsive emp-history-table">
+        <table className="table table-striped">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Action</th>
+              <th>Item</th>
+              <th>Module</th>
+              <th>Domain</th>
+              <th>Performed By</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((h) => (
+              <tr key={String(h.id)}>
+                <td style={{ whiteSpace: 'nowrap' }} title={String(h.action_date || '')}>
+                  {formatAppDateTime(h.action_date)}
+                </td>
+                <td>{String(h.action_label || actionLabel(String(h.action || h.action_type || '')))}</td>
+                <td>
+                  {h.item_id && String(h.module || h.item_type) === 'asset'
+                    ? <Link to={assetLink(Number(h.item_id))}>{String(h.item_name || `Asset #${h.item_id}`)}</Link>
+                    : String(h.item_name || '—')}
+                </td>
+                <td>{String(h.module_label || h.module || h.item_type || '—')}</td>
+                <td>{domainLabel((h.domain as { code?: string } | null)?.code)}</td>
+                <td>{String(h.performed_by || h.admin || '—')}</td>
+                <td>{String(h.note || '—')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
 
   if (loading) return <AppLayout title="Employee"><p className="text-muted">Loading…</p></AppLayout>
   if (!emp) {

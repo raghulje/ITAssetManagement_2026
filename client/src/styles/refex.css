@@ -3404,6 +3404,19 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   color: #0b6e66;
   letter-spacing: -0.01em;
 }
+.emp-history-table {
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+.detail-panel {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.detail-panel .emp-history-table {
+  border: 0;
+  border-radius: 10px;
+}
 
 .dash-status-bars {
   display: flex;
@@ -4350,6 +4363,34 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   .detail-panel-tools .btn {
     flex: 1 1 auto;
     min-height: 40px;
+  }
+
+  .emp-hero {
+    padding: 14px;
+    gap: 14px;
+  }
+  .emp-hero-kpis {
+    width: 100%;
+  }
+  .emp-kpi {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 0;
+  }
+  .emp-contact-grid {
+    grid-template-columns: 1fr;
+  }
+  .emp-asset-summary li {
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+  .emp-history-table {
+    margin: 0 -2px;
+  }
+  .emp-history-table .table > thead > tr > th,
+  .emp-history-table .table > tbody > tr > td {
+    padding: 10px 12px;
+    font-size: 12.5px;
   }
 
   /* DataTable: cards on phone, hide desktop table */
