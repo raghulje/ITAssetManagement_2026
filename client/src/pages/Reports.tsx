@@ -6,6 +6,8 @@ import { api } from '../api/client'
 import { formatINR } from '../utils/money'
 import { downloadAuthedCsv, downloadCsv } from '../utils/csv'
 import { formatAppDateTime } from '../lib/datetime'
+import { useAuth } from '../api/AuthContext'
+import { softwareLicensesInDomain } from '../lib/domainScope'
 
 const reportCards = [
   { to: '/reports/activity', icon: 'fas fa-history', title: 'Activity Report', desc: 'Activity trail with filters for action, item type, and date range.' },
@@ -41,17 +43,16 @@ function ReportShell({
   rowCount?: number
 }) {
   return (
-    <AppLayout title={title} subtitle={subtitle || (loading ? 'Loading…' : rowCount != null ? `${rowCount} rows` : undefined)}>
+    <AppLayout title={title} subtitle={subtitle || (loading ? 'Loading…' : rowCount != null ? `${rowCount} rows` : undefined)} backTo="/reports">
       <div className="report-shell">
-        <div className="report-shell-toolbar">
-          <Link to="/reports" className="btn btn-default btn-sm"><i className="fas fa-arrow-left" /> Reports</Link>
-          <div className="spacer" />
-          {onExport ? (
+        {onExport ? (
+          <div className="report-shell-toolbar">
+            <div className="spacer" />
             <button type="button" className="btn btn-theme btn-sm" disabled={exporting || loading || empty} onClick={onExport}>
               <i className="fas fa-download" /> {exporting ? 'Exporting…' : 'Export CSV'}
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         {filters ? <div className="report-shell-filters">{filters}</div> : null}
         <div className="report-shell-body">
           {loading ? (
@@ -120,6 +121,8 @@ function DenseTable({
 }
 
 export function ReportsHub() {
+  const { activeDomain } = useAuth()
+  const showLicenses = softwareLicensesInDomain(activeDomain)
   const [hub, setHub] = useState<Record<string, number>>({})
   useEffect(() => {
     api<Record<string, number>>('/reports/hub').then(setHub).catch(() => undefined)
@@ -129,11 +132,17 @@ export function ReportsHub() {
     // { label: 'Audit Due', value: hub.audit_due, icon: 'fas fa-clipboard-check', tone: 'warning' }, // Audit feature — restore when needed
     { label: 'EOL Due', value: hub.eol_due, icon: 'fas fa-hourglass-end', tone: 'danger' },
     { label: 'Due for Unassign', value: hub.checkin_due, icon: 'fas fa-undo', tone: 'info' },
-    { label: 'Licenses Exhausted', value: hub.licenses_exhausted, icon: 'fas fa-save', tone: 'success' },
-  ] as const
+    ...(showLicenses
+      ? [{ label: 'Licenses Exhausted', value: hub.licenses_exhausted, icon: 'fas fa-save', tone: 'success' }]
+      : []),
+  ]
+
+  const cards = showLicenses
+    ? reportCards
+    : reportCards.filter((r) => r.to !== '/reports/licenses')
 
   return (
-    <AppLayout title="Reports" subtitle="Operational insights across assets, licenses, and activity">
+    <AppLayout title="Reports" subtitle={showLicenses ? 'Operational insights across assets, licenses, and activity' : 'Operational insights across assets and activity'} backTo="/">
       <div className="row report-kpi-row">
         {kpis.map((k) => (
           <div key={k.label} className="col-md-3 col-sm-6">
@@ -148,7 +157,7 @@ export function ReportsHub() {
         ))}
       </div>
       <div className="row report-card-grid">
-        {reportCards.map((r) => (
+        {cards.map((r) => (
           <div key={r.to} className="col-md-4 col-sm-6">
             <Link to={r.to} className="report-card">
               <div className="report-card-icon"><i className={r.icon} /></div>

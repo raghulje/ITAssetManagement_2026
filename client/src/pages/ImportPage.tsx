@@ -2,13 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AppLayout from '../layout/AppLayout'
 import { AppSelect, Box, FileInput, StackField } from '../components/ui'
+import { DomainSelect } from '../components/DomainSelect'
 import { api } from '../api/client'
 import { getApiBase } from '../api/baseUrl'
 import { downloadAuthedCsv } from '../utils/csv'
+import { useAuth } from '../api/AuthContext'
+import { defaultDomainCode } from '../lib/domainScope'
 
 type Field = { key: string; label: string; required?: boolean }
 
 export function ImportPage() {
+  const { domainScope, activeDomain } = useAuth()
   const [searchParams] = useSearchParams()
   const defaultLabels: Record<string, string> = {
     asset: 'Assets', user: 'Users', accessory: 'Accessories', consumable: 'Consumables',
@@ -28,6 +32,8 @@ export function ImportPage() {
   const [history, setHistory] = useState<Record<string, unknown>[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [domain, setDomain] = useState(activeDomain || defaultDomainCode(domainScope))
+  const inventoryTypes = useMemo(() => new Set(['asset', 'license', 'accessory', 'consumable', 'component']), [])
 
   const loadHistory = () => api<{ rows: Record<string, unknown>[] }>('/imports').then((r) => setHistory(r.rows)).catch(() => undefined)
 
@@ -92,6 +98,7 @@ export function ImportPage() {
           'import-type': type,
           mappings,
           'import-update': updateExisting,
+          ...(inventoryTypes.has(type) ? { domain } : {}),
         },
       })
       setResult((data as { payload?: Record<string, unknown> }).payload || (data as unknown as Record<string, unknown>))
@@ -125,7 +132,7 @@ export function ImportPage() {
   }, [result])
 
   return (
-    <AppLayout title="Import">
+    <AppLayout title="Import" backTo="/">
       {error && <div className="callout callout-danger"><p>{error}</p></div>}
       <Box title="1. Upload CSV" type="primary">
         <div className="form-stack">
@@ -136,6 +143,15 @@ export function ImportPage() {
               options={types.map((t) => ({ value: t, label: typeLabels[t] || t }))}
             />
           </StackField>
+          {inventoryTypes.has(type) ? (
+            <DomainSelect
+              value={domain}
+              onChange={setDomain}
+              allowed={domainScope.codes}
+              required={domainScope.all}
+              label="Domain"
+            />
+          ) : null}
           <StackField label="CSV file" hint="Upload a .csv file. Download a sample first if you need the column layout.">
             <FileInput
               accept=".csv,text/csv"

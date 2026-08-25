@@ -7,10 +7,20 @@ import { storageRoot } from './uploads.js'
 
 const QR_DIR = path.join(storageRoot, 'public/assets/qr')
 
+/** Hosts where the Node listen port is the real public port (no TLS reverse proxy). */
+function isDirectListenHost(hostname: string) {
+  const h = hostname.toLowerCase()
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1' || h.endsWith('.local')) return true
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true
+  return false
+}
+
 /**
  * Browser-facing origin for QR / email links.
- * Must be the proxied HTTPS domain — never container PORT (e.g. :3053).
- * Example: https://asset.refexone.com  (not https://asset.refexone.com:3053)
+ * Production: proxied HTTPS domain without container PORT (https://asset.refexone.com).
+ * Local / LAN: keep the listen port (http://localhost:3053) so /asset/:token actually opens.
  */
 export function clientBase() {
   const fromEnv = (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || '').trim()
@@ -21,10 +31,16 @@ export function clientBase() {
   const listenPort = String(process.env.PORT || '').trim()
   try {
     const u = new URL(base)
-    // Drop mistaken ":3053" (or whatever PORT) — TLS proxy serves on 443 / default
-    if (listenPort && u.port === listenPort) u.port = ''
-    // Prefer https public links when FORCE_HTTPS is on
-    if (process.env.FORCE_HTTPS === 'true' && u.protocol === 'http:') u.protocol = 'https:'
+    if (isDirectListenHost(u.hostname)) {
+      if (listenPort && !u.port) u.port = listenPort
+    } else if (listenPort && u.port === listenPort) {
+      // Drop mistaken ":3053" on a proxied hostname — TLS proxy serves on 443 / default
+      u.port = ''
+    }
+    // Prefer https public links when FORCE_HTTPS is on (not for local http)
+    if (process.env.FORCE_HTTPS === 'true' && u.protocol === 'http:' && !isDirectListenHost(u.hostname)) {
+      u.protocol = 'https:'
+    }
     base = u.toString().replace(/\/$/, '')
   } catch {
     /* keep as-is */

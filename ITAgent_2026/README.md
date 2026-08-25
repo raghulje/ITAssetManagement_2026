@@ -71,6 +71,22 @@ npm run watch   # register + heartbeat + remote scan
 # npm run sync  # one-shot
 ```
 
+## macOS — easy Install & Start (recommended)
+
+Send Mac users the `mac` + `node` folders (or `updated_agents/mac_agent`):
+
+1. Double-click **`Install-ITAgent.command`**
+2. Approve “Open” if Gatekeeper asks
+3. Agent installs a Login Agent (launchd) that keeps polling — same idea as Windows Install & Start
+
+Also: `Sync-Once.command`, `Uninstall-ITAgent.command`. See `mac/README.md`.
+
+```bash
+# Advanced (same as double-click install)
+cd ITAgent_2026/mac
+./Install-ITAgent.command
+```
+
 ## From the web app
 
 1. Open the asset → **Agent** tab  

@@ -36,6 +36,7 @@ const MASTER_META: Record<MasterKind, {
     columns: [
       { key: 'name', label: 'Name' },
       { key: 'company', label: 'Company' },
+      { key: 'office', label: 'Office' },
       { key: 'assets_count', label: 'Assets' },
       { key: 'notes', label: 'Notes' },
     ],
@@ -149,6 +150,8 @@ function ApiMasterForm({ kind }: { kind: MasterKind }) {
   const [notes, setNotes] = useState('')
   const [address, setAddress] = useState('')
   const [companyId, setCompanyId] = useState('')
+  const [isOffice, setIsOffice] = useState(false)
+  const [floorCounts, setFloorCounts] = useState({ total: 0, active: 0, inactive: 0 })
   const [companies, setCompanies] = useState<SelectOption[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -176,6 +179,12 @@ function ApiMasterForm({ kind }: { kind: MasterKind }) {
         const co = row.company
         if (co && typeof co === 'object' && 'id' in co) setCompanyId(String((co as { id: number }).id))
         else if (row.company_id) setCompanyId(String(row.company_id))
+        setIsOffice(Boolean(row.is_office))
+        setFloorCounts({
+          total: Number(row.floors_total || 0),
+          active: Number(row.floors_active || 0),
+          inactive: Number(row.floors_inactive || 0),
+        })
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -207,6 +216,7 @@ function ApiMasterForm({ kind }: { kind: MasterKind }) {
           notes: notes || null,
           address: address || null,
           company_id: companyId ? Number(companyId) : null,
+          is_office: isOffice,
         }
         if (isEdit && id) await mastersApi.updateLocation(id, body)
         else await mastersApi.createLocation(body)
@@ -255,9 +265,27 @@ function ApiMasterForm({ kind }: { kind: MasterKind }) {
           </Field>
         )}
         {kind === 'locations' && (
-          <Field label="Address">
-            <textarea className="form-control" value={address} onChange={(e) => setAddress(e.target.value)} />
-          </Field>
+          <>
+            <Field label="Address">
+              <textarea className="form-control" value={address} onChange={(e) => setAddress(e.target.value)} />
+            </Field>
+            <Field label="Office location">
+              <label className="checkbox-inline" style={{ fontWeight: 400 }}>
+                <input type="checkbox" checked={isOffice} onChange={(e) => setIsOffice(e.target.checked)} />
+                {' '}This is an office location
+              </label>
+              <p className="help-block">
+                Office locations can have floors, cabins, meeting rooms and workstations under Space Management.
+              </p>
+              {isOffice && isEdit ? (
+                <p className="help-block mb-0">
+                  Floors: {floorCounts.total} total · {floorCounts.active} active · {floorCounts.inactive} inactive
+                  {' · '}
+                  <Link to={`/spaces?office=${id}`}>Open Space Management</Link>
+                </p>
+              ) : null}
+            </Field>
+          </>
         )}
         <Field label="Notes">
           <textarea className="form-control" value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -313,6 +341,22 @@ function ApiMasterDetail({ kind }: { kind: MasterKind }) {
               <dd>{String(row.address)}</dd>
             </>
           )}
+          {kind === 'locations' ? (
+            <>
+              <dt>Office location</dt>
+              <dd>{row.is_office ? 'Yes' : 'No'}</dd>
+              {row.is_office ? (
+                <>
+                  <dt>Floors</dt>
+                  <dd>
+                    {Number(row.floors_total || 0)} total · {Number(row.floors_active || 0)} active · {Number(row.floors_inactive || 0)} inactive
+                    {' · '}
+                    <Link to={`/spaces?office=${row.id}`}>Space Management</Link>
+                  </dd>
+                </>
+              ) : null}
+            </>
+          ) : null}
           <dt>Notes</dt><dd>{String(row.notes || '—')}</dd>
         </dl>
       </Box>

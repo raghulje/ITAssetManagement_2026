@@ -8,6 +8,8 @@ import { logAction } from '../services/actionLog.js'
 import { transformAsset } from '../services/transformers.js'
 import { recordUpload, storageRoot } from '../services/uploads.js'
 import { actorLabel, notifyWorkflow, resolveAssigneeEmail } from '../services/notify.js'
+import { actionLogDomainSql, assertRecordDomainAccess, inventoryDomainClause, loadItemDomain } from '../services/domainAuth.js'
+import { ASSET_AGE_DATE_SQL } from '../utils/period.js'
 
 export const reportsRouter = Router()
 
@@ -23,6 +25,10 @@ reportsRouter.get('/activity', async (req, res) => {
   if (itemType) { where += ' AND al.item_type = ?'; params.push(itemType) }
   if (from) { where += ' AND DATE(al.action_date) >= ?'; params.push(from) }
   if (to) { where += ' AND DATE(al.action_date) <= ?'; params.push(to) }
+
+  const domain = await actionLogDomainSql(req.user?.permissions, req.query.domain || req.query.domain_id, 'al')
+  where += domain.sql
+  params.push(...domain.params)
 
   const rows = await all(`
     SELECT al.*, u.username as admin,
@@ -49,34 +55,47 @@ reportsRouter.get('/activity', async (req, res) => {
   return okList(res, rows)
 })
 
-reportsRouter.get('/hub', async (_req, res) => {
-  const count = async (sql: string) => Number((await get<{ c: number }>(sql))?.c || 0)
+reportsRouter.get('/hub', async (req, res) => {
+  const count = async (sql: string, params: unknown[] = []) => Number((await get<{ c: number }>(sql, params))?.c || 0)
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, '')
+  const domainA = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   const { countEolDue } = await import('../services/eolAlerts.js')
   return okItem(res, {
-    audit_due: await count(`SELECT COUNT(*) as c FROM assets WHERE deleted_at IS NULL AND next_audit_date IS NOT NULL AND DATE(next_audit_date) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)`),
-    checkin_due: await count(`SELECT COUNT(*) as c FROM assets WHERE deleted_at IS NULL AND expected_checkin IS NOT NULL AND assigned_to IS NOT NULL`),
-    eol_due: await countEolDue(),
-    pending_acceptance: await count(`SELECT COUNT(*) as c FROM checkout_acceptances WHERE accepted_at IS NULL AND declined_at IS NULL AND deleted_at IS NULL`),
+    audit_due: await count(`SELECT COUNT(*) as c FROM assets WHERE deleted_at IS NULL AND next_audit_date IS NOT NULL AND DATE(next_audit_date) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)${domain.sql}`, domain.params),
+    checkin_due: await count(`SELECT COUNT(*) as c FROM assets WHERE deleted_at IS NULL AND expected_checkin IS NOT NULL AND assigned_to IS NOT NULL${domain.sql}`, domain.params),
+    eol_due: await countEolDue({ permissions: req.user?.permissions, domain: req.query.domain || req.query.domain_id }),
+    pending_acceptance: await count(`
+      SELECT COUNT(*) as c FROM checkout_acceptances ca
+      JOIN assets a ON a.id = ca.checkoutable_id AND ca.checkoutable_type = 'asset'
+      WHERE ca.accepted_at IS NULL AND ca.declined_at IS NULL AND ca.deleted_at IS NULL
+        ${domainA.sql}
+    `, domainA.params),
     licenses_exhausted: await count(`
       SELECT COUNT(*) as c FROM licenses l
-      WHERE l.deleted_at IS NULL AND (
+      WHERE l.deleted_at IS NULL${domain.sql} AND (
         SELECT COUNT(*) FROM license_seats WHERE license_id=l.id AND (assigned_to IS NOT NULL OR asset_id IS NOT NULL)
       ) >= l.seats
-    `),
+    `, domain.params),
   })
 })
 
 
-reportsRouter.get('/audit', async (_req, res) => {
+reportsRouter.get('/audit', async (req, res) => {
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, '')
   const ids = await all<{ id: number }>(`
     SELECT id FROM assets WHERE deleted_at IS NULL AND next_audit_date IS NOT NULL
+      ${domain.sql}
     ORDER BY next_audit_date ASC
-  `)
+  `, domain.params)
   const rows = (await Promise.all(ids.map((r) => transformAsset(r.id)))).filter(Boolean)
   return okList(res, rows)
 })
 
-reportsRouter.get('/depreciation', async (_req, res) => {
+reportsRouter.get('/depreciation', async (req, res) => {
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   const rows = await all(`
     SELECT a.id, a.asset_tag, a.name, a.purchase_cost, a.purchase_date,
       d.months as depreciation_months,
@@ -85,17 +104,20 @@ reportsRouter.get('/depreciation', async (_req, res) => {
     LEFT JOIN models m ON m.id = a.model_id
     LEFT JOIN depreciations d ON d.id = m.depreciation_id
     WHERE a.deleted_at IS NULL AND a.purchase_cost IS NOT NULL
-  `)
+      ${domain.sql}
+  `, domain.params)
   return okList(res, rows)
 })
 
-reportsRouter.get('/licenses', async (_req, res) => {
+reportsRouter.get('/licenses', async (req, res) => {
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'l')
   const rows = (await all<Record<string, unknown>>(`
     SELECT l.id, l.name, l.seats,
       (SELECT COUNT(*) FROM license_seats WHERE license_id = l.id AND (assigned_to IS NOT NULL OR asset_id IS NOT NULL)) as used,
       l.expiration_date, l.purchase_cost
-    FROM licenses l WHERE l.deleted_at IS NULL
-  `)).map((r) => ({
+    FROM licenses l WHERE l.deleted_at IS NULL${domain.sql}
+  `, domain.params)).map((r) => ({
     ...r,
     remaining: Number(r.seats) - Number(r.used),
     used_percent: Math.round((Number(r.used) / Number(r.seats)) * 100),
@@ -103,19 +125,24 @@ reportsRouter.get('/licenses', async (_req, res) => {
   return okList(res, rows)
 })
 
-reportsRouter.get('/maintenances', async (_req, res) => {
+reportsRouter.get('/maintenances', async (req, res) => {
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   const rows = await all(`
     SELECT m.*, a.asset_tag, s.name as supplier_name
     FROM maintenances m
     LEFT JOIN assets a ON a.id = m.asset_id
     LEFT JOIN suppliers s ON s.id = m.supplier_id
     WHERE m.deleted_at IS NULL
+      ${domain.sql}
     ORDER BY m.start_date DESC
-  `)
+  `, domain.params)
   return okList(res, rows)
 })
 
-reportsRouter.get('/unaccepted', async (_req, res) => {
+reportsRouter.get('/unaccepted', async (req, res) => {
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   const rows = await all(`
     SELECT ca.*, a.asset_tag, a.name as asset_name,
       CONCAT(u.first_name, ' ', u.last_name) as user_name
@@ -123,17 +150,20 @@ reportsRouter.get('/unaccepted', async (_req, res) => {
     JOIN assets a ON a.id = ca.checkoutable_id AND ca.checkoutable_type = 'asset'
     JOIN users u ON u.id = ca.assigned_to
     WHERE ca.accepted_at IS NULL AND ca.declined_at IS NULL AND ca.deleted_at IS NULL
-  `)
+      ${domain.sql}
+  `, domain.params)
   return okList(res, rows)
 })
 
-reportsRouter.get('/accessories', async (_req, res) => {
+reportsRouter.get('/accessories', async (req, res) => {
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   const rows = (await all<Record<string, unknown>>(`
     SELECT a.id, a.name, a.qty,
       COALESCE((SELECT SUM(assigned_qty) FROM accessories_checkout WHERE accessory_id = a.id), 0) as checked_out,
       a.min_amt
-    FROM accessories a WHERE a.deleted_at IS NULL
-  `)).map((r) => ({
+    FROM accessories a WHERE a.deleted_at IS NULL${domain.sql}
+  `, domain.params)).map((r) => ({
     ...r,
     remaining: Number(r.qty) - Number(r.checked_out),
   }))
@@ -230,6 +260,13 @@ reportsRouter.get('/custom', async (req, res) => {
   addDateRange('a.next_audit_date', 'next_audit_from', 'next_audit_to')
   addDateRange('a.last_audit_date', 'last_audit_from', 'last_audit_to')
 
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, q.domain || q.domain_id, 'a')
+  if (domain.sql) {
+    where.push(domain.sql.replace(/^\s*AND\s+/i, ''))
+    params.push(...domain.params)
+  }
+
   const sql = `
     SELECT ${selectParts.join(', ')}
     FROM assets a
@@ -249,7 +286,9 @@ reportsRouter.get('/custom', async (req, res) => {
   return okList(res, rows)
 })
 
-reportsRouter.get('/custom/export', async (_req, res) => {
+reportsRouter.get('/custom/export', async (req, res) => {
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   const rows = await all(`
     SELECT a.asset_tag, a.name, a.serial, m.name as model, s.name as status, a.purchase_cost, a.purchase_date,
       loc.name as location, co.name as company
@@ -259,8 +298,9 @@ reportsRouter.get('/custom/export', async (_req, res) => {
     LEFT JOIN locations loc ON loc.id=a.location_id
     LEFT JOIN companies co ON co.id=a.company_id
     WHERE a.deleted_at IS NULL
+      ${domain.sql}
     ORDER BY a.id
-  `)
+  `, domain.params)
   const headers = rows.length ? Object.keys(rows[0] as object) : ['asset_tag']
   const lines = [headers.join(',')]
   for (const r of rows) {
@@ -285,8 +325,31 @@ const MAINTENANCE_TYPES = new Set([
   'Hardware Support',
 ])
 
+async function requireMaintenanceAssetDomain(
+  req: import('express').Request,
+  res: import('express').Response,
+  maintenanceId: number | string,
+) {
+  const m = await get<{ id: number; asset_id: number }>(
+    `SELECT id, asset_id FROM maintenances WHERE id = ? AND deleted_at IS NULL`,
+    [maintenanceId],
+  )
+  if (!m) {
+    fail(res, 'Maintenance not found', 404)
+    return null
+  }
+  const asset = await loadItemDomain('assets', 'id = ? AND deleted_at IS NULL', [m.asset_id])
+  if (!asset) {
+    fail(res, 'Maintenance not found', 404)
+    return null
+  }
+  if (!(await assertRecordDomainAccess(req, res, asset.domain_id))) return null
+  return m
+}
+
 maintenancesRouter.get('/', async (req, res) => {
   const assetId = req.query.asset_id ? Number(req.query.asset_id) : null
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   const rows = await all(`
     SELECT m.*, a.asset_tag, a.name as asset_name, s.name as supplier_name
     FROM maintenances m
@@ -294,12 +357,15 @@ maintenancesRouter.get('/', async (req, res) => {
     LEFT JOIN suppliers s ON s.id = m.supplier_id
     WHERE m.deleted_at IS NULL
       ${assetId ? 'AND m.asset_id = ?' : ''}
+      ${domain.sql}
     ORDER BY m.id DESC
-  `, assetId ? [assetId] : [])
+  `, assetId ? [assetId, ...domain.params] : domain.params)
   return okList(res, rows)
 })
 
 maintenancesRouter.get('/:id', async (req, res) => {
+  const scoped = await requireMaintenanceAssetDomain(req, res, req.params.id)
+  if (!scoped) return
   const row = await get(`
     SELECT m.*, a.asset_tag, a.name as asset_name, s.name as supplier_name
     FROM maintenances m
@@ -314,6 +380,9 @@ maintenancesRouter.get('/:id', async (req, res) => {
 maintenancesRouter.post('/', async (req, res) => {
   const b = req.body || {}
   if (!b.asset_id || !b.title) return fail(res, 'asset_id and title required')
+  const parent = await loadItemDomain('assets', 'id = ? AND deleted_at IS NULL', [Number(b.asset_id)])
+  if (!parent) return fail(res, 'Asset not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, parent.domain_id))) return
   const reason = String(b.note || '').trim()
   if (!reason) return fail(res, 'Reason / description is required')
   const type = String(b.asset_maintenance_type || 'Maintenance')
@@ -366,6 +435,8 @@ maintenancesRouter.post('/', async (req, res) => {
 })
 
 maintenancesRouter.put('/:id', async (req, res) => {
+  const scoped = await requireMaintenanceAssetDomain(req, res, req.params.id)
+  if (!scoped) return
   const b = req.body || {}
   if (b.note !== undefined && !String(b.note || '').trim()) {
     return fail(res, 'Reason / description is required')
@@ -423,6 +494,8 @@ maintenancesRouter.put('/:id', async (req, res) => {
 })
 
 maintenancesRouter.post('/:id/complete', async (req, res) => {
+  const scoped = await requireMaintenanceAssetDomain(req, res, req.params.id)
+  if (!scoped) return
   const row = await get<{ asset_id: number; title: string }>(
     `SELECT asset_id, title FROM maintenances WHERE id = ? AND deleted_at IS NULL`,
     [req.params.id],
@@ -451,6 +524,8 @@ maintenancesRouter.post('/:id/complete', async (req, res) => {
 })
 
 maintenancesRouter.delete('/:id', async (req, res) => {
+  const scoped = await requireMaintenanceAssetDomain(req, res, req.params.id)
+  if (!scoped) return
   await run(`UPDATE maintenances SET deleted_at = ?, updated_at = ? WHERE id = ?`, [now(), now(), req.params.id])
   return okMessage(res, 'Maintenance deleted')
 })
@@ -469,6 +544,11 @@ dashboardRouter.get('/', async (req, res) => {
 
   const assetClauses = ['a.deleted_at IS NULL']
   const assetParams: unknown[] = []
+  const { inventoryDomainClause } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
+  const domainFrag = domain.sql.replace(/^\s*AND\s+/i, '').trim()
+  if (domainFrag) assetClauses.push(domainFrag)
+  assetParams.push(...domain.params)
   if (companyId) {
     assetClauses.push('a.company_id = ?')
     assetParams.push(companyId)
@@ -481,10 +561,26 @@ dashboardRouter.get('/', async (req, res) => {
     assetClauses.push('(a.asset_tag LIKE ? OR a.name LIKE ? OR a.serial LIKE ? OR CAST(a.id AS CHAR) = ?)')
     assetParams.push(`%${search}%`, `%${search}%`, `%${search}%`, search)
   }
+  const periodFrom = String(req.query.period_from || req.query.purchase_from || '').trim()
+  const periodTo = String(req.query.period_to || req.query.purchase_to || '').trim()
+  if (periodFrom) {
+    assetClauses.push(`${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} >= ?`)
+    assetParams.push(periodFrom)
+  }
+  if (periodTo) {
+    assetClauses.push(`${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} <= ?`)
+    assetParams.push(periodTo)
+  }
   const assetWhere = assetClauses.join(' AND ')
 
   const invClauses = ['deleted_at IS NULL']
   const invParams: unknown[] = []
+  const invDomain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, '')
+  const invDomainT = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 't')
+  const invDomainL = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'l')
+  const invFrag = invDomain.sql.replace(/^\s*AND\s+/i, '').trim()
+  if (invFrag) invClauses.push(invFrag)
+  invParams.push(...invDomain.params)
   if (companyId) {
     invClauses.push('company_id = ?')
     invParams.push(companyId)
@@ -493,30 +589,24 @@ dashboardRouter.get('/', async (req, res) => {
 
   const { countEolDue } = await import('../services/eolAlerts.js')
 
-  const accessoryAssigned = companyId
-    ? await count(`
-        SELECT COALESCE(SUM(ac.assigned_qty),0) as c
-        FROM accessories_checkout ac
-        JOIN accessories a ON a.id = ac.accessory_id
-        WHERE a.deleted_at IS NULL AND a.company_id = ?
-      `, [companyId])
-    : await count(`SELECT COALESCE(SUM(assigned_qty),0) as c FROM accessories_checkout`)
-  const consumableAssigned = companyId
-    ? await count(`
-        SELECT COALESCE(SUM(cu.assigned_qty),0) as c
-        FROM consumables_users cu
-        JOIN consumables c ON c.id = cu.consumable_id
-        WHERE c.deleted_at IS NULL AND c.company_id = ?
-      `, [companyId])
-    : await count(`SELECT COALESCE(SUM(assigned_qty),0) as c FROM consumables_users`)
-  const componentAssigned = companyId
-    ? await count(`
-        SELECT COALESCE(SUM(ca.assigned_qty),0) as c
-        FROM components_assets ca
-        JOIN components c ON c.id = ca.component_id
-        WHERE c.deleted_at IS NULL AND c.company_id = ?
-      `, [companyId])
-    : await count(`SELECT COALESCE(SUM(assigned_qty),0) as c FROM components_assets`)
+  const accessoryAssigned = await count(`
+    SELECT COALESCE(SUM(ac.assigned_qty),0) as c
+    FROM accessories_checkout ac
+    JOIN accessories t ON t.id = ac.accessory_id
+    WHERE t.deleted_at IS NULL${invDomainT.sql}${companyId ? ' AND t.company_id = ?' : ''}
+  `, companyId ? [...invDomainT.params, companyId] : invDomainT.params)
+  const consumableAssigned = await count(`
+    SELECT COALESCE(SUM(cu.assigned_qty),0) as c
+    FROM consumables_users cu
+    JOIN consumables t ON t.id = cu.consumable_id
+    WHERE t.deleted_at IS NULL${invDomainT.sql}${companyId ? ' AND t.company_id = ?' : ''}
+  `, companyId ? [...invDomainT.params, companyId] : invDomainT.params)
+  const componentAssigned = await count(`
+    SELECT COALESCE(SUM(ca.assigned_qty),0) as c
+    FROM components_assets ca
+    JOIN components t ON t.id = ca.component_id
+    WHERE t.deleted_at IS NULL${invDomainT.sql}${companyId ? ' AND t.company_id = ?' : ''}
+  `, companyId ? [...invDomainT.params, companyId] : invDomainT.params)
 
   const accessoryQty = await count(`SELECT COALESCE(SUM(qty),0) as c FROM accessories WHERE ${invWhere}`, invParams)
   const consumableQty = await count(`SELECT COALESCE(SUM(qty),0) as c FROM consumables WHERE ${invWhere}`, invParams)
@@ -526,17 +616,12 @@ dashboardRouter.get('/', async (req, res) => {
     `SELECT COALESCE(SUM(seats),0) as c FROM licenses WHERE ${invWhere}`,
     invParams,
   )
-  const licenseAssigned = companyId
-    ? await count(`
-        SELECT COUNT(*) as c FROM license_seats ls
-        JOIN licenses l ON l.id = ls.license_id
-        WHERE l.deleted_at IS NULL AND l.company_id = ?
-          AND (ls.assigned_to IS NOT NULL OR ls.asset_id IS NOT NULL)
-      `, [companyId])
-    : await count(`
-        SELECT COUNT(*) as c FROM license_seats
-        WHERE (assigned_to IS NOT NULL OR asset_id IS NOT NULL)
-      `)
+  const licenseAssigned = await count(`
+    SELECT COUNT(*) as c FROM license_seats ls
+    JOIN licenses l ON l.id = ls.license_id
+    WHERE l.deleted_at IS NULL${invDomainL.sql}${companyId ? ' AND l.company_id = ?' : ''}
+      AND (ls.assigned_to IS NOT NULL OR ls.asset_id IS NOT NULL)
+  `, companyId ? [...invDomainL.params, companyId] : invDomainL.params)
 
   return okItem(res, {
     assets: await count(`SELECT COUNT(*) as c FROM assets a WHERE ${assetWhere}`, assetParams),
@@ -569,7 +654,13 @@ dashboardRouter.get('/', async (req, res) => {
          AND DATE(a.next_audit_date) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)`,
       assetParams,
     ),
-    eol_due: await countEolDue({ companyId, locationId, search: search || undefined }),
+    eol_due: await countEolDue({
+      companyId,
+      locationId,
+      search: search || undefined,
+      permissions: req.user?.permissions,
+      domain: req.query.domain || req.query.domain_id,
+    }),
     accessories_assigned: accessoryAssigned,
     accessories_available: Math.max(0, accessoryQty - accessoryAssigned),
     consumables_assigned: consumableAssigned,
@@ -579,6 +670,112 @@ dashboardRouter.get('/', async (req, res) => {
     licenses_seats: licenseSeats,
     licenses_assigned: licenseAssigned,
     licenses_available: Math.max(0, licenseSeats - licenseAssigned),
+  })
+})
+
+function ymdLocal(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+dashboardRouter.get('/charts', async (req, res) => {
+  const companyId = req.query.company_id ? Number(req.query.company_id) : null
+  const locationId = req.query.location_id ? Number(req.query.location_id) : null
+  const { inventoryDomainClause, tableHasColumn } = await import('../services/domainAuth.js')
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
+  const clauses = ['a.deleted_at IS NULL']
+  const params: unknown[] = []
+  const domainFrag = domain.sql.replace(/^\s*AND\s+/i, '').trim()
+  if (domainFrag) clauses.push(domainFrag)
+  params.push(...domain.params)
+  if (companyId) {
+    clauses.push('a.company_id = ?')
+    params.push(companyId)
+  }
+  if (locationId) {
+    clauses.push('(a.location_id = ? OR a.rtd_location_id = ?)')
+    params.push(locationId, locationId)
+  }
+  const where = clauses.join(' AND ')
+  const hasAssetType = await tableHasColumn('models', 'asset_type_id')
+
+  const statusRows = await all<{ label: string; value: number }>(`
+    SELECT
+      CASE
+        WHEN a.assigned_to IS NOT NULL THEN 'Assigned'
+        WHEN s.type = 'deployable' THEN 'In stock'
+        WHEN s.type = 'pending' THEN 'Pending'
+        WHEN s.type = 'undeployable' THEN 'Not deployable'
+        ELSE COALESCE(NULLIF(s.name, ''), 'Other')
+      END AS label,
+      COUNT(*) AS value
+    FROM assets a
+    LEFT JOIN status_labels s ON s.id = a.status_id
+    WHERE ${where}
+    GROUP BY label
+    ORDER BY value DESC
+  `, params)
+
+  const typeRows = await all<{ label: string; value: number }>(`
+    SELECT COALESCE(${hasAssetType ? 'NULLIF(at.name, \'\'), ' : ''}NULLIF(c.name, ''), 'Unspecified') AS label,
+      COUNT(*) AS value
+    FROM assets a
+    LEFT JOIN models m ON m.id = a.model_id
+    LEFT JOIN categories c ON c.id = m.category_id
+    ${hasAssetType ? 'LEFT JOIN asset_types at ON at.id = m.asset_type_id' : ''}
+    WHERE ${where}
+    GROUP BY label
+    ORDER BY value DESC
+    LIMIT 8
+  `, params)
+
+  const companyRows = await all<{ label: string; value: number }>(`
+    SELECT COALESCE(NULLIF(co.name, ''), 'No company') AS label, COUNT(*) AS value
+    FROM assets a
+    LEFT JOIN companies co ON co.id = a.company_id
+    WHERE ${where}
+    GROUP BY label
+    ORDER BY value DESC
+    LIMIT 6
+  `, params)
+
+  const trendRaw = await all<{ day: string; assigned: number; returned: number }>(`
+    SELECT DATE(al.action_date) AS day,
+      SUM(CASE WHEN al.action_type = 'checkout' THEN 1 ELSE 0 END) AS assigned,
+      SUM(CASE WHEN al.action_type = 'checkin' THEN 1 ELSE 0 END) AS returned
+    FROM action_logs al
+    INNER JOIN assets a ON a.id = al.item_id AND a.deleted_at IS NULL
+    WHERE al.deleted_at IS NULL
+      AND al.item_type = 'asset'
+      AND al.action_type IN ('checkout', 'checkin')
+      AND al.action_date >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
+      AND ${where}
+    GROUP BY DATE(al.action_date)
+    ORDER BY day ASC
+  `, params)
+  const byDay = new Map(trendRaw.map((r) => [String(r.day).slice(0, 10), r]))
+  const trend: Array<{ day: string; assigned: number; returned: number }> = []
+  const cursor = new Date()
+  cursor.setHours(12, 0, 0, 0)
+  for (let i = 13; i >= 0; i -= 1) {
+    const d = new Date(cursor)
+    d.setDate(cursor.getDate() - i)
+    const key = ymdLocal(d)
+    const hit = byDay.get(key)
+    trend.push({
+      day: key,
+      assigned: Number(hit?.assigned || 0),
+      returned: Number(hit?.returned || 0),
+    })
+  }
+
+  return okItem(res, {
+    status: statusRows.map((r) => ({ label: r.label, value: Number(r.value) })),
+    types: typeRows.map((r) => ({ label: r.label, value: Number(r.value) })),
+    companies: companyRows.map((r) => ({ label: r.label, value: Number(r.value) })),
+    trend,
   })
 })
 
@@ -680,7 +877,7 @@ settingsRouter.post('/run-migrations', async (req, res) => {
   }
 })
 
-/** Move legacy asset_tag → old_asset_tag and assign new CODE-TYPE-#### tags. */
+/** Move legacy asset_tag → old_asset_tag and assign new CODE-TYPE-FY-#### tags. */
 settingsRouter.post('/migrate-asset-tags', async (req, res) => {
   try {
     const { migrateAssetTagsToOld } = await import('../services/assetTag.js')
@@ -699,6 +896,28 @@ settingsRouter.post('/migrate-asset-tags', async (req, res) => {
     )
   } catch (e) {
     return fail(res, e instanceof Error ? e.message : 'Asset tag migration failed', 500)
+  }
+})
+
+/** Regenerate Asset Tag to CODE-TYPE-FY-####; leave Old Asset Tag unchanged. */
+settingsRouter.post('/regenerate-asset-tags', async (req, res) => {
+  try {
+    const { regenerateAssetTagsKeepOld } = await import('../services/assetTag.js')
+    const result = await regenerateAssetTagsKeepOld()
+    await logAction({
+      userId: req.user?.id,
+      actionType: 'regenerate_asset_tags',
+      itemType: 'settings',
+      itemId: 1,
+      note: `FY ${result.fy}: regenerated ${result.regenerated}; failed ${result.failed}; skipped ${result.skipped}`,
+    })
+    return okMessage(
+      res,
+      `Asset tags regenerated for FY ${result.fy} — ${result.regenerated} updated, ${result.failed} failed, ${result.skipped} already current.`,
+      result,
+    )
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Asset tag regeneration failed', 500)
   }
 })
 
@@ -727,9 +946,11 @@ settingsRouter.post('/reset-qr', async (req, res) => {
 export const accountRouter = Router()
 
 accountRouter.get('/assets', async (req, res) => {
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, '')
   const ids = await all<{ id: number }>(`
     SELECT id FROM assets WHERE assigned_type = 'user' AND assigned_to = ? AND deleted_at IS NULL
-  `, [req.user!.id])
+      ${domain.sql}
+  `, [req.user!.id, ...domain.params])
   const rows = (await Promise.all(ids.map((r) => transformAsset(r.id)))).filter(Boolean)
   return okList(res, rows)
 })
@@ -863,15 +1084,19 @@ requestsRouter.post('/', async (req, res) => {
   return okMessage(res, 'Request submitted', { id: info.insertId }, 201)
 })
 
-requestsRouter.get('/requestable', async (_req, res) => {
+requestsRouter.get('/requestable', async (req, res) => {
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, '')
+  const domainA = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   const ids = await all<{ id: number }>(`
     SELECT id FROM assets WHERE deleted_at IS NULL AND requestable = 1 AND assigned_to IS NULL
-  `)
+      ${domain.sql}
+  `, domain.params)
   const more = await all<{ id: number }>(`
     SELECT a.id FROM assets a
     JOIN status_labels s ON s.id = a.status_id
     WHERE a.deleted_at IS NULL AND a.assigned_to IS NULL AND s.type = 'deployable'
-  `)
+      ${domainA.sql}
+  `, domainA.params)
   const allIds = [...new Set([...ids, ...more].map((r) => r.id))]
   const rows = (await Promise.all(allIds.map((id) => transformAsset(id)))).filter(Boolean)
   return okList(res, rows)

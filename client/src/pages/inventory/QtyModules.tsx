@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useEffect, useState, type FormEvent } from 'react'
 import AppLayout from '../../layout/AppLayout'
-import { AppSelect, Box, DataTable, Field, PageForm } from '../../components/ui'
+import { AppSelect, Box, DataTable, EmployeeSelect, Field, PageForm } from '../../components/ui'
 // import { ModuleInsights } from '../../components/ModuleInsights' // restore with insight cards when needed
 import { DetailLayout } from '../../components/DetailLayout'
 import { MasterSelect, masterPayloadId } from '../../components/MasterSelect'
@@ -19,6 +19,9 @@ import {
 } from '../../api/client'
 import { formatINR } from '../../utils/money'
 import { useToast } from '../../components/Toast'
+import { useAuth } from '../../api/AuthContext'
+import { DomainSelect } from '../../components/DomainSelect'
+import { defaultDomainCode } from '../../lib/domainScope'
 
 type QtyApi = typeof accessoriesApi
 type CategoryType = 'accessory' | 'consumable' | 'component'
@@ -45,6 +48,7 @@ type FormState = {
   min_amt: string
   purchase_cost: string
   notes: string
+  domain: string
 }
 
 const emptyForm: FormState = {
@@ -58,6 +62,7 @@ const emptyForm: FormState = {
   min_amt: '0',
   purchase_cost: '',
   notes: '',
+  domain: 'it',
 }
 
 function QtyList({
@@ -71,6 +76,7 @@ function QtyList({
   api: QtyApi
   createLabel?: string
 }) {
+  const { activeDomain } = useAuth()
   const [q, setQ] = useState('')
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [total, setTotal] = useState(0)
@@ -113,7 +119,7 @@ function QtyList({
   useEffect(() => {
     const t = setTimeout(load, 250)
     return () => clearTimeout(t)
-  }, [q, companyId, api])
+  }, [q, companyId, api, activeDomain])
 
   // restore with insight cards when needed
   // const kindKey = basePath.replace(/^\//, '') as 'accessories' | 'consumables' | 'components'
@@ -295,8 +301,9 @@ function QtyForm({
   const { id } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
+  const { domainScope, activeDomain } = useAuth()
   const isEdit = Boolean(id)
-  const [form, setForm] = useState<FormState>(emptyForm)
+  const [form, setForm] = useState<FormState>({ ...emptyForm, domain: activeDomain || defaultDomainCode(domainScope) })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(isEdit)
@@ -309,11 +316,10 @@ function QtyForm({
     setForm((f) => ({ ...f, [key]: value }))
 
   useEffect(() => {
-    Promise.all([mastersApi.companies(), mastersApi.locations(), mastersApi.categories()])
-      .then(([c, l, cat]) => {
+    Promise.all([mastersApi.companies(), mastersApi.locations()])
+      .then(([c, l]) => {
         setCompanies(c.results || [])
         setLocations(l.results || [])
-        setCategories(cat.results || [])
         if (!isEdit) {
           setForm((f) => ({
             ...f,
@@ -324,6 +330,13 @@ function QtyForm({
       })
       .catch(() => undefined)
   }, [isEdit])
+
+  useEffect(() => {
+    mastersApi
+      .categories(undefined, categoryType, form.domain || defaultDomainCode(domainScope))
+      .then((cat) => setCategories(cat.results || []))
+      .catch(() => setCategories([]))
+  }, [categoryType, form.domain, domainScope])
 
   useEffect(() => {
     if (!isEdit || !id) return
@@ -341,6 +354,7 @@ function QtyForm({
           min_amt: String(item.min_amt ?? 0),
           purchase_cost: item.purchase_cost != null ? String(item.purchase_cost) : '',
           notes: String(item.notes || ''),
+          domain: String((item.domain as { code?: string } | null)?.code || defaultDomainCode(domainScope)),
         })
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
@@ -361,6 +375,7 @@ function QtyForm({
       min_amt: Number(form.min_amt) || 0,
       purchase_cost: form.purchase_cost ? Number(form.purchase_cost) : null,
       notes: form.notes || null,
+      domain: form.domain,
     }
     try {
       if (isEdit && id) {
@@ -397,6 +412,12 @@ function QtyForm({
         submitLabel={busy ? 'Saving…' : isEdit ? 'Update' : 'Create'}
         submitDisabled={busy}
       >
+        <DomainSelect
+          value={form.domain}
+          allowed={domainScope.codes}
+          onChange={(code) => set('domain', code)}
+          required
+        />
         <Field label="Name" required>
           <input className="form-control" value={form.name} onChange={(e) => set('name', e.target.value)} required />
         </Field>
@@ -409,7 +430,11 @@ function QtyForm({
           onOptionsChange={setCategories}
           emptyLabel="— Select category —"
           create={async (name) => {
-            const res = await mastersApi.createCategory({ name, category_type: categoryType })
+            const res = await mastersApi.createCategory({
+              name,
+              category_type: categoryType,
+              domain: form.domain || defaultDomainCode(domainScope),
+            })
             return masterPayloadId(res, name)
           }}
         />
@@ -474,7 +499,7 @@ function QtyCheckout({
 }: {
   basePath: string
   api: QtyApi
-  assignMode: 'user' | 'asset'
+  assignMode: 'user' | 'asset' | 'employee'
 }) {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -497,7 +522,7 @@ function QtyCheckout({
           text: String(u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim()),
         })))
       }).catch(() => undefined)
-    } else {
+    } else if (assignMode === 'asset') {
       hardwareApi.list({ limit: 200 }).then((r) => {
         setOptions((r.rows || []).map((a) => ({
           id: Number(a.id),
@@ -515,7 +540,9 @@ function QtyCheckout({
     try {
       await api.checkout(id, {
         assigned_qty: Number(qty) || 1,
-        assigned_to: Number(targetId),
+        checkout_to_type: assignMode,
+        assigned_to: assignMode === 'employee' ? undefined : Number(targetId),
+        assigned_employee_id: assignMode === 'employee' ? Number(targetId) : undefined,
         asset_id: assignMode === 'asset' ? Number(targetId) : undefined,
         note: note || null,
       })
@@ -553,15 +580,21 @@ function QtyCheckout({
             />
             <p className="help-block">Available: {String(item.remaining)}</p>
           </Field>
-          <Field label={assignMode === 'user' ? 'Assign to App User' : 'Assign to Asset'} required>
-            <select className="form-control" value={targetId} onChange={(e) => setTargetId(e.target.value)} required>
-              <option value="">{assignMode === 'user' ? 'Select user…' : 'Select asset…'}</option>
-              {options.map((o) => <option key={o.id} value={o.id}>{o.text}</option>)}
-            </select>
+          <Field label={assignMode === 'employee' ? 'Assign to Employee' : assignMode === 'user' ? 'Assign to App User' : 'Assign to Asset'} required>
+            {assignMode === 'employee' ? (
+              <EmployeeSelect value={targetId} onChange={setTargetId} required />
+            ) : (
+              <select className="form-control" value={targetId} onChange={(e) => setTargetId(e.target.value)} required>
+                <option value="">{assignMode === 'user' ? 'Select user…' : 'Select asset…'}</option>
+                {options.map((o) => <option key={o.id} value={o.id}>{o.text}</option>)}
+              </select>
+            )}
           </Field>
           <Field label="Notes"><textarea className="form-control" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-          <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Assigning…' : 'Assign'}</button>{' '}
-          <Link to={`${basePath}/${item.id}`} className="btn btn-default">Cancel</Link>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Assigning…' : 'Assign'}</button>
+            <Link to={`${basePath}/${item.id}`} className="btn btn-default">Cancel</Link>
+          </div>
         </form>
       </Box>
     </AppLayout>
@@ -574,7 +607,7 @@ export const AccessoryForm = () => (
   <QtyForm basePath="/accessories" api={accessoriesApi} kind="Accessory" categoryType="accessory" />
 )
 export const AccessoryCheckout = () => (
-  <QtyCheckout basePath="/accessories" api={accessoriesApi} assignMode="user" />
+  <QtyCheckout basePath="/accessories" api={accessoriesApi} assignMode="employee" />
 )
 
 export const ConsumablesList = () => <QtyList title="Consumables" basePath="/consumables" api={consumablesApi} />
@@ -583,7 +616,7 @@ export const ConsumableForm = () => (
   <QtyForm basePath="/consumables" api={consumablesApi} kind="Consumable" categoryType="consumable" />
 )
 export const ConsumableCheckout = () => (
-  <QtyCheckout basePath="/consumables" api={consumablesApi} assignMode="user" />
+  <QtyCheckout basePath="/consumables" api={consumablesApi} assignMode="employee" />
 )
 
 export const ComponentsList = () => <QtyList title="Components" basePath="/components" api={componentsApi} />
@@ -760,8 +793,10 @@ export function KitCheckout() {
               {users.map((u) => <option key={u.id} value={u.id}>{u.text}</option>)}
             </select>
           </Field>
-          <button type="submit" className="btn btn-theme">Continue</button>{' '}
-          <Link to="/kits" className="btn btn-default">Cancel</Link>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-theme">Continue</button>
+            <Link to="/kits" className="btn btn-default">Cancel</Link>
+          </div>
         </form>
       </Box>
     </AppLayout>

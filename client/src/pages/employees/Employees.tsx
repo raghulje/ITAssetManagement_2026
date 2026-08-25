@@ -9,6 +9,8 @@ import { useAuth } from '../../api/AuthContext'
 import { employeesApi } from '../../api/employees'
 import { dashboardApi, hardwareApi } from '../../api/client'
 import { formatAppDateTime } from '../../lib/datetime'
+import { DomainFilter } from '../../components/DomainSelect'
+import { domainLabel } from '../../lib/domainScope'
 
 type Row = Record<string, unknown>
 
@@ -215,10 +217,14 @@ export function EmployeeDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
-  const { isAdmin } = useAuth()
+  const { isAdmin, domainScope, activeDomain } = useAuth()
   const [emp, setEmp] = useState<Row | null>(null)
   const [assets, setAssets] = useState<Row[]>([])
+  const [assignments, setAssignments] = useState<Row[]>([])
+  const [summary, setSummary] = useState({ total: 0, it: 0, admin: 0 })
   const [history, setHistory] = useState<Row[]>([])
+  const [assignmentHistory, setAssignmentHistory] = useState<Row[]>([])
+  const [domainFilter, setDomainFilter] = useState<string>(activeDomain)
   const [tab, setTab] = useState<'overview' | 'hrms' | 'assets' | 'history'>('overview')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -238,11 +244,21 @@ export function EmployeeDetail() {
   const reload = () => {
     if (!id) return
     setLoading(true)
-    Promise.all([employeesApi.get(id), employeesApi.assets(id), employeesApi.history(id)])
-      .then(([e, a, h]) => {
+    const domain = domainFilter || undefined
+    Promise.all([
+      employeesApi.get(id),
+      employeesApi.assets(id, { domain }),
+      employeesApi.assignments(id, { domain }),
+      employeesApi.history(id),
+      employeesApi.assignmentHistory(id, { domain }),
+    ])
+      .then(([e, a, asg, h, ah]) => {
         setEmp(e)
         setAssets(a.rows)
+        setAssignments(asg.rows || [])
+        setSummary(asg.summary || { total: 0, it: 0, admin: 0 })
         setHistory(h.rows || [])
+        setAssignmentHistory(ah.rows || [])
         setError('')
       })
       .catch((err: Error) => {
@@ -252,7 +268,9 @@ export function EmployeeDetail() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { reload() }, [id])
+  useEffect(() => { setDomainFilter(activeDomain) }, [activeDomain])
+
+  useEffect(() => { reload() }, [id, domainFilter])
 
   useEffect(() => {
     if (!isAdmin && tab === 'hrms') setTab('overview')
@@ -315,9 +333,20 @@ export function EmployeeDetail() {
     }
   }
 
+  const itemLink = (row: Row) => {
+    const module = String(row.module || '')
+    const itemId = Number(row.item_id)
+    if (module === 'asset') return assetLink(itemId)
+    if (module === 'license') return `/licenses/${itemId}`
+    if (module === 'accessory') return `/accessories/${itemId}`
+    if (module === 'consumable') return `/consumables/${itemId}`
+    if (module === 'component') return `/components/${itemId}`
+    return '#'
+  }
+
   const custodyHistory = useMemo(
-    () => history.filter((h) => ['checkout', 'checkin', 'replace_in', 'replace_out'].includes(String(h.action_type))),
-    [history],
+    () => assignmentHistory.filter((h) => ['checkout', 'checkin', 'replace_in', 'replace_out'].includes(String(h.action || h.action_type))),
+    [assignmentHistory],
   )
 
   const renderHistoryTable = (rows: Row[], emptyText: string) => (
@@ -326,27 +355,31 @@ export function EmployeeDetail() {
         <tr>
           <th>Date</th>
           <th>Action</th>
-          <th>Asset</th>
-          <th>Admin</th>
+          <th>Item</th>
+          <th>Module</th>
+          <th>Domain</th>
+          <th>Performed By</th>
           <th>Reason</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 && (
-          <tr><td colSpan={5} className="text-muted">{emptyText}</td></tr>
+          <tr><td colSpan={7} className="text-muted">{emptyText}</td></tr>
         )}
         {rows.map((h) => (
           <tr key={String(h.id)}>
             <td style={{ whiteSpace: 'nowrap' }} title={String(h.action_date || '')}>
               {formatAppDateTime(h.action_date)}
             </td>
-            <td>{actionLabel(String(h.action_type || ''))}</td>
+            <td>{String(h.action_label || actionLabel(String(h.action || h.action_type || '')))}</td>
             <td>
-              {h.item_type === 'asset' && h.item_id
+              {h.item_id && String(h.module || h.item_type) === 'asset'
                 ? <Link to={assetLink(Number(h.item_id))}>{String(h.item_name || `Asset #${h.item_id}`)}</Link>
                 : String(h.item_name || '—')}
             </td>
-            <td>{String(h.admin || '—')}</td>
+            <td>{String(h.module_label || h.module || h.item_type || '—')}</td>
+            <td>{domainLabel((h.domain as { code?: string } | null)?.code)}</td>
+            <td>{String(h.performed_by || h.admin || '—')}</td>
             <td>{String(h.note || '—')}</td>
           </tr>
         ))}
@@ -389,8 +422,8 @@ export function EmployeeDetail() {
         tabs={[
           { id: 'overview', label: 'Overview' },
           ...(isAdmin ? [{ id: 'hrms' as const, label: 'HRMS Profile' }] : []),
-          { id: 'assets', label: `Assets (${assets.length})` },
-          { id: 'history', label: `History (${history.length})` },
+          { id: 'assets', label: `Assigned items (${summary.total})` },
+          { id: 'history', label: `History (${assignmentHistory.length || history.length})` },
         ]}
         activeTab={tab}
         onTabChange={(t) => setTab(t as typeof tab)}
@@ -410,8 +443,8 @@ export function EmployeeDetail() {
               </div>
               <div className="emp-hero-kpis">
                 <button type="button" className="emp-kpi emp-kpi-btn" onClick={() => setTab('assets')}>
-                  <strong>{assets.length}</strong>
-                  <span>Assigned assets</span>
+                  <strong>{summary.total}</strong>
+                  <span>Assigned items</span>
                 </button>
                 <button type="button" className="emp-kpi emp-kpi-btn" onClick={() => setTab('history')}>
                   <strong>{custodyHistory.length}</strong>
@@ -456,15 +489,15 @@ export function EmployeeDetail() {
               </div>
             </DetailPanel>
 
-            <DetailPanel title="Currently assigned assets">
-              {assets.length === 0 ? (
-                <p className="text-muted mb-0">No assets assigned to this employee.</p>
+            <DetailPanel title="Currently assigned items">
+              {assignments.length === 0 ? (
+                <p className="text-muted mb-0">No items assigned to this employee in your domain scope.</p>
               ) : (
                 <ul className="emp-asset-summary">
-                  {assets.map((a) => (
-                    <li key={String(a.id)}>
-                      <Link to={assetLink(Number(a.id))}>{String(a.asset_tag)}</Link>
-                      <span>{String(a.name || '')}</span>
+                  {assignments.map((a, i) => (
+                    <li key={`${String(a.module)}-${String(a.item_id)}-${i}`}>
+                      <Link to={itemLink(a)}>{String(a.identifier || a.item_name)}</Link>
+                      <span>{String(a.module_label)} · {domainLabel((a.domain as { code?: string } | null)?.code)}</span>
                     </li>
                   ))}
                 </ul>
@@ -528,50 +561,60 @@ export function EmployeeDetail() {
         )}
 
         {tab === 'assets' && (
-          <DetailPanel title="Assigned assets">
+          <DetailPanel
+            title="Assigned items"
+            tools={<DomainFilter value={domainFilter} onChange={setDomainFilter} allowed={domainScope.codes} />}
+          >
+            <p className="help-block">
+              Total {summary.total} · IT {summary.it} · Admin {summary.admin}
+            </p>
             <table className="table table-striped">
               <thead>
                 <tr>
-                  <th>Asset Tag</th>
-                  <th>Name</th>
-                  <th>Model</th>
+                  <th>Item</th>
+                  <th>Module</th>
+                  <th>Domain</th>
+                  <th>Identifier</th>
+                  <th>Assigned On</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {assets.length === 0 && (
-                  <tr><td colSpan={5} className="text-muted">No assets assigned</td></tr>
+                {assignments.length === 0 && (
+                  <tr><td colSpan={7} className="text-muted">No assigned items</td></tr>
                 )}
-                {assets.map((a) => {
-                  const status = a.status as { name?: string } | null
-                  const model = a.model as { name?: string } | string | null
-                  const modelName = typeof model === 'object' && model ? model.name : model
-                  return (
-                    <tr key={String(a.id)}>
-                      <td><Link to={assetLink(Number(a.id))}>{String(a.asset_tag)}</Link></td>
-                      <td>{String(a.name || '—')}</td>
-                      <td>{String(modelName || '—')}</td>
-                      <td>{String(status?.name || '—')}</td>
-                      <td className="actions">
-                        <Link to={assetLink(Number(a.id))} className="btn btn-xs btn-default">View</Link>
-                        <Link to={assetLink(Number(a.id), 'checkin')} className="btn btn-xs btn-primary">Unassign</Link>
-                        <button
-                          type="button"
-                          className="btn btn-xs btn-theme"
-                          onClick={() => {
-                            setReplaceFor(a)
-                            setReplaceAssetId('')
-                            setReplaceReason('')
-                            setError('')
-                          }}
-                        >
-                          Replace
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {assignments.map((a, i) => (
+                  <tr key={`${String(a.module)}-${String(a.item_id)}-${i}`}>
+                    <td><Link to={itemLink(a)}>{String(a.item_name || '—')}</Link></td>
+                    <td>{String(a.module_label || a.module)}</td>
+                    <td>{domainLabel((a.domain as { code?: string } | null)?.code)}</td>
+                    <td>{String(a.identifier || '—')}</td>
+                    <td>{a.assigned_at ? formatAppDateTime(a.assigned_at) : '—'}</td>
+                    <td>{String(a.status || 'Assigned')}</td>
+                    <td className="actions">
+                      <Link to={itemLink(a)} className="btn btn-xs btn-default">View</Link>
+                      {a.module === 'asset' ? (
+                        <>
+                          <Link to={assetLink(Number(a.item_id), 'checkin')} className="btn btn-xs btn-primary">Unassign</Link>
+                          <button
+                            type="button"
+                            className="btn btn-xs btn-theme"
+                            onClick={() => {
+                              const asset = assets.find((x) => Number(x.id) === Number(a.item_id)) || a
+                              setReplaceFor({ ...asset, id: a.item_id, asset_tag: a.identifier })
+                              setReplaceAssetId('')
+                              setReplaceReason('')
+                              setError('')
+                            }}
+                          >
+                            Replace
+                          </button>
+                        </>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </DetailPanel>
@@ -583,7 +626,7 @@ export function EmployeeDetail() {
               {renderHistoryTable(custodyHistory, 'No custody events yet.')}
             </DetailPanel>
             <DetailPanel title="All employee history">
-              {renderHistoryTable(history, 'No history yet.')}
+              {renderHistoryTable(assignmentHistory.length ? assignmentHistory : history, 'No history yet.')}
             </DetailPanel>
           </>
         )}
@@ -858,7 +901,7 @@ export function EmployeeImport() {
   }
 
   return (
-    <AppLayout title="Import Employees" subtitle="Adrenalin Live API or Excel / CSV">
+    <AppLayout title="Import Employees" subtitle="Adrenalin Live API or Excel / CSV" backTo="/employees">
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
 
       <Box title="Sync from Adrenalin Live" type="primary">

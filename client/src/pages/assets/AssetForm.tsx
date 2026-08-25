@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import AppLayout from '../../layout/AppLayout'
-import { DateField, Field, FileInput, PageForm } from '../../components/ui'
+import { DateField, EmployeeSelect, Field, FileInput, PageForm } from '../../components/ui'
 import { MasterSelect, masterPayloadId } from '../../components/MasterSelect'
 import { CompanyEntityFields } from '../../components/CompanyEntityFields'
 import AssetAttachments, {
@@ -17,8 +17,10 @@ import AssetReceivedCondition, {
 import LocationMapPicker, { type MapLocationValue } from '../../components/LocationMapPicker'
 import { hardwareApi, mastersApi, type SelectOption } from '../../api/client'
 import { assetImageSrc, getApiBase } from '../../api/baseUrl'
-import { employeesApi } from '../../api/employees'
 import { useToast } from '../../components/Toast'
+import { useAuth } from '../../api/AuthContext'
+import { DomainSelect } from '../../components/DomainSelect'
+import { defaultDomainCode } from '../../lib/domainScope'
 
 type FormState = {
   company_id: string
@@ -43,6 +45,16 @@ type FormState = {
   notes: string
   received_condition: string
   assign_employee_id: string
+  domain: string
+  processor: string
+  ram: string
+  storage: string
+  os: string
+  mac_address: string
+  ip_address: string
+  color: string
+  material: string
+  spec_condition: string
 }
 
 const empty: FormState = {
@@ -68,6 +80,16 @@ const empty: FormState = {
   notes: '',
   received_condition: '',
   assign_employee_id: '',
+  domain: 'it',
+  processor: '',
+  ram: '',
+  storage: '',
+  os: '',
+  mac_address: '',
+  ip_address: '',
+  color: '',
+  material: '',
+  spec_condition: '',
 }
 
 function nestId(v: unknown): string {
@@ -87,6 +109,7 @@ export default function AssetForm() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const toast = useToast()
+  const { domainScope, activeDomain } = useAuth()
   const isEdit = Boolean(id)
   const fromEmployeeId = params.get('from') === 'employee' ? params.get('employee_id') : null
   const returnQs = useMemo(() => {
@@ -97,11 +120,13 @@ export default function AssetForm() {
     ? (fromEmployeeId ? `/employees/${fromEmployeeId}` : `/hardware/${id}${returnQs}`)
     : '/hardware'
   const [tab, setTab] = useState<'details' | 'attachments'>('details')
-  const [form, setForm] = useState<FormState>(empty)
+  const [form, setForm] = useState<FormState>({
+    ...empty,
+    domain: activeDomain || defaultDomainCode(domainScope),
+  })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(isEdit)
-  const [empSearch, setEmpSearch] = useState('')
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([])
   const [imagePath, setImagePath] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -118,7 +143,6 @@ export default function AssetForm() {
   const [models, setModels] = useState<SelectOption[]>([])
   const [statuses, setStatuses] = useState<SelectOption[]>([])
   const [suppliers, setSuppliers] = useState<SelectOption[]>([])
-  const [employees, setEmployees] = useState<SelectOption[]>([])
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -128,7 +152,7 @@ export default function AssetForm() {
       mastersApi.companies(),
       mastersApi.departments(),
       mastersApi.locations(),
-      mastersApi.assetTypes(),
+      mastersApi.assetTypes(undefined, form.domain || defaultDomainCode(domainScope)),
       mastersApi.statuslabels(),
       mastersApi.suppliers(),
     ])
@@ -154,6 +178,26 @@ export default function AssetForm() {
       .catch((e: Error) => setError(e.message))
   }, [isEdit])
 
+  useEffect(() => {
+    let cancelled = false
+    mastersApi
+      .assetTypes(undefined, form.domain || defaultDomainCode(domainScope))
+      .then((types) => {
+        if (cancelled) return
+        setAssetTypes(types.results || [])
+        if (!isEdit) {
+          const defaultType = types.results?.find((t) => /laptop/i.test(t.text)) || types.results?.[0]
+          setForm((f) => ({
+            ...f,
+            category_id: defaultType ? String(defaultType.id) : '',
+            model_id: '',
+          }))
+        }
+      })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [form.domain, isEdit, domainScope])
+
   // Models for the selected asset type (Laptop / Desktop / …)
   useEffect(() => {
     if (!form.category_id) {
@@ -177,13 +221,6 @@ export default function AssetForm() {
       })
     return () => { cancelled = true }
   }, [form.category_id])
-
-  useEffect(() => {
-    employeesApi
-      .selectlist(empSearch || undefined)
-      .then((r) => setEmployees(r.results || []))
-      .catch(() => setEmployees([]))
-  }, [empSearch])
 
   useEffect(() => {
     if (!id) return
@@ -214,6 +251,16 @@ export default function AssetForm() {
           notes: String(a.notes || ''),
           received_condition: String(a.received_condition || ''),
           assign_employee_id: '',
+          domain: String((a.domain as { code?: string } | null)?.code || defaultDomainCode(domainScope)),
+          processor: String((a.domain_attrs as Record<string, string> | null)?.processor || ''),
+          ram: String((a.domain_attrs as Record<string, string> | null)?.ram || ''),
+          storage: String((a.domain_attrs as Record<string, string> | null)?.storage || ''),
+          os: String((a.domain_attrs as Record<string, string> | null)?.os || ''),
+          mac_address: String((a.domain_attrs as Record<string, string> | null)?.mac_address || ''),
+          ip_address: String((a.domain_attrs as Record<string, string> | null)?.ip_address || ''),
+          color: String((a.domain_attrs as Record<string, string> | null)?.color || ''),
+          material: String((a.domain_attrs as Record<string, string> | null)?.material || ''),
+          spec_condition: String((a.domain_attrs as Record<string, string> | null)?.condition || ''),
         })
         setImagePath(a.image ? String(a.image) : null)
         setImageUrl(a.image_url ? String(a.image_url) : null)
@@ -428,6 +475,17 @@ export default function AssetForm() {
         notes: form.notes || null,
         received_condition: form.received_condition.trim() || null,
         old_asset_tag: form.old_asset_tag.trim() || null,
+        domain: form.domain || defaultDomainCode(domainScope),
+        domain_attrs: form.domain === 'admin'
+          ? { color: form.color, material: form.material, condition: form.spec_condition }
+          : {
+            processor: form.processor,
+            ram: form.ram,
+            storage: form.storage,
+            os: form.os,
+            mac_address: form.mac_address,
+            ip_address: form.ip_address,
+          },
       }
 
       if (isEdit && id) {
@@ -519,6 +577,13 @@ export default function AssetForm() {
           submitLabel={busy ? 'Saving…' : isEdit ? 'Update' : 'Create'}
           submitDisabled={busy}
         >
+          <DomainSelect
+            value={form.domain}
+            allowed={domainScope.codes}
+            onChange={(code) => set('domain', code)}
+            required
+          />
+
           <CompanyEntityFields
             required
             companyId={form.company_id}
@@ -555,7 +620,7 @@ export default function AssetForm() {
             onOptionsChange={setLocations}
             allowEmpty={false}
             emptyLabel="Select location…"
-            help="HRMS-synced locations (e.g. Refex Tower-Nungambakkam) or add a new one"
+            help="Shows office · floor · cabin/seat. Pick the exact space, not just Floor 1."
             create={async (name) => {
               const res = await mastersApi.createLocation({
                 name,
@@ -565,7 +630,7 @@ export default function AssetForm() {
             }}
           />
 
-          <Field label="Map location (optional)">
+          <Field label="Map location (optional)" full>
             <LocationMapPicker
               value={{
                 latitude: form.map_latitude ? Number(form.map_latitude) : null,
@@ -582,7 +647,7 @@ export default function AssetForm() {
               }}
             />
             <span className="help-block">
-              Pin a precise place with OpenStreetMap — shown only when a pin is set.
+              Pin a precise place with Google Maps — shown only when a pin is set.
             </span>
           </Field>
 
@@ -600,7 +665,11 @@ export default function AssetForm() {
             emptyLabel="Select type…"
             help="Laptop, Desktop, Tablet, Mobile, Monitor, Printer, …"
             create={async (name) => {
-              const res = await mastersApi.createCategory({ name, category_type: 'asset' })
+              const res = await mastersApi.createCategory({
+                name,
+                category_type: 'asset',
+                domain: form.domain || defaultDomainCode(domainScope),
+              })
               return masterPayloadId(res, name)
             }}
           />
@@ -615,7 +684,7 @@ export default function AssetForm() {
             <p className="help-block" style={{ marginBottom: 0 }}>
               {isEdit
                 ? 'Auto-generated — not editable'
-                : 'Auto-generated from company/entity code + asset type + sequence (e.g. REFEX-LAPTOP-0001)'}
+                : 'Auto-generated from company/entity + asset type + FY + sequence (e.g. MEMF-LAPTOP-2026-27-0001)'}
             </p>
           </Field>
 
@@ -634,6 +703,41 @@ export default function AssetForm() {
           <Field label="Serial">
             <input className="form-control" value={form.serial} onChange={(e) => set('serial', e.target.value)} />
           </Field>
+
+          {form.domain === 'admin' ? (
+            <>
+              <Field label="Color">
+                <input className="form-control" value={form.color} onChange={(e) => set('color', e.target.value)} />
+              </Field>
+              <Field label="Material">
+                <input className="form-control" value={form.material} onChange={(e) => set('material', e.target.value)} />
+              </Field>
+              <Field label="Condition">
+                <input className="form-control" value={form.spec_condition} onChange={(e) => set('spec_condition', e.target.value)} />
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label="Processor">
+                <input className="form-control" value={form.processor} onChange={(e) => set('processor', e.target.value)} />
+              </Field>
+              <Field label="RAM">
+                <input className="form-control" value={form.ram} onChange={(e) => set('ram', e.target.value)} />
+              </Field>
+              <Field label="Storage">
+                <input className="form-control" value={form.storage} onChange={(e) => set('storage', e.target.value)} />
+              </Field>
+              <Field label="Operating System">
+                <input className="form-control" value={form.os} onChange={(e) => set('os', e.target.value)} />
+              </Field>
+              <Field label="MAC Address">
+                <input className="form-control" value={form.mac_address} onChange={(e) => set('mac_address', e.target.value)} />
+              </Field>
+              <Field label="IP Address">
+                <input className="form-control" value={form.ip_address} onChange={(e) => set('ip_address', e.target.value)} />
+              </Field>
+            </>
+          )}
 
           <MasterSelect
             label="Model"
@@ -672,24 +776,12 @@ export default function AssetForm() {
 
           {!isEdit && (
             <Field label="Assign to Employee (optional)">
-              <input
-                className="form-control"
-                style={{ marginBottom: 8 }}
-                placeholder="Search employees…"
-                value={empSearch}
-                onChange={(e) => setEmpSearch(e.target.value)}
-              />
-              <select
-                className="form-control"
+              <EmployeeSelect
                 value={form.assign_employee_id}
-                onChange={(e) => set('assign_employee_id', e.target.value)}
-              >
-                <option value="">— Do not assign yet —</option>
-                {employees.map((o) => (
-                  <option key={o.id} value={o.id}>{o.text}</option>
-                ))}
-              </select>
-              <p className="help-block">Assigns this asset to the HRMS employee after create</p>
+                onChange={(v) => set('assign_employee_id', v)}
+                emptyOption="— Do not assign yet —"
+              />
+              <p className="help-block">Assigns this asset to the HRMS employee after create. Same directory for IT and Admin assets.</p>
             </Field>
           )}
 
@@ -760,7 +852,7 @@ export default function AssetForm() {
             <span className="help-block">Optional override. If empty, EOL is purchase date + model EOL months.</span>
           </Field>
 
-          <Field label="Notes">
+          <Field label="Notes" full>
             <textarea
               className="form-control"
               value={form.notes}
@@ -768,7 +860,7 @@ export default function AssetForm() {
             />
           </Field>
 
-          <Field label="Asset image">
+          <Field label="Asset image" full>
             {(() => {
               const src = assetImageSrc(imageUrl || imagePath) || pendingImagePreview
               return src ? (
@@ -790,7 +882,7 @@ export default function AssetForm() {
             {imageMsg ? <span className="help-block">{imageMsg}</span> : null}
           </Field>
 
-          <Field label="Asset received condition">
+          <Field label="Asset received condition" full>
             <AssetReceivedCondition
               assetId={isEdit ? id : null}
               stagingMode={!isEdit}

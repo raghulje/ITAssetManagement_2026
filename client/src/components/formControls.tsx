@@ -14,11 +14,17 @@ import { createPortal } from 'react-dom'
 
 export type AppSelectOption = { value: string; label: string }
 
-function useFloatingStyle(
+export function useFloatingStyle(
   open: boolean,
   triggerRef: RefObject<HTMLElement | null>,
   menuRef: RefObject<HTMLElement | null>,
-  opts?: { minWidth?: number; matchTriggerWidth?: boolean; estimatedHeight?: number; maxWidth?: number },
+  opts?: {
+    minWidth?: number
+    matchTriggerWidth?: boolean
+    estimatedHeight?: number
+    maxWidth?: number
+    align?: 'start' | 'end'
+  },
 ) {
   const [style, setStyle] = useState<CSSProperties>({})
   const [placement, setPlacement] = useState<'down' | 'up'>('down')
@@ -73,7 +79,7 @@ function useFloatingStyle(
       // Keep a stable width even if the viewport is tight
       width = Math.min(Math.max(width, floor), maxW)
 
-      let left = rect.left
+      let left = opts?.align === 'end' ? rect.right - width : rect.left
       if (left + width > vw - pad) {
         left = Math.max(pad, Math.min(rect.right - width, vw - pad - width))
       }
@@ -116,12 +122,12 @@ function useFloatingStyle(
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onResize)
     }
-  }, [open, triggerRef, menuRef, opts?.estimatedHeight, opts?.minWidth, opts?.matchTriggerWidth, opts?.maxWidth])
+  }, [open, triggerRef, menuRef, opts?.estimatedHeight, opts?.minWidth, opts?.matchTriggerWidth, opts?.maxWidth, opts?.align])
 
   return { style, placement }
 }
 
-function FloatingPortal({
+export function FloatingPortal({
   open,
   children,
 }: {
@@ -141,6 +147,10 @@ type AppSelectProps = {
   placeholder?: string
   className?: string
   searchable?: boolean
+  searchPlaceholder?: string
+  /** When set, typing in the menu search box is forwarded (debounced) for remote lists. */
+  onSearch?: (query: string) => void
+  loading?: boolean
   id?: string
   name?: string
 }
@@ -154,6 +164,9 @@ export function AppSelect({
   placeholder = 'Select…',
   className = '',
   searchable,
+  searchPlaceholder = 'Search…',
+  onSearch,
+  loading,
   id,
   name,
 }: AppSelectProps) {
@@ -162,24 +175,52 @@ export function AppSelect({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const selectedRef = useRef<AppSelectOption | null>(null)
+  const onSearchRef = useRef(onSearch)
+  onSearchRef.current = onSearch
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
-  const enableSearch = searchable ?? options.length > 8
+  const remote = Boolean(onSearch)
+  const enableSearch = remote || (searchable ?? options.length > 8)
   const { style: menuStyle } = useFloatingStyle(open, triggerRef, menuRef, {
     minWidth: 220,
     maxWidth: 480,
-    // Prefer trigger width, grow for long labels; width is locked while open
     matchTriggerWidth: true,
     estimatedHeight: 260,
   })
 
-  const selected = options.find((o) => o.value === value)
+  const selectedFromOptions = options.find((o) => o.value === value)
+  const selected = selectedFromOptions
+    || (value && selectedRef.current?.value === value ? selectedRef.current : null)
+
+  useEffect(() => {
+    if (!value) {
+      selectedRef.current = null
+      return
+    }
+    if (selectedFromOptions?.value === value) selectedRef.current = selectedFromOptions
+  }, [value, selectedFromOptions])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return options
-    return options.filter((o) => o.label.toLowerCase().includes(q))
-  }, [options, query])
+    let list = options
+    if (!remote && q) {
+      list = options.filter((o) => o.label.toLowerCase().includes(q))
+    }
+    if (selected?.value && !list.some((o) => o.value === selected.value)) {
+      const matchesQuery = !q || selected.label.toLowerCase().includes(q)
+      if (!remote || matchesQuery) list = [selected, ...list]
+    }
+    return list
+  }, [options, query, remote, selected])
+
+  useEffect(() => {
+    if (!onSearchRef.current || !open) return
+    const delay = query.trim() ? 220 : 0
+    const t = window.setTimeout(() => onSearchRef.current?.(query.trim()), delay)
+    return () => window.clearTimeout(t)
+  }, [query, open])
 
   useEffect(() => {
     if (!open) return
@@ -204,6 +245,8 @@ export function AppSelect({
   }, [query, open])
 
   const pick = (v: string) => {
+    const opt = filtered.find((o) => o.value === v) || options.find((o) => o.value === v)
+    if (opt) selectedRef.current = opt
     onChange(v)
     setOpen(false)
     setQuery('')
@@ -277,7 +320,7 @@ export function AppSelect({
                 ref={searchRef}
                 type="text"
                 value={query}
-                placeholder="Search…"
+                placeholder={searchPlaceholder}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onKeyDown}
               />
@@ -285,7 +328,13 @@ export function AppSelect({
           ) : null}
           <ul className="app-select-options">
             {filtered.length === 0 ? (
-              <li className="app-select-empty">No matches</li>
+              <li className="app-select-empty">
+                {loading
+                  ? 'Searching…'
+                  : remote && !query.trim()
+                    ? 'Type a name or ID'
+                    : 'No matches'}
+              </li>
             ) : (
               filtered.map((opt, i) => (
                 <li key={`${opt.value}-${opt.label}`}>

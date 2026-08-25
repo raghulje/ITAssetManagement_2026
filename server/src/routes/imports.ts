@@ -124,10 +124,14 @@ router.post('/process/:id', async (req, res) => {
       updateExisting: Boolean(req.body?.['import-update'] || req.body?.import_update),
       userId: req.user?.id,
       filePath: abs,
+      permissions: req.user?.permissions,
+      domain: req.body?.domain ?? req.body?.domain_code ?? req.body?.domain_id,
     })
     return okMessage(res, 'Import processed', result)
   } catch (e) {
-    return fail(res, e instanceof Error ? e.message : 'Process failed', 500)
+    const msg = e instanceof Error ? e.message : 'Process failed'
+    const status = /Forbidden/i.test(msg) ? 403 : /Domain is required|Invalid domain|Unknown domain/i.test(msg) ? 400 : 500
+    return fail(res, msg, status)
   }
 })
 

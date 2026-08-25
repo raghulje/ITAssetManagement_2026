@@ -1,33 +1,14 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useState, type FormEvent } from 'react'
 import AppLayout from '../../layout/AppLayout'
-import { AppSelect, Box, DateField, Field, PageForm } from '../../components/ui'
+import { AppSelect, Box, DateField, EmployeeSelect, Field, PageBack, PageForm } from '../../components/ui'
 import { api, hardwareApi, mastersApi, type SelectOption } from '../../api/client'
-import { employeesApi } from '../../api/employees'
 import { formatINR } from '../../utils/money'
 import { useToast } from '../../components/Toast'
 
 function nestName(v: unknown): string {
   if (v && typeof v === 'object' && 'name' in v) return String((v as { name?: string }).name || '—')
   return v != null && v !== '' ? String(v) : '—'
-}
-
-/** Return to the previous in-app page, or a fallback when there is no history. */
-function PageBack({ fallback = '/', label = 'Back' }: { fallback?: string; label?: string }) {
-  const navigate = useNavigate()
-  return (
-    <button
-      type="button"
-      className="btn btn-default btn-sm"
-      onClick={() => {
-        const idx = typeof window.history.state?.idx === 'number' ? window.history.state.idx : 0
-        if (idx > 0) navigate(-1)
-        else navigate(fallback)
-      }}
-    >
-      <i className="fas fa-arrow-left" /> {label}
-    </button>
-  )
 }
 
 /** Audit feature — routes commented out in App.tsx; restore when needed. */
@@ -106,8 +87,10 @@ export function AssetAudit() {
               />
             </Field>
             <Field label="Notes"><textarea className="form-control" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Audit notes" /></Field>
-            <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Saving…' : 'Audit'}</button>{' '}
-            <Link to={`/hardware/${asset.id}`} className="btn btn-default">Cancel</Link>
+            <div className="form-actions">
+              <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Saving…' : 'Audit'}</button>
+              <Link to={`/hardware/${asset.id}`} className="btn btn-default">Cancel</Link>
+            </div>
           </form>
         </Box>
       </div>
@@ -292,7 +275,6 @@ export function BulkCheckout() {
   const navigate = useNavigate()
   const [assets, setAssets] = useState<Record<string, unknown>[]>([])
   const [selected, setSelected] = useState<number[]>([])
-  const [employees, setEmployees] = useState<SelectOption[]>([])
   const [employeeId, setEmployeeId] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
@@ -302,7 +284,6 @@ export function BulkCheckout() {
     hardwareApi.list({ status_type: 'RTD', limit: 200 })
       .then((r) => setAssets((r.rows || []).filter((a) => !a.assigned_to)))
       .catch(() => setAssets([]))
-    employeesApi.selectlist().then((r) => setEmployees(r.results || [])).catch(() => undefined)
   }, [])
 
   const submit = async (e: FormEvent) => {
@@ -358,13 +339,12 @@ export function BulkCheckout() {
             {assets.length === 0 ? <p className="help-block">No in-stock assets available</p> : null}
           </Field>
           <Field label="Assign to employee" required>
-            <select className="form-control" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} required>
-              <option value="">Select employee…</option>
-              {employees.map((o) => <option key={o.id} value={o.id}>{o.text}</option>)}
-            </select>
+            <EmployeeSelect value={employeeId} onChange={setEmployeeId} required />
           </Field>
           <Field label="Notes"><textarea className="form-control" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-          <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Assigning…' : 'Assign'}</button>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Assigning…' : 'Assign'}</button>
+          </div>
         </form>
       </Box>
     </AppLayout>
@@ -412,8 +392,10 @@ export function BulkAudit() {
           </Field>
           <Field label="Next Audit Date"><DateField value={nextAudit} onChange={setNextAudit} /></Field>
           <Field label="Notes"><textarea className="form-control" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-          <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Saving…' : 'Audit'}</button>{' '}
-          <button type="button" className="btn btn-default" onClick={() => navigate('/hardware')}>Done</button>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Saving…' : 'Audit'}</button>
+            <button type="button" className="btn btn-default" onClick={() => navigate('/hardware')}>Done</button>
+          </div>
         </form>
       </Box>
     </AppLayout>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { downloadCsv } from '../utils/csv'
 import { useToast } from './Toast'
 
@@ -24,6 +24,36 @@ export function Box({
       )}
       <div className="box-body">{children}</div>
     </div>
+  )
+}
+
+/** Return to the previous in-app page, or a fallback when there is no history. */
+export function PageBack({
+  fallback = '/',
+  label = 'Back',
+  onClick,
+}: {
+  fallback?: string
+  label?: string
+  onClick?: () => void
+}) {
+  const navigate = useNavigate()
+  return (
+    <button
+      type="button"
+      className="btn btn-default btn-sm page-back-btn"
+      onClick={() => {
+        if (onClick) {
+          onClick()
+          return
+        }
+        const idx = typeof window.history.state?.idx === 'number' ? window.history.state.idx : 0
+        if (idx > 0) navigate(-1)
+        else navigate(fallback)
+      }}
+    >
+      <i className="fas fa-arrow-left" /> {label}
+    </button>
   )
 }
 
@@ -227,6 +257,7 @@ export function DataTable({
       <div className="toolbar">
         {onSearch && (
           <div className="search-inline">
+            <i className="fas fa-search" aria-hidden />
             <input
               placeholder="Search"
               value={search || ''}
@@ -453,14 +484,19 @@ export function PageForm({
 }) {
   return (
     <form
-      className="form-horizontal"
+      className="form-horizontal page-form"
       onSubmit={(e) => {
         e.preventDefault()
         if (!submitDisabled) onSubmit?.()
       }}
     >
       <Box
-        title="Details"
+        title={(
+          <span className="page-form-heading">
+            <span className="page-form-kicker">Record</span>
+            Details
+          </span>
+        )}
         type="primary"
         tools={
           <>
@@ -471,8 +507,10 @@ export function PageForm({
           </>
         }
       >
-        {children}
-        <div className="box-footer" style={{ marginTop: 12 }}>
+        <div className="page-form-fields">
+          {children}
+        </div>
+        <div className="box-footer page-form-actions">
           <button type="submit" className="btn btn-theme" disabled={submitDisabled}>
             <i className="fas fa-check" /> {submitLabel}
           </button>
@@ -484,14 +522,15 @@ export function PageForm({
 }
 
 export function Field({
-  label, children, required,
+  label, children, required, full,
 }: {
   label: string
   children: ReactNode
   required?: boolean
+  full?: boolean
 }) {
   return (
-    <div className="form-group">
+    <div className={`form-group${full ? ' is-full' : ''}`}>
       <label className={`control-label ${required ? 'required' : ''}`}>{label}</label>
       <div className="form-control-wrap">{children}</div>
     </div>
@@ -563,3 +602,4 @@ export function FileInput({ accept, disabled, fileName, onChange, label = 'Choos
 }
 
 export { AppSelect, DateField, type AppSelectOption } from './formControls'
+export { EmployeeSelect } from './EmployeeSelect'

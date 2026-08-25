@@ -44,6 +44,8 @@ export function permissionCatalog() {
       })
     }
   }
+  keys.push({ key: 'domains.it', module: 'domains', action: 'it', label: 'IT domain' })
+  keys.push({ key: 'domains.admin', module: 'domains', action: 'admin', label: 'Admin domain' })
   keys.push({ key: 'notify.ops', module: 'notify', action: 'ops', label: 'Receive ops email alerts' })
   return keys
 }
@@ -66,18 +68,32 @@ export function allModulePerms(opts?: { notifyOps?: boolean; includeCheckout?: b
   return out
 }
 
+export function withDomainPerms(
+  perms: Record<string, string>,
+  domains: Array<'it' | 'admin'>,
+): Record<string, string> {
+  const out = { ...perms }
+  if (domains.includes('it')) out['domains.it'] = '1'
+  if (domains.includes('admin')) out['domains.admin'] = '1'
+  return out
+}
+
 export function viewerPerms(): Record<string, string> {
   const out: Record<string, string> = {}
   for (const mod of ['assets', 'licenses', 'accessories', 'consumables', 'components', 'people', 'reports', 'maintenance'] as ModuleKey[]) {
     out[`${mod}.view`] = '1'
   }
-  return out
+  return withDomainPerms(out, ['it'])
 }
 
 export function itAssetManagerPerms(): Record<string, string> {
   // Full module access including settings.edit (print labels, masters, import)
   // Settings / Reports nav stay Admin-only via client isAdmin flag.
-  return allModulePerms({ notifyOps: true })
+  return withDomainPerms(allModulePerms({ notifyOps: true }), ['it'])
+}
+
+export function adminAssetManagerPerms(): Record<string, string> {
+  return withDomainPerms(allModulePerms({ notifyOps: true }), ['admin'])
 }
 
 export function parsePerms(raw: unknown): Record<string, unknown> {
@@ -160,9 +176,10 @@ export async function setUserGroups(userId: number, groupIds: number[]) {
 export async function ensureDefaultRoles() {
   const ts = now()
   const defaults: { name: string; permissions: Record<string, string> }[] = [
-    { name: 'Superusers', permissions: { superuser: '1', admin: '1', ...allModulePerms({ notifyOps: true }) } },
-    { name: 'Admin', permissions: { admin: '1', ...allModulePerms({ notifyOps: true }) } },
+    { name: 'Superusers', permissions: { superuser: '1', admin: '1', ...withDomainPerms(allModulePerms({ notifyOps: true }), ['it', 'admin']) } },
+    { name: 'Admin', permissions: { admin: '1', ...withDomainPerms(allModulePerms({ notifyOps: true }), ['it', 'admin']) } },
     { name: 'IT Asset Manager', permissions: itAssetManagerPerms() },
+    { name: 'Admin Asset Manager', permissions: adminAssetManagerPerms() },
     { name: 'Viewer', permissions: viewerPerms() },
   ]
 
@@ -177,15 +194,23 @@ export async function ensureDefaultRoles() {
     }
   }
 
-  // One-time grant: ensure IT Asset Manager has settings.edit if role already existed without it
+  // One-time grants: settings.edit + IT domain on existing IT Asset Manager
   const itam = await get<{ id: number; permissions: unknown }>(
     `SELECT id, permissions FROM permission_groups WHERE name = 'IT Asset Manager' LIMIT 1`,
   )
   if (itam) {
     const p = parsePerms(itam.permissions)
+    let changed = false
     if (!isTruthyPerm(p['settings.edit'])) {
       p['settings.edit'] = '1'
       p['settings.view'] = '1'
+      changed = true
+    }
+    if (!isTruthyPerm(p['domains.it']) && !isTruthyPerm(p['domains.admin'])) {
+      p['domains.it'] = '1'
+      changed = true
+    }
+    if (changed) {
       await run(`UPDATE permission_groups SET permissions = ?, updated_at = ? WHERE id = ?`, [
         JSON.stringify(mergePermissions(p)),
         ts,

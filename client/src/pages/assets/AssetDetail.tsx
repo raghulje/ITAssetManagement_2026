@@ -1,15 +1,15 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import AppLayout from '../../layout/AppLayout'
-import { StatusBadge } from '../../components/ui'
-import { DetailLayout, DetailPanel } from '../../components/DetailLayout'
 import AssetAttachments from '../../components/AssetAttachments'
 import { api, hardwareApi } from '../../api/client'
-import { assetImageSrc, getApiBase, getStorageBase } from '../../api/baseUrl'
+import { assetImageSrc } from '../../api/baseUrl'
 import { formatINR } from '../../utils/money'
 import { formatAppDateTime } from '../../lib/datetime'
+import AssetRecordHero from './detail/AssetRecordHero'
+import AssetOverviewTab from './detail/AssetOverviewTab'
 
-type TabId = 'details' | 'attachments' | 'history' | 'agent' | 'maintenance'
+type TabId = 'overview' | 'attachments' | 'history' | 'agent' | 'maintenance'
 
 type AgentStatus = {
   registered?: boolean
@@ -60,15 +60,16 @@ export default function AssetDetail() {
   const { id } = useParams()
   const [params] = useSearchParams()
   const [asset, setAsset] = useState<Record<string, unknown> | null>(null)
-  const [tab, setTab] = useState<TabId>('details')
+  const [tab, setTab] = useState<TabId>('overview')
   const [history, setHistory] = useState<Record<string, unknown>[]>([])
   const [maintenances, setMaintenances] = useState<Record<string, unknown>[]>([])
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null)
   const [agentBusy, setAgentBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [receivedImages, setReceivedImages] = useState<Record<string, unknown>[]>([])
+  const [loading, setLoading] = useState(true)
+  const assignRef = useRef<HTMLElement | null>(null)
 
-  /** Keep People context when opened from an employee record. */
   const fromEmployeeId = params.get('from') === 'employee' ? params.get('employee_id') : null
   const returnQs = useMemo(() => {
     if (!fromEmployeeId) return ''
@@ -76,7 +77,7 @@ export default function AssetDetail() {
     return `?${q.toString()}`
   }, [fromEmployeeId])
   const backTo = fromEmployeeId ? `/employees/${fromEmployeeId}` : '/hardware'
-  const backLabel = fromEmployeeId ? 'Back to employee' : 'Back'
+  const backLabel = fromEmployeeId ? 'Back to employee' : 'Back to assets'
 
   const loadAgent = () => {
     if (!id) return
@@ -87,7 +88,11 @@ export default function AssetDetail() {
 
   const load = () => {
     if (!id) return
-    hardwareApi.get(id).then((a) => setAsset(a)).catch(() => setAsset(null))
+    setLoading(true)
+    hardwareApi.get(id)
+      .then((a) => setAsset(a))
+      .catch(() => setAsset(null))
+      .finally(() => setLoading(false))
     hardwareApi.history(id)
       .then((r) => setHistory(r.rows || []))
       .catch(() => setHistory([]))
@@ -107,26 +112,12 @@ export default function AssetDetail() {
     return () => window.clearInterval(t)
   }, [tab, id])
 
-  const a = asset || {
-    id,
-    asset_tag: '…',
-    name: '',
-    status: null,
-    assigned_to: null,
-    available_actions: {},
-  }
-
-  const status = a.status as { name?: string; status_type?: string } | undefined
-  const assigned = a.assigned_to as { name?: string } | null
-  const nest = (v: unknown) => (v && typeof v === 'object' && 'name' in (v as object) ? String((v as { name: string }).name) : String(v ?? '—'))
-
   const printLabel = async () => {
     try {
       const res = await api<{ pdf_base64: string }>(`/labels/hardware/${id}`, { method: 'POST', json: {} })
       const b64 = (res as { payload?: { pdf_base64: string }; pdf_base64?: string }).payload?.pdf_base64
         || (res as { pdf_base64?: string }).pdf_base64
       if (!b64) throw new Error('No PDF returned')
-      // Decode base64 locally — fetch(data:…) often throws "Failed to fetch" in Chromium
       const binary = atob(b64)
       const bytes = new Uint8Array(binary.length)
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
@@ -186,250 +177,176 @@ export default function AssetDetail() {
     return action
   }
 
+  const focusAssignment = () => {
+    setTab('overview')
+    window.setTimeout(() => {
+      const el = assignRef.current
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.remove('vad-card--highlight')
+      void el.offsetWidth
+      el.classList.add('vad-card--highlight')
+      window.setTimeout(() => el.classList.remove('vad-card--highlight'), 2400)
+    }, 60)
+  }
+
+  if (loading) {
+    return (
+      <AppLayout title="Asset" hideHeader>
+        <div className="vad-page">
+          <div className="vad-skel-title vad-skeleton" />
+          <div className="vad-skel-line vad-skeleton" style={{ width: '40%' }} />
+          <div className="vad-hero vad-skeleton vad-skel-hero" />
+          <div className="vad-overview" style={{ marginTop: 8 }}>
+            <div className="vad-card vad-skeleton" style={{ height: 220 }} />
+            <div className="vad-card vad-skeleton" style={{ height: 220 }} />
+            <div className="vad-card vad-skeleton" style={{ height: 220 }} />
+          </div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (!asset) {
+    return (
+      <AppLayout title="Asset" hideHeader>
+        <div className="vad-page">
+          <div className="vad-error">
+            <h2>Unable to load asset</h2>
+            <p>This asset could not be found, or you do not have access.</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button type="button" className="btn btn-primary" onClick={() => load()}>Retry</button>
+              <Link to={backTo} className="btn btn-default">{backLabel}</Link>
+            </div>
+          </div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  const a = asset
+  const imageUrl = assetImageSrc(
+    (a.image_url as string | undefined) || (a.image as string | undefined) || null,
+  )
+  const custody = history.filter((x) => ['checkout', 'checkin', 'replace_in', 'replace_out'].includes(String(x.action_type)))
+
+  const tabs: Array<{ id: TabId; label: string; count?: number }> = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'maintenance', label: 'Maintenance', count: maintenances.length },
+    { id: 'agent', label: 'Agent' },
+    { id: 'attachments', label: 'Documents' },
+    { id: 'history', label: 'Activity', count: history.length || undefined },
+  ]
+
   return (
-    <AppLayout title={String(a.asset_tag)} subtitle={String(a.name || '')}>
-      {msg && <div className="callout callout-info"><p>{msg}</p></div>}
-      <DetailLayout
-        title={String(a.asset_tag)}
-        backTo={backTo}
-        backLabel={backLabel}
-        status={assigned ? 'Assigned' : String(status?.name || '—')}
-        meta={[
-          { label: 'Name', value: String(a.name || '—') },
-          { label: 'Assigned', value: assigned?.name || 'Unassigned' },
-          { label: 'Location', value: nest(a.location) },
-        ]}
-        actions={(
-          <>
-            {(a.available_actions as { checkout?: boolean })?.checkout && (
-              <Link to={`/hardware/${a.id}/checkout${returnQs}`} className="btn btn-info btn-sm"><i className="fas fa-user-plus" /> Assign</Link>
-            )}
-            {(a.available_actions as { checkin?: boolean })?.checkin && (
-              <Link to={`/hardware/${a.id}/checkin${returnQs}`} className="btn btn-primary btn-sm"><i className="fas fa-user-minus" /> Unassign</Link>
-            )}
-            <Link to={`/hardware/${a.id}/edit${returnQs}`} className="btn btn-warning btn-sm"><i className="fas fa-pencil-alt" /> Edit</Link>
-            {/* Audit feature — restore when needed
-            <Link to={`/hardware/${a.id}/audit`} className="btn btn-default btn-sm"><i className="fas fa-clipboard-check" /> Audit</Link>
-            */}
-            <Link to={`/maintenances/create?asset_id=${a.id}`} className="btn btn-default btn-sm">
-              <i className="fas fa-wrench" /> Add Maintenance
-            </Link>
-            <button type="button" className="btn btn-default btn-sm" onClick={() => { void printLabel() }}>
-              <i className="fas fa-print" /> Print Label
-            </button>
+    <AppLayout title={String(a.asset_tag || 'Asset')} hideHeader>
+      {msg ? <div className="callout callout-info"><p>{msg}</p></div> : null}
+      <div className="vad-page">
+        <AssetRecordHero
+          asset={a}
+          imageUrl={imageUrl}
+          backTo={backTo}
+          backLabel={backLabel}
+          returnQs={returnQs}
+          onPrintLabel={() => { void printLabel() }}
+        />
+
+        <div className="vad-tabs" role="tablist">
+          {tabs.map((t) => (
             <button
+              key={t.id}
               type="button"
-              className="btn btn-info btn-sm"
-              disabled={agentBusy || !agentStatus?.registered}
-              title={agentStatus?.registered ? 'Ask the installed agent to re-collect inventory' : 'Install ITAgent_2026 on the device first'}
-              onClick={() => { void requestAgentScan() }}
+              role="tab"
+              aria-selected={tab === t.id}
+              className={tab === t.id ? 'is-active' : ''}
+              onClick={() => setTab(t.id)}
             >
-              <i className="fas fa-satellite-dish" /> {agentBusy ? 'Requesting…' : 'Run agent scan'}
+              {t.label}
+              {t.count != null ? <span>({t.count})</span> : null}
             </button>
-            {a.qr_url ? (
-              <a className="btn btn-default btn-sm" href={String(a.qr_url)} target="_blank" rel="noreferrer">
-                <i className="fas fa-qrcode" /> Public QR page
-              </a>
-            ) : null}
-          </>
-        )}
-        tabs={[
-          { id: 'details', label: 'Details' },
-          { id: 'maintenance', label: `Maintenance (${maintenances.length})` },
-          { id: 'agent', label: 'Agent' },
-          { id: 'attachments', label: 'Attachments' },
-          { id: 'history', label: `History (${history.length})` },
-        ]}
-        activeTab={tab}
-        onTabChange={(t) => setTab(t as TabId)}
-        fields={tab === 'details' ? [
-          { label: 'Asset Tag', value: String(a.asset_tag) },
-          { label: 'Old Asset Tag', value: String(a.old_asset_tag || '—') },
-          { label: 'Serial', value: String(a.serial || '—') },
-          { label: 'Model', value: `${nest(a.model)}${a.model_number ? ` (${String(a.model_number)})` : ''}` },
-          {
-            label: 'Status',
-            value: (
-              <StatusBadge
-                status={assigned ? 'Assigned' : String(status?.name || '')}
-                type={assigned ? 'deployed' : status?.status_type}
-              />
-            ),
-          },
-          { label: 'Assigned To', value: assigned?.name || <span className="text-muted">Unassigned</span> },
-          { label: 'Location', value: nest(a.location) },
-          ...(a.map_latitude != null && a.map_longitude != null
-            ? [{
-                label: 'Map pin',
-                value: (
-                  <span>
-                    {String(a.map_address || 'Pinned')}
-                    <br />
-                    <span className="text-muted" style={{ fontSize: 12 }}>
-                      Lat {Number(a.map_latitude).toFixed(6)}, Lng {Number(a.map_longitude).toFixed(6)}
-                      {' · '}
-                      <a
-                        href={`https://www.openstreetmap.org/?mlat=${a.map_latitude}&mlon=${a.map_longitude}#map=17/${a.map_latitude}/${a.map_longitude}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open in OSM
-                      </a>
-                    </span>
-                  </span>
-                ),
-              }]
-            : []),
-          { label: 'Company', value: nest(a.company) },
-          { label: 'Department', value: nest(a.department) },
-          { label: 'Manufacturer', value: nest(a.manufacturer) },
-          { label: 'Supplier / Vendor', value: nest(a.supplier) },
-          { label: 'Purchase Order Number', value: String(a.order_number || '—') },
-          { label: 'Purchase Cost', value: formatINR(a.purchase_cost) },
-          { label: 'QR Token', value: a.qr_token ? String(a.qr_token) : <span className="text-muted">Not minted (Print Label once)</span> },
-          {
-            label: 'Public scan URL',
-            value: a.qr_url
-              ? <a href={String(a.qr_url)} target="_blank" rel="noreferrer">{String(a.qr_url)}</a>
-              : '—',
-          },
-          { label: 'Label printed', value: a.label_printed_at ? `${String(a.label_printed_at)} (${Number(a.label_print_count || 0)}×)` : 'Never' },
-          { label: 'Last agent sync', value: a.last_agent_sync_at ? `${String(a.last_agent_sync_at)}${a.agent_hostname ? ` · ${String(a.agent_hostname)}` : ''}` : '—' },
-          { label: 'Notes', value: String(a.notes || '—'), full: true },
-          {
-            label: 'Received condition',
-            value: String(a.received_condition || '—'),
-            full: true,
-          },
-        ] : undefined}
-      >
-        {tab === 'details' && (
-          <>
-            {(a.received_condition || receivedImages.length > 0) ? (
-              <DetailPanel title="Asset received condition">
-                {a.received_condition ? (
-                  <p style={{ whiteSpace: 'pre-wrap', marginTop: 0 }}>{String(a.received_condition)}</p>
-                ) : (
-                  <p className="text-muted">No condition description</p>
-                )}
-                {receivedImages.length > 0 ? (
-                  <div className="received-condition-gallery" style={{ marginTop: 12 }}>
-                    {receivedImages.map((f) => {
-                      const url = f.url
-                        ? (assetImageSrc(String(f.url)) || String(f.url))
-                        : `${getApiBase()}/files/${f.id}/download`
-                      return (
-                        <a
-                          key={String(f.id)}
-                          className="received-condition-thumb"
-                          href={url}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={String(f.original_filename || f.filename)}
-                        >
-                          <img src={url} alt={String(f.original_filename || f.filename)} />
-                          <span className="received-condition-caption">
-                            {String(f.original_filename || f.filename)}
-                          </span>
-                        </a>
-                      )
-                    })}
-                  </div>
-                ) : null}
-              </DetailPanel>
-            ) : null}
-            <DetailPanel title="Print Label / QR">
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                {a.qr_image_url ? (
-                  <img
-                    src={`${getStorageBase()}${String(a.qr_image_url)}`}
-                    alt="Asset QR"
-                    style={{ width: 120, height: 120, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}
-                  />
-                ) : (
-                  <p className="text-muted mb-0">No QR yet — click Print Label to mint a permanent code.</p>
-                )}
-                <div>
-                  <p className="help-block mb-1">
-                    QR is permanent for this asset. Reassign / upgrade does not change it.
-                    The printed label never shows the assignee name.
-                  </p>
-                  <button type="button" className="btn btn-theme btn-sm" onClick={() => { void printLabel() }}>
-                    <i className="fas fa-print" /> Print Label
-                  </button>
-                </div>
-              </div>
-            </DetailPanel>
-            <DetailPanel title="Image">
-              {(() => {
-                const src = assetImageSrc(
-                  (a.image_url as string | undefined) || (a.image as string | undefined) || null,
-                )
-                return src ? (
-                  <img src={src} alt="" style={{ maxWidth: '100%', maxHeight: 240 }} />
-                ) : (
-                  <p className="text-muted mb-0">No image — use Edit to upload one.</p>
-                )
-              })()}
-            </DetailPanel>
-          </>
-        )}
+          ))}
+        </div>
 
-        {tab === 'maintenance' && (
-          <DetailPanel
-            title={`Maintenance log (${maintenances.length})`}
-            tools={(
-              <Link to={`/maintenances/create?asset_id=${a.id}`} className="btn btn-theme btn-xs">
-                <i className="fas fa-plus" /> Add maintenance
+        {tab === 'overview' ? (
+          <AssetOverviewTab
+            asset={a}
+            assignRef={assignRef}
+            returnQs={returnQs}
+            receivedImages={receivedImages}
+            agentLabel={agentStatus?.registered ? 'Run agent scan' : 'Install agent first'}
+            agentRegistered={Boolean(agentStatus?.registered)}
+            agentBusy={agentBusy}
+            onPrintLabel={() => { void printLabel() }}
+            onAgentScan={() => { void requestAgentScan() }}
+            onQuick={(action) => {
+              if (action === 'history') setTab('history')
+              if (action === 'maintenance') setTab('maintenance')
+              if (action === 'agent') setTab('agent')
+            }}
+          />
+        ) : null}
+
+        {tab === 'maintenance' ? (
+          <div className="vad-panel">
+            <div className="vad-panel__bar">
+              <h3>Maintenance log</h3>
+              <Link to={`/maintenances/create?asset_id=${a.id}`} className="btn btn-primary btn-sm">
+                Add maintenance
               </Link>
-            )}
-          >
-            <table className="table table-striped table-condensed">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Title</th>
-                  <th>Reason</th>
-                  <th>Cost</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {maintenances.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="text-muted">
-                      No maintenance records for this asset yet.
-                    </td>
-                  </tr>
-                )}
+            </div>
+            {maintenances.length === 0 ? (
+              <div className="vad-empty">
+                <strong>No maintenance records yet</strong>
+                Log a repair or service for this asset.
+              </div>
+            ) : (
+              <ul className="vad-timeline">
                 {maintenances.map((m) => (
-                  <tr key={String(m.id)}>
-                    <td style={{ whiteSpace: 'nowrap' }} title={String(m.start_date || m.created_at || '')}>
-                      {formatAppDateTime(m.start_date || m.created_at)}
-                    </td>
-                    <td>{String(m.asset_maintenance_type || '—')}</td>
-                    <td>{String(m.title || '—')}</td>
-                    <td title={String(m.note || '')}>{String(m.note || '—')}</td>
-                    <td>{m.cost != null && m.cost !== '' ? formatINR(Number(m.cost)) : '—'}</td>
-                    <td>
-                      {m.completion_date
-                        ? <span className="label label-success">Completed</span>
-                        : <span className="label label-warning">Open</span>}
-                    </td>
-                    <td>
-                      <Link to={`/maintenances/${m.id}/edit`} className="btn btn-xs btn-default">Edit</Link>
-                    </td>
-                  </tr>
+                  <li key={String(m.id)}>
+                    <span className={`vad-timeline__dot${m.completion_date ? ' vad-timeline__dot--muted' : ''}`} />
+                    <div className="vad-timeline__body">
+                      <strong>{String(m.title || '—')}</strong>
+                      <span>
+                        {String(m.asset_maintenance_type || '—')}
+                        {m.note ? ` · ${String(m.note)}` : ''}
+                      </span>
+                    </div>
+                    <div className="vad-timeline__time">
+                      <div>{formatAppDateTime(m.start_date || m.created_at)}</div>
+                      <div>{m.cost != null && m.cost !== '' ? formatINR(Number(m.cost)) : ''}</div>
+                      <div className="vad-timeline__actions">
+                        <span className={`vad-assign-pill${m.completion_date ? '' : ' vad-assign-pill--open'}`}>
+                          {m.completion_date ? 'Completed' : 'Open'}
+                        </span>
+                        <Link to={`/maintenances/${m.id}/edit`} className="btn btn-xs btn-default">Edit</Link>
+                      </div>
+                    </div>
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          </DetailPanel>
-        )}
+              </ul>
+            )}
+          </div>
+        ) : null}
 
-        {tab === 'agent' && (
-          <DetailPanel title="ITAgent control">
+        {tab === 'agent' ? (
+          <div className="vad-panel">
+            <div className="vad-panel__bar">
+              <h3>ITAgent control</h3>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={agentBusy || !agentStatus?.registered}
+                  onClick={() => { void requestAgentScan() }}
+                >
+                  {agentBusy ? 'Requesting…' : 'Request inventory scan'}
+                </button>
+                <button type="button" className="btn btn-default btn-sm" onClick={() => loadAgent()}>
+                  Refresh status
+                </button>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', marginBottom: 16 }}>
               <div>
                 <div className="help-block mb-1">Agent presence</div>
@@ -447,23 +364,9 @@ export default function AssetDetail() {
                   </span>
                 ) : null}
               </div>
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <p className="help-block mb-2">
-                  When ITAgent_2026 is installed and running on the device, you can queue a remote inventory scan from here.
-                  The agent polls the server and pushes fresh hardware details back.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-theme btn-sm"
-                  disabled={agentBusy || !agentStatus?.registered}
-                  onClick={() => { void requestAgentScan() }}
-                >
-                  <i className="fas fa-sync" /> {agentBusy ? 'Requesting…' : 'Request inventory scan'}
-                </button>
-                <button type="button" className="btn btn-default btn-sm" style={{ marginLeft: 8 }} onClick={() => loadAgent()}>
-                  Refresh status
-                </button>
-              </div>
+              <p className="help-block mb-0" style={{ flex: 1, minWidth: 220 }}>
+                When ITAgent_2026 is installed and running on the device, you can queue a remote inventory scan from here.
+              </p>
             </div>
 
             {!agentStatus?.registered && (
@@ -495,67 +398,52 @@ export default function AssetDetail() {
               </div>
             )}
 
-            <table className="table table-condensed" style={{ marginBottom: 16 }}>
-              <tbody>
-                <tr>
-                  <th style={{ width: 180 }}>Hostname</th>
-                  <td>{String(agentStatus?.agent?.hostname || agentStatus?.agent_hostname || '—')}</td>
-                </tr>
-                <tr>
-                  <th>Serial</th>
-                  <td>{String(agentStatus?.agent?.serial_number || a.serial || '—')}</td>
-                </tr>
-                <tr>
-                  <th>Platform / version</th>
-                  <td>
-                    {String(agentStatus?.agent?.platform || '—')}
-                    {agentStatus?.agent?.agent_version ? ` · v${agentStatus.agent.agent_version}` : ''}
-                  </td>
-                </tr>
-                <tr>
-                  <th>Last heartbeat</th>
-                  <td title={String(agentStatus?.agent?.last_heartbeat_at || '')}>
-                    {formatAppDateTime(agentStatus?.agent?.last_heartbeat_at)}
-                  </td>
-                </tr>
-                <tr>
-                  <th>Last inventory</th>
-                  <td title={String(agentStatus?.agent?.last_inventory_at || agentStatus?.last_agent_sync_at || a.last_agent_sync_at || '')}>
-                    {formatAppDateTime(agentStatus?.agent?.last_inventory_at || agentStatus?.last_agent_sync_at || a.last_agent_sync_at)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <dl className="vad-info-grid vad-info-grid--3" style={{ marginBottom: 16 }}>
+              <div className="vad-field">
+                <dt>Hostname</dt>
+                <dd>{String(agentStatus?.agent?.hostname || agentStatus?.agent_hostname || '—')}</dd>
+              </div>
+              <div className="vad-field">
+                <dt>Serial</dt>
+                <dd>{String(agentStatus?.agent?.serial_number || a.serial || '—')}</dd>
+              </div>
+              <div className="vad-field">
+                <dt>Platform / version</dt>
+                <dd>
+                  {String(agentStatus?.agent?.platform || '—')}
+                  {agentStatus?.agent?.agent_version ? ` · v${agentStatus.agent.agent_version}` : ''}
+                </dd>
+              </div>
+              <div className="vad-field">
+                <dt>Last heartbeat</dt>
+                <dd>{formatAppDateTime(agentStatus?.agent?.last_heartbeat_at)}</dd>
+              </div>
+              <div className="vad-field">
+                <dt>Last inventory</dt>
+                <dd>{formatAppDateTime(agentStatus?.agent?.last_inventory_at || agentStatus?.last_agent_sync_at || a.last_agent_sync_at)}</dd>
+              </div>
+            </dl>
 
             <h5 style={{ marginTop: 8 }}>
               Sync history{' '}
               <Link to="/hardware/agent-activity" className="btn btn-default btn-xs" style={{ marginLeft: 8 }}>All agent activity</Link>
             </h5>
-            <table className="table table-striped table-condensed">
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Action</th>
-                  <th>Message</th>
-                  <th>Matched by</th>
-                  <th>IP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(agentStatus?.recent_syncs || []).length === 0 && (
-                  <tr><td colSpan={5} className="text-muted">No syncs for this asset yet</td></tr>
-                )}
+            {(agentStatus?.recent_syncs || []).length === 0 ? (
+              <p className="text-muted">No syncs for this asset yet</p>
+            ) : (
+              <ul className="vad-timeline">
                 {(agentStatus?.recent_syncs || []).map((s) => (
-                  <tr key={s.id}>
-                    <td style={{ whiteSpace: 'nowrap' }} title={String(s.created_at || '')}>{formatAppDateTime(s.created_at)}</td>
-                    <td>{s.action}</td>
-                    <td>{String(s.message || '—')}</td>
-                    <td>{String(s.matched_by || '—')}</td>
-                    <td>{String(s.client_ip || '—')}</td>
-                  </tr>
+                  <li key={s.id}>
+                    <span className="vad-timeline__dot" />
+                    <div className="vad-timeline__body">
+                      <strong>{s.action}</strong>
+                      <span>{String(s.message || '—')}{s.matched_by ? ` · ${s.matched_by}` : ''}</span>
+                    </div>
+                    <div className="vad-timeline__time">{formatAppDateTime(s.created_at)}</div>
+                  </li>
                 ))}
-              </tbody>
-            </table>
+              </ul>
+            )}
 
             <h5 style={{ marginTop: 16 }}>
               Installed software{' '}
@@ -564,7 +452,7 @@ export default function AssetDetail() {
                 : null}
             </h5>
             <div className="table-responsive" style={{ maxHeight: 360, overflow: 'auto', marginBottom: 16 }}>
-              <table className="table table-striped table-condensed">
+              <table className="vad-doc-table">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -577,8 +465,7 @@ export default function AssetDetail() {
                   {(agentStatus?.installed_software || []).length === 0 && (
                     <tr>
                       <td colSpan={4} className="text-muted">
-                        No software list yet — run a full inventory sync / remote scan on the device
-                        (Install &amp; Start, then Request inventory scan).
+                        No software list yet — run a full inventory sync / remote scan on the device.
                       </td>
                     </tr>
                   )}
@@ -595,7 +482,7 @@ export default function AssetDetail() {
             </div>
 
             <h5 style={{ marginTop: 16 }}>Remote commands</h5>
-            <table className="table table-striped table-condensed">
+            <table className="vad-doc-table">
               <thead>
                 <tr>
                   <th>ID</th>
@@ -615,91 +502,93 @@ export default function AssetDetail() {
                     <td>{c.id}</td>
                     <td>{c.command}</td>
                     <td>{c.status}</td>
-                    <td style={{ whiteSpace: 'nowrap' }} title={String(c.created_at || '')}>{formatAppDateTime(c.created_at)}</td>
-                    <td style={{ whiteSpace: 'nowrap' }} title={String(c.completed_at || '')}>{formatAppDateTime(c.completed_at)}</td>
+                    <td>{formatAppDateTime(c.created_at)}</td>
+                    <td>{formatAppDateTime(c.completed_at)}</td>
                     <td>{String(c.error_message || '—')}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </DetailPanel>
-        )}
+          </div>
+        ) : null}
 
-        {tab === 'attachments' && id && (
-          <DetailPanel title="Attachments">
+        {tab === 'attachments' && id ? (
+          <div className="vad-panel">
+            <div className="vad-panel__bar">
+              <h3>Documents</h3>
+            </div>
             <AssetAttachments assetId={id} readOnly />
-          </DetailPanel>
-        )}
+          </div>
+        ) : null}
 
-        {tab === 'history' && (
-          <>
-            <DetailPanel title="Custody events (assign / unassign / replace)">
-              <table className="table table-striped">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Admin</th>
-                    <th>Action</th>
-                    <th>Employee / Target</th>
-                    <th>Reason</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.filter((x) => ['checkout', 'checkin', 'replace_in', 'replace_out'].includes(String(x.action_type))).length === 0 && (
-                    <tr><td colSpan={5} className="text-muted">No custody events yet</td></tr>
-                  )}
-                  {history
-                    .filter((x) => ['checkout', 'checkin', 'replace_in', 'replace_out'].includes(String(x.action_type)))
-                    .map((x) => (
-                      <tr key={`custody-${String(x.id)}`}>
-                        <td style={{ whiteSpace: 'nowrap' }} title={String(x.action_date || '')}>{formatAppDateTime(x.action_date)}</td>
-                        <td>{String(x.admin || '—')}</td>
-                        <td>{actionLabel(String(x.action_type || ''))}</td>
-                        <td>
+        {tab === 'history' ? (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <div className="vad-panel">
+              <div className="vad-panel__bar">
+                <h3>Assign / unassign history</h3>
+                <button type="button" className="btn btn-default btn-sm" onClick={focusAssignment}>
+                  Current assignment
+                </button>
+              </div>
+              {custody.length === 0 ? (
+                <div className="vad-empty">
+                  <strong>No custody events yet</strong>
+                  Assign or unassign this asset — entries appear here.
+                </div>
+              ) : (
+                <ul className="vad-timeline">
+                  {custody.map((x) => (
+                    <li key={`custody-${String(x.id)}`}>
+                      <span className={`vad-timeline__dot${String(x.action_type) === 'checkin' ? ' vad-timeline__dot--muted' : ''}`} />
+                      <div className="vad-timeline__body">
+                        <strong>{actionLabel(String(x.action_type || ''))}</strong>
+                        <span>
                           {x.target_type === 'employee' && x.target_id
                             ? <Link to={`/employees/${x.target_id}`}>{String(x.target_name || x.target_id)}</Link>
                             : String(x.target_name || '—')}
-                        </td>
-                        <td>{String(x.note || '—')}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </DetailPanel>
-            <DetailPanel title="Complete asset history">
-              <table className="table table-striped">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Admin</th>
-                    <th>Action</th>
-                    <th>Employee / Target</th>
-                    <th>Reason</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.length === 0 && (
-                    <tr><td colSpan={5} className="text-muted">No history yet</td></tr>
-                  )}
-                  {history.map((x) => (
-                    <tr key={String(x.id)}>
-                      <td style={{ whiteSpace: 'nowrap' }} title={String(x.action_date || '')}>{formatAppDateTime(x.action_date)}</td>
-                      <td>{String(x.admin || '—')}</td>
-                      <td>{actionLabel(String(x.action_type || ''))}</td>
-                      <td>
-                        {x.target_type === 'employee' && x.target_id
-                          ? <Link to={`/employees/${x.target_id}`}>{String(x.target_name || x.target_id)}</Link>
-                          : String(x.target_name || '—')}
-                      </td>
-                      <td>{String(x.note || '—')}</td>
-                    </tr>
+                          {x.note ? ` · ${String(x.note)}` : ''}
+                        </span>
+                        <span className="vad-timeline__meta">
+                          {String(x.admin || 'System')}
+                        </span>
+                      </div>
+                      <div className="vad-timeline__time">{formatAppDateTime(x.action_date)}</div>
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </DetailPanel>
-          </>
-        )}
-      </DetailLayout>
+                </ul>
+              )}
+            </div>
+
+            <div className="vad-panel">
+              <div className="vad-panel__bar"><h3>Complete asset history</h3></div>
+              {history.length === 0 ? (
+                <div className="vad-empty">
+                  <strong>No other activity yet</strong>
+                </div>
+              ) : (
+                <ul className="vad-timeline">
+                  {history.map((x) => (
+                    <li key={String(x.id)}>
+                      <span className="vad-timeline__dot" />
+                      <div className="vad-timeline__body">
+                        <strong>{actionLabel(String(x.action_type || 'Activity'))}</strong>
+                        <span>
+                          {String(x.admin || 'System')}
+                          {x.target_type === 'employee' && x.target_id
+                            ? <> · <Link to={`/employees/${x.target_id}`}>{String(x.target_name || x.target_id)}</Link></>
+                            : x.target_name ? ` · ${String(x.target_name)}` : ''}
+                          {x.note ? ` · ${String(x.note)}` : ''}
+                        </span>
+                      </div>
+                      <div className="vad-timeline__time">{formatAppDateTime(x.action_date)}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </AppLayout>
   )
 }

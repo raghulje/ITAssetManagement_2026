@@ -4,8 +4,10 @@ import AppLayout from '../../layout/AppLayout'
 import { AppSelect, Box, StatusBadge } from '../../components/ui'
 import { ThColumnFilter } from '../../components/ThColumnFilter'
 import { ModuleInsights } from '../../components/ModuleInsights'
+import AssetPeriodPicker, { getEmptyPeriodState, type PeriodState } from '../../components/AssetPeriodPicker'
 import { dashboardApi, hardwareApi, mastersApi, type SelectOption } from '../../api/client'
 import { downloadCsv } from '../../utils/csv'
+import { useAuth } from '../../api/AuthContext'
 
 type Row = Record<string, unknown>
 
@@ -50,6 +52,7 @@ const LIST_COLUMNS = ['asset_tag', 'old_asset_tag', 'serial', 'model', 'status',
 
 export default function AssetsList() {
   const [params] = useSearchParams()
+  const { activeDomain } = useAuth()
   const statusType = params.get('status_type')
   const q = params.get('q') || ''
 
@@ -57,6 +60,7 @@ export default function AssetsList() {
   const [searchInput, setSearchInput] = useState(q)
   const [companyId, setCompanyId] = useState(() => params.get('company_id') || '')
   const [locationId, setLocationId] = useState(() => params.get('location_id') || '')
+  const [period, setPeriod] = useState<PeriodState>(() => getEmptyPeriodState())
   const [sort, setSort] = useState('id')
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
   const [rows, setRows] = useState<Row[]>([])
@@ -84,13 +88,16 @@ export default function AssetsList() {
       search: search || undefined,
       company_id: companyId || undefined,
       location_id: locationId || undefined,
+      period_from: period.range.from || undefined,
+      period_to: period.range.to || undefined,
+      domain: activeDomain,
       sort,
       order,
     }
     if (statusFilter) p.status_value = statusFilter
     if (assigneeFilter) p.assigned_name = assigneeFilter
     return p
-  }, [statusType, search, companyId, locationId, sort, order, statusFilter, assigneeFilter])
+  }, [statusType, search, companyId, locationId, period.range.from, period.range.to, activeDomain, sort, order, statusFilter, assigneeFilter])
 
   // Apply filter keys from insight deep-links without clearing local filters on status tabs
   useEffect(() => {
@@ -117,13 +124,16 @@ export default function AssetsList() {
         company_id: companyId || undefined,
         location_id: locationId || undefined,
         search: search || undefined,
+        period_from: period.range.from || undefined,
+        period_to: period.range.to || undefined,
+        domain: activeDomain,
       })
       .then((c) => {
         if (!cancelled) setDash(c as Record<string, number>)
       })
       .catch(() => undefined)
     return () => { cancelled = true }
-  }, [companyId, locationId, search])
+  }, [companyId, locationId, search, period.range.from, period.range.to, activeDomain])
 
   const filterQuery = useMemo(() => {
     const q = new URLSearchParams()
@@ -227,6 +237,9 @@ export default function AssetsList() {
         search: search || undefined,
         company_id: companyId || undefined,
         location_id: locationId || undefined,
+        period_from: period.range.from || undefined,
+        period_to: period.range.to || undefined,
+        domain: activeDomain,
       })
       .then((f) => {
         if (cancelled) return
@@ -240,7 +253,7 @@ export default function AssetsList() {
         }
       })
     return () => { cancelled = true }
-  }, [statusType, search, companyId, locationId])
+  }, [statusType, search, companyId, locationId, period.range.from, period.range.to, activeDomain])
 
   const load = () => {
     setLoading(true)
@@ -343,13 +356,28 @@ export default function AssetsList() {
       />
       <Box type="primary">
         <div className="asset-toolbar">
-          <div className="asset-toolbar-actions">
-            <Link to="/hardware/create" className="btn btn-theme btn-sm"><i className="fas fa-plus" /> Create New</Link>
-            <Link to="/maintenances/create" className="btn btn-default btn-sm"><i className="fas fa-wrench" /> Add Maintenance</Link>
+          <div className="asset-toolbar-bar">
+            <div className="asset-toolbar-actions">
+              <Link to="/hardware/create" className="btn btn-theme btn-sm"><i className="fas fa-plus" /> Create New</Link>
+              <Link to="/maintenances/create" className="btn btn-default btn-sm"><i className="fas fa-wrench" /> Add Maintenance</Link>
+            </div>
+            <div className="asset-toolbar-tools">
+              <button
+                type="button"
+                className="btn btn-default btn-sm"
+                onClick={() => { void exportRows() }}
+              >
+                <i className="fas fa-download" /> Export
+              </button>
+              <button type="button" className="btn btn-default btn-sm" onClick={load} disabled={loading} title="Refresh">
+                <i className={`fas fa-sync ${loading ? 'fa-spin' : ''}`} />
+              </button>
+            </div>
           </div>
 
           <div className="asset-toolbar-filters">
             <div className="search-inline">
+              <i className="fas fa-search" aria-hidden />
               <input
                 placeholder="Search tag, serial, model…"
                 value={searchInput}
@@ -382,10 +410,18 @@ export default function AssetsList() {
               ]}
             />
 
-            {(companyId || locationId || search || statusFilter || assigneeFilter) && (
+            <AssetPeriodPicker
+              className="filter-period-picker"
+              mode={period.mode}
+              range={period.range}
+              summaryLabel={period.summaryLabel}
+              onChange={setPeriod}
+            />
+
+            {(companyId || locationId || search || statusFilter || assigneeFilter || period.range.from) && (
               <button
                 type="button"
-                className="btn btn-default btn-sm"
+                className="btn btn-default btn-sm asset-toolbar-clear"
                 onClick={() => {
                   setCompanyId('')
                   setLocationId('')
@@ -393,24 +429,12 @@ export default function AssetsList() {
                   setSearchInput('')
                   setStatusFilter('')
                   setAssigneeFilter('')
+                  setPeriod(getEmptyPeriodState())
                 }}
               >
-                Clear filters
+                Clear
               </button>
             )}
-          </div>
-
-          <div className="asset-toolbar-tools">
-            <button
-              type="button"
-              className="btn btn-default btn-sm"
-              onClick={() => { void exportRows() }}
-            >
-              <i className="fas fa-download" /> Export
-            </button>
-            <button type="button" className="btn btn-default btn-sm" onClick={load} disabled={loading} title="Refresh">
-              <i className={`fas fa-sync ${loading ? 'fa-spin' : ''}`} />
-            </button>
           </div>
         </div>
 

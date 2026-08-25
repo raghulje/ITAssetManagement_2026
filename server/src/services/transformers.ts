@@ -1,8 +1,11 @@
 import { get } from '../db/index.js'
 import { nest } from '../utils/response.js'
+import { classifyAssetAge } from '../utils/period.js'
 import { publicAssetPageUrl } from './assetQr.js'
+import { allowedDomainCodes, domainJoinSql, domainPayload, domainRowCode, domainSelectFields, inventoryDomainColumnsReady, tableHasColumn } from './domainAuth.js'
 
 export async function transformAsset(id: number) {
+  const domainReady = await inventoryDomainColumnsReady()
   const a = await get<Record<string, unknown>>(`
     SELECT a.*,
       m.name as model_name, m.model_number,
@@ -15,6 +18,7 @@ export async function transformAsset(id: number) {
       loc.name as location_name,
       rtd.name as rtd_location_name,
       sup.name as supplier_name,
+      ${domainSelectFields(domainReady)},
       CASE
         WHEN a.assigned_type = 'user' THEN (SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to)
         WHEN a.assigned_type = 'employee' THEN (
@@ -41,6 +45,7 @@ export async function transformAsset(id: number) {
     LEFT JOIN locations loc ON loc.id = a.location_id
     LEFT JOIN locations rtd ON rtd.id = a.rtd_location_id
     LEFT JOIN suppliers sup ON sup.id = a.supplier_id
+    ${domainJoinSql('a', domainReady)}
     WHERE a.id = ? AND a.deleted_at IS NULL
   `, [id])
 
@@ -71,6 +76,11 @@ export async function transformAsset(id: number) {
     location: nest(a.location_id as number, a.location_name as string),
     rtd_location: nest(a.rtd_location_id as number, a.rtd_location_name as string),
     supplier: nest(a.supplier_id as number, a.supplier_name as string),
+    domain: domainPayload(
+      a.domain_id as number | null,
+      domainRowCode({ code: a.domain_code, name: a.domain_name }),
+      a.domain_name as string | null,
+    ),
     assigned_to: a.assigned_to
       ? { id: a.assigned_to, name: a.assigned_name, type: a.assigned_type }
       : null,
@@ -103,6 +113,12 @@ export async function transformAsset(id: number) {
       : null,
     notes: a.notes,
     received_condition: a.received_condition || null,
+    domain_attrs: (() => {
+      const raw = a.domain_attrs
+      if (raw == null || raw === '') return null
+      if (typeof raw === 'object') return raw
+      try { return JSON.parse(String(raw)) } catch { return null }
+    })(),
     requestable: Boolean(a.requestable),
     byod: Boolean(a.byod),
     expected_checkin: a.expected_checkin ? { date: a.expected_checkin, formatted: a.expected_checkin } : null,
@@ -111,6 +127,8 @@ export async function transformAsset(id: number) {
     next_audit_date: a.next_audit_date ? { date: a.next_audit_date, formatted: a.next_audit_date } : null,
     created_at: a.created_at,
     updated_at: a.updated_at,
+    /** New = purchased/created in current FY (Apr–Mar); Existing = older. */
+    asset_age: classifyAssetAge(a.purchase_date, a.created_at),
     available_actions: {
       checkout: !a.assigned_to && a.status_type === 'deployable',
       checkin: Boolean(a.assigned_to),
@@ -154,18 +172,28 @@ export async function transformUser(id: number, opts?: { includeDeleted?: boolea
     department: nest(u.department_id as number, u.department_name as string),
     assets_count: u.assets_count,
     permissions: perms,
+    domain_scope: {
+      codes: allowedDomainCodes(perms as Record<string, unknown>),
+      all: allowedDomainCodes(perms as Record<string, unknown>).length > 1,
+    },
     available_actions: { update: !u.deleted_at, delete: !u.deleted_at, clone: true },
   }
 }
 
 export async function transformLicense(id: number) {
+  const domainReady = await inventoryDomainColumnsReady()
+  const empCol = await tableHasColumn('license_seats', 'assigned_employee_id')
+  const usedWhere = empCol
+    ? '(assigned_to IS NOT NULL OR assigned_employee_id IS NOT NULL OR asset_id IS NOT NULL)'
+    : '(assigned_to IS NOT NULL OR asset_id IS NOT NULL)'
   const l = await get<Record<string, unknown>>(`
     SELECT l.*, c.name as company_name, c.code as company_code,
       le.code as legal_entity_code,
       m.name as manufacturer_name, cat.name as category_name,
+      ${domainSelectFields(domainReady)},
       e.first_name as requester_first, e.last_name as requester_last,
       e.employee_code as requester_code, e.email as requester_email,
-      (SELECT COUNT(*) FROM license_seats WHERE license_id=l.id AND (assigned_to IS NOT NULL OR asset_id IS NOT NULL)) as used,
+      (SELECT COUNT(*) FROM license_seats WHERE license_id=l.id AND ${usedWhere}) as used,
       (
         SELECT COUNT(*) FROM license_invoices li
         WHERE li.license_id = l.id AND li.deleted_at IS NULL
@@ -190,6 +218,7 @@ export async function transformLicense(id: number) {
     LEFT JOIN manufacturers m ON m.id = l.manufacturer_id
     LEFT JOIN categories cat ON cat.id = l.category_id
     LEFT JOIN employees e ON e.id = l.requested_by_employee_id AND e.deleted_at IS NULL
+    ${domainJoinSql('l', domainReady)}
     WHERE l.id = ? AND l.deleted_at IS NULL
   `, [id])
   if (!l) return null
@@ -216,6 +245,11 @@ export async function transformLicense(id: number) {
     }),
     manufacturer: nest(l.manufacturer_id as number, l.manufacturer_name as string),
     category: nest(l.category_id as number, l.category_name as string),
+    domain: domainPayload(
+      l.domain_id as number | null,
+      domainRowCode({ code: l.domain_code, name: l.domain_name }),
+      l.domain_name as string | null,
+    ),
     requested_by_employee: nest(l.requested_by_employee_id as number, requesterName, {
       email: l.requester_email || null,
       employee_code: l.requester_code || null,
@@ -242,14 +276,17 @@ export async function transformQtyItem(table: 'accessories' | 'consumables' | 'c
         : 'components_assets'
   const qtyCol = table === 'components' ? 'assigned_qty' : 'assigned_qty'
   const fkCol = table === 'accessories' ? 'accessory_id' : table === 'consumables' ? 'consumable_id' : 'component_id'
+  const domainReady = await inventoryDomainColumnsReady()
 
   const row = await get<Record<string, unknown>>(`
     SELECT t.*, cat.name as category_name, co.name as company_name, loc.name as location_name,
+      ${domainSelectFields(domainReady)},
       COALESCE((SELECT SUM(${qtyCol}) FROM ${checkoutTable} WHERE ${fkCol} = t.id), 0) as checked_out
     FROM ${table} t
     LEFT JOIN categories cat ON cat.id = t.category_id
     LEFT JOIN companies co ON co.id = t.company_id
     LEFT JOIN locations loc ON loc.id = t.location_id
+    ${domainJoinSql('t', domainReady)}
     WHERE t.id = ? AND t.deleted_at IS NULL
   `, [id])
 
@@ -261,6 +298,11 @@ export async function transformQtyItem(table: 'accessories' | 'consumables' | 'c
     category: nest(row.category_id as number, row.category_name as string),
     company: nest(row.company_id as number, row.company_name as string),
     location: nest(row.location_id as number, row.location_name as string),
+    domain: domainPayload(
+      row.domain_id as number | null,
+      domainRowCode({ code: row.domain_code, name: row.domain_name }),
+      row.domain_name as string | null,
+    ),
     model_number: row.model_number,
     qty: row.qty,
     remaining,

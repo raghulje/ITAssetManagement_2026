@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node -e \"console.log('Wave 0: frontend component tests deferred; backend suite is npm test in server/')\"",
+    "test:frontend": "node -e \"console.log('Wave 0: frontend component tests deferred (see WAVE0_REGRESSION_HARNESS.md)')\""
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",

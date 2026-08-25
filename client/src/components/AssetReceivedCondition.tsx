@@ -112,7 +112,6 @@ export default function AssetReceivedCondition({
         value={description}
         onChange={(e) => onDescriptionChange(e.target.value)}
         placeholder="e.g. Box sealed, slight scratch on lid, charger included…"
-        style={{ marginBottom: 12 }}
       />
 
       <div className="received-condition-gallery">
@@ -148,31 +147,33 @@ export default function AssetReceivedCondition({
         ))}
       </div>
 
-      <label className="received-condition-multi">
-        <input
-          type="file"
+      <div className="received-condition-uploads">
+        <label className="received-condition-multi">
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            disabled={busy}
+            className="sr-only"
+            onChange={(e) => {
+              void addFiles(e.target.files)
+              e.target.value = ''
+            }}
+          />
+          <span className={`btn btn-default btn-sm${busy ? ' disabled' : ''}`}>
+            <i className={`fas ${busy ? 'fa-spinner fa-spin' : 'fa-images'}`} />{' '}
+            {busy ? 'Uploading…' : 'Choose multiple images'}
+          </span>
+        </label>
+        <FileInput
           accept="image/*"
-          multiple
           disabled={busy}
-          className="sr-only"
-          onChange={(e) => {
-            void addFiles(e.target.files)
-            e.target.value = ''
+          label={busy ? 'Uploading…' : 'Add one photo'}
+          onChange={(f) => {
+            if (f) void addFiles([f])
           }}
         />
-        <span className={`btn btn-default btn-sm${busy ? ' disabled' : ''}`}>
-          <i className={`fas ${busy ? 'fa-spinner fa-spin' : 'fa-images'}`} />{' '}
-          {busy ? 'Uploading…' : 'Choose multiple images'}
-        </span>
-      </label>
-      <FileInput
-        accept="image/*"
-        disabled={busy}
-        label={busy ? 'Uploading…' : 'Add one photo'}
-        onChange={(f) => {
-          if (f) void addFiles([f])
-        }}
-      />
+      </div>
       {msg ? <span className="help-block">{msg}</span> : null}
       {error ? <p className="text-danger" style={{ margin: '6px 0 0', fontSize: 13 }}>{error}</p> : null}
     </div>

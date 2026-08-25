@@ -113,11 +113,11 @@ export default function NotificationsSettings() {
   }
 
   if (loading) {
-    return <AppLayout title="Notifications"><p className="text-muted">Loading…</p></AppLayout>
+    return <AppLayout title="Notifications" backTo="/settings"><p className="text-muted">Loading…</p></AppLayout>
   }
 
   return (
-    <AppLayout title="Notifications" subtitle="Email recipients & alert categories (Biogas-style)">
+    <AppLayout title="Notifications" subtitle="Email recipients & alert categories (Biogas-style)" backTo="/settings">
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
       {okMsg ? <div className="callout callout-success"><p>{okMsg}</p></div> : null}
 
@@ -196,6 +196,7 @@ export default function NotificationsSettings() {
                 ))}
               </Field>
 
+              <div className="form-actions">
               {canEdit ? (
                 <button type="submit" className="btn btn-theme" disabled={busy}>
                   {busy ? 'Saving…' : 'Save notification settings'}
@@ -203,7 +204,6 @@ export default function NotificationsSettings() {
               ) : (
                 <p className="text-muted">You have view-only access.</p>
               )}
-              {' '}
               <button
                 type="button"
                 className="btn btn-default"
@@ -230,7 +230,6 @@ export default function NotificationsSettings() {
               >
                 {digestBusy ? 'Running…' : 'Run EOL/warranty alerts now'}
               </button>
-              {' '}
               <button
                 type="button"
                 className="btn btn-default"
@@ -257,6 +256,7 @@ export default function NotificationsSettings() {
               >
                 {licDigestBusy ? 'Running…' : 'Run license renewal alerts now'}
               </button>
+              </div>
             </form>
           </Box>
         </div>

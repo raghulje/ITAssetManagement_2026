@@ -1,9 +1,8 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import AppLayout from '../../layout/AppLayout'
-import { AppSelect, Box, Field } from '../../components/ui'
+import { AppSelect, Box, EmployeeSelect, Field } from '../../components/ui'
 import { hardwareApi, mastersApi, usersApi, type SelectOption } from '../../api/client'
-import { employeesApi } from '../../api/employees'
 import { useToast } from '../../components/Toast'
 
 function useAssetReturnPath(assetId: string | number) {
@@ -27,26 +26,15 @@ export function AssetCheckout() {
   const [targetType, setTargetType] = useState('employee')
   const [targetId, setTargetId] = useState('')
   const [note, setNote] = useState('')
-  const [employeeOpts, setEmployeeOpts] = useState<SelectOption[]>([])
   const [userOpts, setUserOpts] = useState<SelectOption[]>([])
   const [locationOpts, setLocationOpts] = useState<SelectOption[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [empSearch, setEmpSearch] = useState('')
 
   useEffect(() => {
     if (!id) return
     hardwareApi.get(id).then(setAsset).catch(() => setAsset(null))
   }, [id])
-
-  useEffect(() => {
-    employeesApi.selectlist(empSearch || undefined)
-      .then((r) => {
-        setEmployeeOpts(r.results || [])
-        if (!targetId && r.results?.[0]) setTargetId(String(r.results[0].id))
-      })
-      .catch(() => setEmployeeOpts([]))
-  }, [empSearch])
 
   useEffect(() => {
     usersApi.list({ limit: 100 })
@@ -163,27 +151,29 @@ export function AssetCheckout() {
                     </label>
                   ))}
                 </div>
-                {targetType === 'employee' && (
-                  <input
-                    className="form-control"
-                    style={{ marginBottom: 8 }}
-                    placeholder="Search employees…"
-                    value={empSearch}
-                    onChange={(e) => setEmpSearch(e.target.value)}
+                {targetType === 'employee' ? (
+                  <EmployeeSelect
+                    value={targetId}
+                    onChange={setTargetId}
+                    required
+                  />
+                ) : (
+                  <AppSelect
+                    value={targetId}
+                    onChange={setTargetId}
+                    required
+                    searchable
+                    placeholder={targetType === 'user' ? 'Search user…' : 'Search office, floor or space…'}
+                    searchPlaceholder={targetType === 'user' ? 'Type a user name…' : 'Type office, floor or cabin…'}
+                    onSearch={targetType === 'location' ? (q) => {
+                      mastersApi.locations(q)
+                        .then((r) => setLocationOpts(r.results || []))
+                        .catch(() => undefined)
+                    } : undefined}
+                    options={(targetType === 'user' ? userOpts : locationOpts)
+                      .map((o) => ({ value: String(o.id), label: o.text }))}
                   />
                 )}
-                <AppSelect
-                  value={targetId}
-                  onChange={setTargetId}
-                  required
-                  searchable
-                  placeholder="— Select —"
-                  options={[
-                    { value: '', label: '— Select —' },
-                    ...(targetType === 'employee' ? employeeOpts : targetType === 'user' ? userOpts : locationOpts)
-                      .map((o) => ({ value: String(o.id), label: o.text })),
-                  ]}
-                />
               </Field>
               <Field label="Notes">
                 <textarea
@@ -194,17 +184,19 @@ export function AssetCheckout() {
                   rows={3}
                 />
               </Field>
-              <button type="submit" className="btn btn-theme" disabled={busy}>
-                {busy ? 'Assigning…' : 'Assign'}
-              </button>{' '}
-              <Link to={assetPath} className="btn btn-default">Cancel</Link>
+              <div className="form-actions">
+                <button type="submit" className="btn btn-theme" disabled={busy}>
+                  {busy ? 'Assigning…' : 'Assign'}
+                </button>
+                <Link to={assetPath} className="btn btn-default">Cancel</Link>
+              </div>
             </form>
           </Box>
         </div>
         <div className="col-md-5">
           <div className="callout callout-info">
             <h4>Assign Tip</h4>
-            <p>Assign assets to <strong>Employees</strong> from the HRMS directory. App Users are for login accounts only.</p>
+            <p>Employees come from the HRMS directory and are the same in IT and Admin. Locations show the full path (office · floor · cabin/seat) so Floor 1 is not ambiguous. Tag room fixtures to a cabin; assign laptops and phones to the occupant.</p>
           </div>
         </div>
       </div>
@@ -278,10 +270,12 @@ export function AssetCheckin() {
               />
               <span className="help-block">Stored on both the asset and employee history.</span>
             </Field>
-            <button type="submit" className="btn btn-theme" disabled={busy}>
-              {busy ? 'Unassigning…' : 'Unassign'}
-            </button>{' '}
-            <Link to={assetPath} className="btn btn-default">Cancel</Link>
+            <div className="form-actions">
+              <button type="submit" className="btn btn-theme" disabled={busy}>
+                {busy ? 'Unassigning…' : 'Unassign'}
+              </button>
+              <Link to={assetPath} className="btn btn-default">Cancel</Link>
+            </div>
           </form>
         </Box>
       </div>

@@ -21,11 +21,13 @@ import {
 import importsRouter from './routes/imports.js'
 import filesRouter from './routes/files.js'
 import labelsRouter from './routes/labels.js'
+import labelCodesRouter from './routes/labelCodes.js'
 import publicAssetsRouter from './routes/publicAssets.js'
 import agentRouter from './routes/agent.js'
 import samlRouter from './routes/saml.js'
 import { groupsRouter } from './routes/groups.js'
 import { geoRouter } from './routes/geo.js'
+import { spacesRouter } from './routes/spaces.js'
 import { storageRoot } from './services/uploads.js'
 import { moduleGate, requirePerm } from './services/permissions.js'
 
@@ -48,8 +50,21 @@ export function createApp() {
         'font-src': ["'self'", 'https:', 'data:', 'https://cdnjs.cloudflare.com', 'https://fonts.gstatic.com'],
         'style-src': ["'self'", 'https:', "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://fonts.googleapis.com'],
         'img-src': ["'self'", 'data:', 'blob:', 'https:'],
-        'script-src': ["'self'", "'unsafe-inline'"],
+        'script-src': [
+          "'self'",
+          "'unsafe-inline'",
+          'https://maps.googleapis.com',
+          'https://maps.gstatic.com',
+        ],
+        'script-src-elem': [
+          "'self'",
+          "'unsafe-inline'",
+          'https://maps.googleapis.com',
+          'https://maps.gstatic.com',
+        ],
         'connect-src': ["'self'", 'http:', 'https:'],
+        'worker-src': ["'self'", 'blob:'],
+        'frame-src': ["'self'", 'https://www.google.com', 'https://maps.google.com'],
       },
     },
   }))
@@ -117,6 +132,7 @@ export function createApp() {
     '/companies', '/legal-entities', '/locations', '/departments',
     '/manufacturers', '/suppliers', '/categories', '/statuslabels',
     '/depreciations', '/models', '/fields', '/fieldsets',
+    '/location-types', '/space-subtypes',
   ], (req, res, next) => {
     if (req.method === 'GET' || req.method === 'HEAD') return next()
     return requirePerm('settings.edit')(req, res, next)
@@ -154,7 +170,13 @@ export function createApp() {
   })
   api.use('/imports', requirePerm('settings.edit'), importsRouter)
   api.use('/labels', moduleGate('assets'), labelsRouter)
+  api.use('/label-codes', moduleGate('assets'), labelCodesRouter)
   api.use('/geo', geoRouter)
+  api.use('/spaces', (req, res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD') return requirePerm('settings.view')(req, res, next)
+    return requirePerm('settings.edit')(req, res, next)
+  })
+  api.use('/spaces', spacesRouter)
   api.use(filesRouter)
 
   app.use('/api/v1', api)

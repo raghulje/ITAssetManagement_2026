@@ -26,7 +26,14 @@ export const employeesApi = {
     }),
   remove: (id: number | string) =>
     api<{ status: string; messages: string[] }>(`/employees/${id}`, { method: 'DELETE' }),
-  assets: (id: number | string) => api<ApiList<Record<string, unknown>>>(`/employees/${id}/assets`),
+  assets: (id: number | string, params: Record<string, string | number | undefined> = {}) =>
+    api<ApiList<Record<string, unknown>>>(`/employees/${id}/assets${qs(params)}`),
+  assignments: (id: number | string, params: Record<string, string | number | undefined> = {}) =>
+    api<{ rows: Record<string, unknown>[]; summary: { total: number; it: number; admin: number } }>(
+      `/employees/${id}/assignments${qs(params)}`,
+    ),
+  assignmentHistory: (id: number | string, params: Record<string, string | number | undefined> = {}) =>
+    api<ApiList<Record<string, unknown>>>(`/employees/${id}/assignment-history${qs(params)}`),
   history: (id: number | string) => api<ApiList<Record<string, unknown>>>(`/employees/${id}/history`),
   selectlist: (search?: string) =>
     api<{ results: SelectOption[]; pagination: { more: boolean } }>(

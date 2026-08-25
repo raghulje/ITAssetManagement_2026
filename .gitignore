@@ -28,6 +28,9 @@ server/data/
 *.sqlite-shm
 *.sqlite-wal
 
+# Production / staging SQL dumps (Wave 1.7+)
+backups/
+
 # Logs & OS
 logs/
 *.log

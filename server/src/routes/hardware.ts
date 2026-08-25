@@ -6,14 +6,53 @@ import { transformAsset } from '../services/transformers.js'
 import { logAction } from '../services/actionLog.js'
 import { actorLabel, notifyWorkflow, resolveAssigneeEmail } from '../services/notify.js'
 import { allocateAssetTag, nextAssetTag } from '../services/assetTag.js'
+import {
+  ASSET_AGE_DATE_SQL,
+  currentFyRange,
+  resolvePeriodRange,
+} from '../utils/period.js'
+import {
+  assertRecordDomainAccess,
+  inventoryDomainClause,
+  inventoryDomainColumnsReady,
+  loadItemDomain,
+  resolveWriteDomainId,
+  tableHasColumn,
+} from '../services/domainAuth.js'
 
 const router = Router()
+
+function parseDomainAttrs(raw: unknown): Record<string, string> | null {
+  if (raw == null || raw === '') return null
+  let obj: unknown = raw
+  if (typeof raw === 'string') {
+    try { obj = JSON.parse(raw) } catch { return null }
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (v == null) continue
+    const s = String(v).trim()
+    if (s) out[k] = s
+  }
+  return Object.keys(out).length ? out : null
+}
 const parsePoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
 }).single('file')
 
-function listIds(req: { query: Record<string, unknown> }) {
+async function requireAssetDomain(req: import('express').Request, res: import('express').Response, id: number) {
+  const row = await loadItemDomain('assets', 'id = ? AND deleted_at IS NULL', [id])
+  if (!row) {
+    fail(res, 'Asset not found', 404)
+    return null
+  }
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return null
+  return row
+}
+
+async function listIds(req: { query: Record<string, unknown>; user?: { permissions?: Record<string, unknown> } }) {
   const statusType = String(req.query.status_type || req.query.status || '')
   const search = String(req.query.search || req.query.q || '').trim()
   const companyId = req.query.company_id ? Number(req.query.company_id) : null
@@ -129,6 +168,44 @@ function listIds(req: { query: Record<string, unknown> }) {
     params.push(req.query.order_number)
   }
 
+  // Period filter: explicit date range (ITSM Weekly / Monthly / FY picker)
+  // or legacy period_type + period tokens
+  const periodFrom = String(req.query.period_from || req.query.purchase_from || '').trim()
+  const periodTo = String(req.query.period_to || req.query.purchase_to || '').trim()
+  if (periodFrom || periodTo) {
+    if (periodFrom) {
+      sql += ` AND ${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} >= ?`
+      params.push(periodFrom)
+    }
+    if (periodTo) {
+      sql += ` AND ${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} <= ?`
+      params.push(periodTo)
+    }
+  } else {
+    const periodType = String(req.query.period_type || '').trim()
+    const period = String(req.query.period || '').trim()
+    if (periodType && period) {
+      const range = resolvePeriodRange(periodType, period)
+      if (range) {
+        sql += ` AND ${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} >= ? AND ${ASSET_AGE_DATE_SQL} <= ?`
+        params.push(range.from, range.to)
+      }
+    }
+  }
+
+  // New = within current FY; Existing = before current FY (or unknown date)
+  const assetAge = String(req.query.asset_age || '').toLowerCase().trim()
+  if (assetAge === 'new' || assetAge === 'existing') {
+    const fy = currentFyRange()
+    if (assetAge === 'new') {
+      sql += ` AND ${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} >= ? AND ${ASSET_AGE_DATE_SQL} <= ?`
+      params.push(fy.from, fy.to)
+    } else {
+      sql += ` AND (${ASSET_AGE_DATE_SQL} IS NULL OR ${ASSET_AGE_DATE_SQL} < ?)`
+      params.push(fy.from)
+    }
+  }
+
   const sortMap: Record<string, string> = {
     id: 'a.id',
     asset_tag: 'a.asset_tag',
@@ -142,12 +219,15 @@ function listIds(req: { query: Record<string, unknown> }) {
     created_at: 'a.created_at',
   }
   const sortCol = sortMap[sort] || 'a.id'
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
+  sql += domain.sql
+  params.push(...domain.params)
   sql += ` ORDER BY ${sortCol} ${order}, a.id DESC`
   return { sql, params }
 }
 
 router.get('/', async (req, res) => {
-  const { sql, params } = listIds(req)
+  const { sql, params } = await listIds(req)
   const limit = Math.min(Number(req.query.limit) || 50, 500)
   const offset = Number(req.query.offset) || 0
   const totalRow = await get<{ c: number }>(`SELECT COUNT(*) as c FROM (${sql}) AS _count_q`, params)
@@ -191,6 +271,21 @@ router.get('/facets', async (req, res) => {
     const like = `%${search}%`
     params.push(like, like, like, like, like, like, like)
   }
+
+  const periodFrom = String(req.query.period_from || req.query.purchase_from || '').trim()
+  const periodTo = String(req.query.period_to || req.query.purchase_to || '').trim()
+  if (periodFrom) {
+    where += ` AND ${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} >= ?`
+    params.push(periodFrom)
+  }
+  if (periodTo) {
+    where += ` AND ${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} <= ?`
+    params.push(periodTo)
+  }
+
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
+  where += domain.sql
+  params.push(...domain.params)
 
   const statusRows = await all<{ value: string }>(`
     SELECT DISTINCT
@@ -257,46 +352,58 @@ router.get('/selectlist', async (req, res) => {
     sql += ' AND company_id = ?'
     params.push(Number(req.query.companyId))
   }
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, '')
+  sql += domain.sql
+  params.push(...domain.params)
   const results = await all(sql + ' ORDER BY id DESC LIMIT 50', params)
   return res.json({ results, pagination: { more: false } })
 })
 
 router.get('/bytag/:tag', async (req, res) => {
-  const row = await get<{ id: number }>(`SELECT id FROM assets WHERE asset_tag = ? AND deleted_at IS NULL`, [req.params.tag])
+  const row = await loadItemDomain('assets', 'asset_tag = ? AND deleted_at IS NULL', [req.params.tag])
   if (!row) return fail(res, 'Asset not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
   return okItem(res, await transformAsset(row.id))
 })
 
 router.get('/byserial/:serial', async (req, res) => {
-  const row = await get<{ id: number }>(`SELECT id FROM assets WHERE serial = ? AND deleted_at IS NULL`, [req.params.serial])
+  const row = await loadItemDomain('assets', 'serial = ? AND deleted_at IS NULL', [req.params.serial])
   if (!row) return fail(res, 'Asset not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
   return okItem(res, await transformAsset(row.id))
 })
 
-router.get('/audit/due', async (_req, res) => {
+router.get('/audit/due', async (req, res) => {
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain, '')
   const ids = await all<{ id: number }>(`
     SELECT id FROM assets
     WHERE deleted_at IS NULL AND next_audit_date IS NOT NULL
       AND DATE(next_audit_date) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+      ${domain.sql}
     ORDER BY next_audit_date ASC
-  `)
+  `, domain.params)
   const rows = (await Promise.all(ids.map((r) => transformAsset(r.id)))).filter(Boolean)
   return okList(res, rows)
 })
 
-router.get('/checkins/due', async (_req, res) => {
+router.get('/checkins/due', async (req, res) => {
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain, '')
   const ids = await all<{ id: number }>(`
     SELECT id FROM assets
     WHERE deleted_at IS NULL AND expected_checkin IS NOT NULL AND assigned_to IS NOT NULL
+      ${domain.sql}
     ORDER BY expected_checkin ASC
-  `)
+  `, domain.params)
   const rows = (await Promise.all(ids.map((r) => transformAsset(r.id)))).filter(Boolean)
   return okList(res, rows)
 })
 
-router.get('/eol/due', async (_req, res) => {
+router.get('/eol/due', async (req, res) => {
   const { listEolDueAssets } = await import('../services/eolAlerts.js')
-  const rows = await listEolDueAssets()
+  const rows = await listEolDueAssets({
+    permissions: req.user?.permissions,
+    domain: req.query.domain || req.query.domain_id,
+  })
   return okList(res, rows)
 })
 
@@ -350,13 +457,14 @@ router.post('/parse-po', (req, res) => {
 router.get('/agent-sync-logs', async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500)
   const q = String(req.query.search || '').trim()
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   let sql = `
     SELECT l.*, a.asset_tag as linked_asset_tag
     FROM agent_sync_logs l
     LEFT JOIN assets a ON a.id = l.asset_id
-    WHERE 1=1
+    WHERE (l.asset_id IS NULL OR (a.id IS NOT NULL${domain.sql}))
   `
-  const params: unknown[] = []
+  const params: unknown[] = [...domain.params]
   if (q) {
     sql += ` AND (
       l.hostname LIKE ? OR l.serial_number LIKE ? OR l.asset_tag LIKE ?
@@ -375,12 +483,16 @@ router.get('/agent-sync-logs', async (req, res) => {
 })
 
 router.get('/:id', async (req, res) => {
-  const asset = await transformAsset(Number(req.params.id))
+  const scoped = await requireAssetDomain(req, res, Number(req.params.id))
+  if (!scoped) return
+  const asset = await transformAsset(scoped.id)
   if (!asset) return fail(res, 'Asset not found', 404)
   return okItem(res, asset)
 })
 
 router.get('/:id/history', async (req, res) => {
+  const scoped = await requireAssetDomain(req, res, Number(req.params.id))
+  if (!scoped) return
   const rows = await all(`
     SELECT al.*, u.username as admin,
       CASE
@@ -403,8 +515,7 @@ router.get('/:id/history', async (req, res) => {
 /** ITAgent status for this asset (session auth) */
 router.get('/:id/agent', async (req, res) => {
   const id = Number(req.params.id)
-  const asset = await get(`SELECT id FROM assets WHERE id = ? AND deleted_at IS NULL`, [id])
-  if (!asset) return fail(res, 'Asset not found', 404)
+  if (!(await requireAssetDomain(req, res, id))) return
   const { getAssetAgentStatus } = await import('../services/agentControl.js')
   return okItem(res, await getAssetAgentStatus(id))
 })
@@ -412,8 +523,7 @@ router.get('/:id/agent', async (req, res) => {
 /** Queue remote inventory scan — agent picks up on next heartbeat */
 router.post('/:id/agent/scan', async (req, res) => {
   const id = Number(req.params.id)
-  const asset = await get(`SELECT id FROM assets WHERE id = ? AND deleted_at IS NULL`, [id])
-  if (!asset) return fail(res, 'Asset not found', 404)
+  if (!(await requireAssetDomain(req, res, id))) return
   const { enqueueScanCommand } = await import('../services/agentControl.js')
   const result = await enqueueScanCommand({
     assetId: id,
@@ -427,8 +537,7 @@ router.post('/:id/agent/scan', async (req, res) => {
 /** Agent snapshot history (session auth) */
 router.get('/:id/agent/snapshots', async (req, res) => {
   const id = Number(req.params.id)
-  const asset = await get(`SELECT id FROM assets WHERE id = ? AND deleted_at IS NULL`, [id])
-  if (!asset) return fail(res, 'Asset not found', 404)
+  if (!(await requireAssetDomain(req, res, id))) return
   const limit = Math.min(Number(req.query.limit) || 20, 100)
   const rows = await all(`
     SELECT id, asset_id, serial_number, hostname, platform, matched_by, created_at, payload
@@ -465,6 +574,14 @@ router.post('/', async (req, res) => {
   }
   if (!categoryId) return fail(res, 'category_id (asset type) is required to generate asset tag')
 
+  let domain
+  try {
+    domain = await resolveWriteDomainId(req.user?.permissions, b)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Invalid domain'
+    return fail(res, msg, /Forbidden/.test(msg) ? 403 : 400)
+  }
+
   let assetTag: string
   try {
     assetTag = await allocateAssetTag({
@@ -491,25 +608,76 @@ router.post('/', async (req, res) => {
     ? String(b.received_condition).trim()
     : null
 
-  const info = await run(`
+  const hasAttrs = await tableHasColumn('assets', 'domain_attrs')
+  const attrsJson = hasAttrs ? (parseDomainAttrs(b.domain_attrs) ? JSON.stringify(parseDomainAttrs(b.domain_attrs)) : null) : undefined
+  const domainReady = await inventoryDomainColumnsReady()
+
+  const info = await run(
+    domainReady
+      ? (hasAttrs
+        ? `
+    INSERT INTO assets (
+      domain_id, asset_tag, old_asset_tag, name, serial, model_id, status_id, company_id, legal_entity_id, department_id, supplier_id,
+      location_id, rtd_location_id, map_latitude, map_longitude, map_address,
+      purchase_date, purchase_cost, order_number,
+      warranty_months, asset_eol_date, notes, received_condition, domain_attrs, requestable, byod, next_audit_date, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `
+        : `
+    INSERT INTO assets (
+      domain_id, asset_tag, old_asset_tag, name, serial, model_id, status_id, company_id, legal_entity_id, department_id, supplier_id,
+      location_id, rtd_location_id, map_latitude, map_longitude, map_address,
+      purchase_date, purchase_cost, order_number,
+      warranty_months, asset_eol_date, notes, received_condition, requestable, byod, next_audit_date, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+      : `
     INSERT INTO assets (
       asset_tag, old_asset_tag, name, serial, model_id, status_id, company_id, legal_entity_id, department_id, supplier_id,
       location_id, rtd_location_id, map_latitude, map_longitude, map_address,
       purchase_date, purchase_cost, order_number,
       warranty_months, asset_eol_date, notes, received_condition, requestable, byod, next_audit_date, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [
-    assetTag, oldTag, b.name || null, b.serial || null, b.model_id, b.status_id,
-    b.company_id || null, b.legal_entity_id || null, b.department_id || null, b.supplier_id || null, b.location_id || b.rtd_location_id || null,
-    b.rtd_location_id || null,
-    Number.isFinite(mapLat as number) ? mapLat : null,
-    Number.isFinite(mapLng as number) ? mapLng : null,
-    mapAddr,
-    b.purchase_date || null, b.purchase_cost || null,
-    b.order_number || null, b.warranty_months || null, b.asset_eol_date || null, b.notes || null,
-    receivedCondition,
-    b.requestable ? 1 : 0, b.byod ? 1 : 0, b.next_audit_date || null, ts, ts,
-  ])
+  `,
+    domainReady
+      ? (hasAttrs
+        ? [
+          domain.id, assetTag, oldTag, b.name || null, b.serial || null, b.model_id, b.status_id,
+          b.company_id || null, b.legal_entity_id || null, b.department_id || null, b.supplier_id || null, b.location_id || b.rtd_location_id || null,
+          b.rtd_location_id || null,
+          Number.isFinite(mapLat as number) ? mapLat : null,
+          Number.isFinite(mapLng as number) ? mapLng : null,
+          mapAddr,
+          b.purchase_date || null, b.purchase_cost || null,
+          b.order_number || null, b.warranty_months || null, b.asset_eol_date || null, b.notes || null,
+          receivedCondition, attrsJson,
+          b.requestable ? 1 : 0, b.byod ? 1 : 0, b.next_audit_date || null, ts, ts,
+        ]
+        : [
+          domain.id, assetTag, oldTag, b.name || null, b.serial || null, b.model_id, b.status_id,
+          b.company_id || null, b.legal_entity_id || null, b.department_id || null, b.supplier_id || null, b.location_id || b.rtd_location_id || null,
+          b.rtd_location_id || null,
+          Number.isFinite(mapLat as number) ? mapLat : null,
+          Number.isFinite(mapLng as number) ? mapLng : null,
+          mapAddr,
+          b.purchase_date || null, b.purchase_cost || null,
+          b.order_number || null, b.warranty_months || null, b.asset_eol_date || null, b.notes || null,
+          receivedCondition,
+          b.requestable ? 1 : 0, b.byod ? 1 : 0, b.next_audit_date || null, ts, ts,
+        ])
+      : [
+        assetTag, oldTag, b.name || null, b.serial || null, b.model_id, b.status_id,
+        b.company_id || null, b.legal_entity_id || null, b.department_id || null, b.supplier_id || null, b.location_id || b.rtd_location_id || null,
+        b.rtd_location_id || null,
+        Number.isFinite(mapLat as number) ? mapLat : null,
+        Number.isFinite(mapLng as number) ? mapLng : null,
+        mapAddr,
+        b.purchase_date || null, b.purchase_cost || null,
+        b.order_number || null, b.warranty_months || null, b.asset_eol_date || null, b.notes || null,
+        receivedCondition,
+        b.requestable ? 1 : 0, b.byod ? 1 : 0, b.next_audit_date || null, ts, ts,
+      ],
+  )
   const id = Number(info.insertId)
   await logAction({ userId: req.user?.id, actionType: 'create', itemType: 'asset', itemId: id })
   notifyWorkflow({
@@ -536,8 +704,18 @@ router.patch('/:id', (req, res) => updateAsset(req, res))
 
 async function updateAsset(req: import('express').Request, res: import('express').Response) {
   const id = Number(req.params.id)
-  if (!(await transformAsset(id))) return fail(res, 'Asset not found', 404)
+  const scoped = await requireAssetDomain(req, res, id)
+  if (!scoped) return
   const b = req.body || {}
+  if (b.domain_id !== undefined || b.domain !== undefined || b.domain_code !== undefined) {
+    try {
+      const domain = await resolveWriteDomainId(req.user?.permissions, b)
+      b.domain_id = domain.id
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Invalid domain'
+      return fail(res, msg, /Forbidden/.test(msg) ? 403 : 400)
+    }
+  }
   // asset_tag is system-generated and never editable after create
   const fields = [
     'name', 'serial', 'model_id', 'status_id', 'company_id', 'legal_entity_id', 'department_id', 'supplier_id',
@@ -545,6 +723,8 @@ async function updateAsset(req: import('express').Request, res: import('express'
     'purchase_date', 'purchase_cost',
     'order_number', 'warranty_months', 'asset_eol_date', 'notes', 'received_condition', 'requestable', 'byod',
     'old_asset_tag', 'expected_checkin', 'next_audit_date',
+    ...((await inventoryDomainColumnsReady()) ? (['domain_id'] as const) : []),
+    ...((await tableHasColumn('assets', 'domain_attrs')) ? (['domain_attrs'] as const) : []),
   ] as const
   const sets: string[] = []
   const vals: unknown[] = []
@@ -553,6 +733,10 @@ async function updateAsset(req: import('express').Request, res: import('express'
       sets.push(`${f} = ?`)
       let v: unknown = b[f]
       if (typeof v === 'boolean') v = v ? 1 : 0
+      if (f === 'domain_attrs') {
+        const parsed = parseDomainAttrs(v)
+        v = parsed ? JSON.stringify(parsed) : null
+      }
       if ((f === 'map_latitude' || f === 'map_longitude') && (v === '' || v === null)) v = null
       else if ((f === 'map_latitude' || f === 'map_longitude') && v != null) {
         const n = Number(v)
@@ -574,6 +758,8 @@ async function updateAsset(req: import('express').Request, res: import('express'
 
 router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id)
+  const scoped = await requireAssetDomain(req, res, id)
+  if (!scoped) return
   const existing = await transformAsset(id)
   if (!existing) return fail(res, 'Asset not found', 404)
   await run(`UPDATE assets SET deleted_at = ?, updated_at = ? WHERE id = ?`, [now(), now(), id])
@@ -597,6 +783,7 @@ router.delete('/:id', async (req, res) => {
 
 router.post('/:id/checkout', async (req, res) => {
   const id = Number(req.params.id)
+  if (!(await requireAssetDomain(req, res, id))) return
   const asset = await get<Record<string, unknown>>(`SELECT * FROM assets WHERE id = ? AND deleted_at IS NULL`, [id])
   if (!asset) return fail(res, 'Asset not found', 404)
   if (asset.assigned_to) {
@@ -692,6 +879,7 @@ router.post('/:id/checkout', async (req, res) => {
 
 router.post('/:id/checkin', async (req, res) => {
   const id = Number(req.params.id)
+  if (!(await requireAssetDomain(req, res, id))) return
   const asset = await get<Record<string, unknown>>(`SELECT * FROM assets WHERE id = ? AND deleted_at IS NULL`, [id])
   if (!asset) return fail(res, 'Asset not found', 404)
   if (!asset.assigned_to) return fail(res, 'Asset is not assigned')
@@ -761,6 +949,8 @@ router.post('/:id/replace', async (req, res) => {
   if (!newId) return fail(res, 'new_asset_id is required')
   if (!reason) return fail(res, 'Reason is required to replace an asset')
   if (newId === oldId) return fail(res, 'Replacement asset must be different')
+  if (!(await requireAssetDomain(req, res, oldId))) return
+  if (!(await requireAssetDomain(req, res, newId))) return
 
   const oldAsset = await get<Record<string, unknown>>(`SELECT * FROM assets WHERE id = ? AND deleted_at IS NULL`, [oldId])
   if (!oldAsset) return fail(res, 'Current asset not found', 404)
@@ -858,6 +1048,8 @@ router.post('/:id/replace', async (req, res) => {
 
 router.post('/:id/audit', async (req, res) => {
   const id = Number(req.params.id)
+  const scoped = await requireAssetDomain(req, res, id)
+  if (!scoped) return
   if (!(await transformAsset(id))) return fail(res, 'Asset not found', 404)
   const b = req.body || {}
   const ts = now()
@@ -882,8 +1074,9 @@ router.post('/:id/audit', async (req, res) => {
 router.post('/audit', async (req, res) => {
   const tag = req.body?.asset_tag
   if (!tag) return fail(res, 'asset_tag required')
-  const row = await get<{ id: number }>(`SELECT id FROM assets WHERE asset_tag = ? AND deleted_at IS NULL`, [tag])
+  const row = await loadItemDomain('assets', 'asset_tag = ? AND deleted_at IS NULL', [tag])
   if (!row) return fail(res, 'Asset not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
   const b = req.body || {}
   const ts = now()
   await run(`
@@ -898,8 +1091,9 @@ router.post('/audit', async (req, res) => {
 router.post('/checkinbytag', async (req, res) => {
   const tag = req.body?.asset_tag
   if (!tag) return fail(res, 'asset_tag required')
-  const row = await get<{ id: number }>(`SELECT id FROM assets WHERE asset_tag = ? AND deleted_at IS NULL`, [tag])
+  const row = await loadItemDomain('assets', 'asset_tag = ? AND deleted_at IS NULL', [tag])
   if (!row) return fail(res, 'Asset not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
   const asset = await get<Record<string, unknown>>(`SELECT * FROM assets WHERE id = ?`, [row.id])
   if (!asset?.assigned_to) return fail(res, 'Asset is not assigned')
   const b = req.body || {}
@@ -925,6 +1119,9 @@ router.post('/checkinbytag', async (req, res) => {
 })
 
 router.post('/:id/restore', async (req, res) => {
+  const row = await loadItemDomain('assets', 'id = ?', [Number(req.params.id)])
+  if (!row) return fail(res, 'Asset not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
   await run(`UPDATE assets SET deleted_at = NULL, updated_at = ? WHERE id = ?`, [now(), req.params.id])
   await logAction({ userId: req.user?.id, actionType: 'restore', itemType: 'asset', itemId: Number(req.params.id) })
   return okMessage(res, 'Asset restored', await transformAsset(Number(req.params.id)))

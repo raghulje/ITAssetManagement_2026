@@ -2,6 +2,8 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { siteName } from '../data/mockData'
 import { useAuth } from '../api/AuthContext'
+import { softwareLicensesInDomain } from '../lib/domainScope'
+import { PageBack } from '../components/ui'
 
 const NARROW_MQ = '(max-width: 991px)'
 
@@ -19,7 +21,15 @@ function useIsNarrow() {
   return narrow
 }
 
-type Props = { children: ReactNode; title: string; subtitle?: string }
+type Props = {
+  children: ReactNode
+  title: string
+  subtitle?: string
+  hideHeader?: boolean
+  backTo?: string
+  backLabel?: string
+  onBack?: () => void
+}
 
 type SectionTab = {
   to: string
@@ -30,7 +40,7 @@ type SectionTab = {
   group?: 'status' | 'tools'
 }
 
-type SectionKey = 'assets' | 'people' | 'masters' | 'settings' | 'reports'
+type SectionKey = 'assets' | 'people' | 'spaces' | 'masters' | 'settings' | 'reports'
 
 const SECTION_TABS: Record<SectionKey, SectionTab[]> = {
   assets: [
@@ -143,6 +153,9 @@ const SECTION_TABS: Record<SectionKey, SectionTab[]> = {
     { to: '/users?activated=1', label: 'Login Enabled', isActive: (p, s) => p === '/users' && new URLSearchParams(s).get('activated') === '1' },
     { to: '/users?activated=0', label: 'Login Disabled', isActive: (p, s) => p === '/users' && new URLSearchParams(s).get('activated') === '0' },
   ],
+  spaces: [
+    { to: '/spaces', label: 'Offices & floors', isActive: (p) => p.startsWith('/spaces') },
+  ],
   masters: [
     { to: '/companies', label: 'Companies', isActive: (p) => p.startsWith('/companies') },
     { to: '/departments', label: 'Departments', isActive: (p) => p.startsWith('/departments') },
@@ -179,6 +192,7 @@ function resolveSection(pathname: string, search = ''): SectionKey | null {
   if (from === 'employee' && pathname.startsWith('/hardware')) return 'people'
   if (pathname.startsWith('/hardware') || pathname.startsWith('/maintenances')) return 'assets'
   if (pathname.startsWith('/employees') || pathname.startsWith('/users')) return 'people'
+  if (pathname.startsWith('/spaces')) return 'spaces'
   if (
     pathname.startsWith('/companies')
     || pathname.startsWith('/departments')
@@ -218,6 +232,7 @@ function shouldShowSectionTabs(pathname: string): boolean {
     /^\/employees\/?$/,
     /^\/employees\/import\/?$/,
     /^\/users\/?$/,
+    /^\/spaces\/?$/,
     /^\/companies\/?$/,
     /^\/departments\/?$/,
     /^\/locations\/?$/,
@@ -237,7 +252,10 @@ function shouldShowSectionTabs(pathname: string): boolean {
 
 function SectionTabs({ section }: { section: SectionKey }) {
   const location = useLocation()
-  const tabs = SECTION_TABS[section]
+  const { activeDomain } = useAuth()
+  const tabs = SECTION_TABS[section].filter((t) => (
+    t.to !== '/reports/licenses' || softwareLicensesInDomain(activeDomain)
+  ))
   const search = location.search
 
   // Use Link (not NavLink): RR matches /hardware?* by pathname only and would
@@ -276,7 +294,7 @@ function SectionTabs({ section }: { section: SectionKey }) {
   )
 }
 
-export default function AppLayout({ children, title, subtitle }: Props) {
+export default function AppLayout({ children, title, subtitle, hideHeader, backTo, backLabel, onBack }: Props) {
   const isNarrow = useIsNarrow()
   /** Desktop: false = sidebar visible. Mobile: true = drawer closed. */
   const [collapsed, setCollapsed] = useState(() =>
@@ -287,7 +305,8 @@ export default function AppLayout({ children, title, subtitle }: Props) {
   const [tag, setTag] = useState('')
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, logout, can, isAdmin } = useAuth()
+  const { user, logout, can, isAdmin, domainScope, activeDomain, setActiveDomain } = useAuth()
+  const showLicenses = can('licenses.view') && softwareLicensesInDomain(activeDomain)
   const displayName = user ? `${user.first_name} ${user.last_name}` : 'Admin User'
   const path = location.pathname + location.search
   const section = resolveSection(location.pathname, location.search)
@@ -315,6 +334,13 @@ export default function AppLayout({ children, title, subtitle }: Props) {
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = prev }
   }, [drawerOpen])
+
+  useEffect(() => {
+    if (softwareLicensesInDomain(activeDomain)) return
+    if (location.pathname.startsWith('/licenses') || location.pathname.startsWith('/reports/licenses')) {
+      navigate('/', { replace: true })
+    }
+  }, [activeDomain, location.pathname, navigate])
 
   const closeDrawer = () => {
     if (isNarrow) setCollapsed(true)
@@ -353,10 +379,29 @@ export default function AppLayout({ children, title, subtitle }: Props) {
             <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Search asset tag" />
             <button type="submit"><i className="fas fa-search" /></button>
           </form>
+          {domainScope.all ? (
+            <div className="domain-toggle" role="group" aria-label="IT or Admin assets">
+              <button
+                type="button"
+                className={activeDomain === 'it' ? 'is-active' : ''}
+                onClick={() => setActiveDomain('it')}
+              >
+                IT
+              </button>
+              <button
+                type="button"
+                className={activeDomain === 'admin' ? 'is-active' : ''}
+                onClick={() => setActiveDomain('admin')}
+              >
+                Admin
+              </button>
+            </div>
+          ) : null}
           <div className="navbar-custom-menu">
             <ul className="navbar-nav">
               {can('assets.view') ? <li><NavLink to="/hardware" title="Assets"><i className="fas fa-barcode" /></NavLink></li> : null}
-              {can('licenses.view') ? <li><NavLink to="/licenses" title="Licenses"><i className="fas fa-save" /></NavLink></li> : null}
+              {can('assets.view') ? <li><NavLink to="/labels" title="QR / Barcode"><i className="fas fa-qrcode" /></NavLink></li> : null}
+              {showLicenses ? <li><NavLink to="/licenses" title="Licenses"><i className="fas fa-save" /></NavLink></li> : null}
               {can('accessories.view') ? <li><NavLink to="/accessories" title="Accessories"><i className="fas fa-keyboard" /></NavLink></li> : null}
               {can('consumables.view') ? <li><NavLink to="/consumables" title="Consumables"><i className="fas fa-tint" /></NavLink></li> : null}
               {can('components.view') ? <li><NavLink to="/components" title="Components"><i className="fas fa-hdd" /></NavLink></li> : null}
@@ -369,7 +414,7 @@ export default function AppLayout({ children, title, subtitle }: Props) {
                   </button>
                   <div className="dropdown-menu">
                     {can('assets.create') ? <NavLink to="/hardware/create" onClick={() => setCreateOpen(false)}>Asset</NavLink> : null}
-                    {can('licenses.create') ? <NavLink to="/licenses/create" onClick={() => setCreateOpen(false)}>License</NavLink> : null}
+                    {showLicenses && can('licenses.create') ? <NavLink to="/licenses/create" onClick={() => setCreateOpen(false)}>License</NavLink> : null}
                     {can('accessories.create') ? <NavLink to="/accessories/create" onClick={() => setCreateOpen(false)}>Accessory</NavLink> : null}
                     {can('consumables.create') ? <NavLink to="/consumables/create" onClick={() => setCreateOpen(false)}>Consumable</NavLink> : null}
                     {can('components.create') ? <NavLink to="/components/create" onClick={() => setCreateOpen(false)}>Component</NavLink> : null}
@@ -407,7 +452,13 @@ export default function AppLayout({ children, title, subtitle }: Props) {
               <NavLink to="/hardware" onClick={closeDrawer}><i className="fas fa-barcode fa-fw" /><span>Assets</span></NavLink>
             </li>
           ) : null}
-          {can('licenses.view') ? (
+          {can('assets.view') ? (
+            <li className={path.startsWith('/labels') ? 'active' : ''}>
+              <NavLink to="/labels" onClick={closeDrawer}><i className="fas fa-qrcode fa-fw" /><span>QR / Barcode</span></NavLink>
+            </li>
+          ) : null}
+
+          {showLicenses ? (
             <li className={path.startsWith('/licenses') ? 'active' : ''}>
               <NavLink to="/licenses" onClick={closeDrawer}><i className="fas fa-save fa-fw" /><span>Licenses</span></NavLink>
             </li>
@@ -434,6 +485,11 @@ export default function AppLayout({ children, title, subtitle }: Props) {
             </li>
           ) : null}
           {can('settings.view') ? (
+            <li className={section === 'spaces' ? 'active' : ''}>
+              <NavLink to="/spaces" onClick={closeDrawer}><i className="fas fa-building fa-fw" /><span>Space Management</span></NavLink>
+            </li>
+          ) : null}
+          {can('settings.view') ? (
             <li className={section === 'masters' ? 'active' : ''}>
               <NavLink to="/companies" onClick={closeDrawer}><i className="fas fa-database fa-fw" /><span>Masters</span></NavLink>
             </li>
@@ -457,22 +513,27 @@ export default function AppLayout({ children, title, subtitle }: Props) {
       </aside>
 
       <div className="content-wrapper">
-        <section className="content-header" key={`h-${location.pathname}`}>
-          <h1>
-            {title}
-            {subtitle ? <small>{subtitle}</small> : null}
-          </h1>
-          <ol className="breadcrumb">
-            <li><NavLink to="/">Home</NavLink></li>
-            <li>{title}</li>
-          </ol>
-        </section>
+        {!hideHeader ? (
+          <section className="content-header" key={`h-${location.pathname}`}>
+            <div className="content-header-copy">
+              {onBack || backTo ? (
+                <PageBack fallback={backTo || '/'} label={backLabel || 'Back'} onClick={onBack} />
+              ) : null}
+              {subtitle ? <p className="content-kicker">{subtitle}</p> : null}
+              <h1>{title}</h1>
+            </div>
+            <ol className="breadcrumb">
+              <li><NavLink to="/">Home</NavLink></li>
+              <li>{title}</li>
+            </ol>
+          </section>
+        ) : null}
         {showSectionTabs && section ? <SectionTabs section={section} /> : null}
-        <section className="content" key={`c-${location.pathname}`}>{children}</section>
+        <section className={`content${hideHeader ? ' content--flush' : ''}`} key={`c-${location.pathname}`}>{children}</section>
       </div>
 
       <footer className="main-footer">
-        <strong>Copyright &copy; {new Date().getFullYear()} {siteName}.</strong> IT Asset Management.
+        <strong>Copyright &copy; {new Date().getFullYear()} {siteName}.</strong> Asset Management.
       </footer>
     </div>
   )

@@ -12,6 +12,7 @@ const dirs = [
   'public/assets',
   'public/avatars',
   'public/barcodes',
+  'public/labels',
   'private_uploads/imports',
   'private_uploads/assets',
   'private_uploads/users',

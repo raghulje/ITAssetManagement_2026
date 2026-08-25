@@ -8,6 +8,8 @@ import { importEmployeesFromFile } from '../services/employeeImport.js'
 import { syncEmployeesFromHrms } from '../services/employeeHrmsSync.js'
 import { isAdrenalinConfigured } from '../services/adrenalinHrms.js'
 import { syncMastersFromEmployees } from '../services/hrmsMastersSync.js'
+import { inventoryDomainClause } from '../services/domainAuth.js'
+import { listEmployeeAssignmentHistory, listEmployeeAssignments } from '../services/employeeAssignments.js'
 
 export const employeesRouter = Router()
 const uploadFile = makeUploader('private_uploads/imports', 'file')
@@ -115,6 +117,7 @@ employeesRouter.get('/', async (req, res) => {
 })
 
 employeesRouter.get('/selectlist', async (req, res) => {
+  // HRMS employees are domain-agnostic — IT and ADMIN both assign from this list.
   const q = String(req.query.search || '').trim()
   let sql = `
     SELECT id, CONCAT(first_name, ' ', last_name, ' (', employee_code, ')') as text
@@ -124,13 +127,20 @@ employeesRouter.get('/selectlist', async (req, res) => {
   `
   const params: unknown[] = []
   if (q) {
-    sql += ` AND (first_name LIKE ? OR last_name LIKE ? OR employee_code LIKE ? OR email LIKE ?)`
+    sql += ` AND (
+      first_name LIKE ? OR last_name LIKE ? OR employee_code LIKE ? OR email LIKE ?
+      OR CONCAT(first_name, ' ', last_name) LIKE ?
+    )`
     const like = `%${q}%`
-    params.push(like, like, like, like)
+    params.push(like, like, like, like, like)
   }
-  sql += ' ORDER BY first_name ASC, last_name ASC LIMIT 100'
-  const results = await all(sql, params)
-  return res.json({ results, pagination: { more: false } })
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10000, 1), 10000)
+  sql += ' ORDER BY first_name ASC, last_name ASC LIMIT ?'
+  params.push(limit + 1)
+  const rows = await all<{ id: number; text: string }>(sql, params)
+  const more = rows.length > limit
+  const results = more ? rows.slice(0, limit) : rows
+  return res.json({ results, pagination: { more } })
 })
 
 employeesRouter.post('/import', (req, res) => {
@@ -218,11 +228,35 @@ employeesRouter.get('/:id', async (req, res) => {
 })
 
 employeesRouter.get('/:id/assets', async (req, res) => {
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, '')
   const ids = await all<{ id: number }>(`
     SELECT id FROM assets
     WHERE assigned_type = 'employee' AND assigned_to = ? AND deleted_at IS NULL
-  `, [req.params.id])
+      ${domain.sql}
+  `, [req.params.id, ...domain.params])
   const rows = (await Promise.all(ids.map((r) => transformAsset(r.id)))).filter(Boolean)
+  return okList(res, rows)
+})
+
+employeesRouter.get('/:id/assignments', async (req, res) => {
+  const emp = await loadEmployee(Number(req.params.id))
+  if (!emp) return fail(res, 'Employee not found', 404)
+  const result = await listEmployeeAssignments(
+    Number(req.params.id),
+    req.user?.permissions,
+    req.query.domain || req.query.domain_id,
+  )
+  return okItem(res, result)
+})
+
+employeesRouter.get('/:id/assignment-history', async (req, res) => {
+  const emp = await loadEmployee(Number(req.params.id))
+  if (!emp) return fail(res, 'Employee not found', 404)
+  const rows = await listEmployeeAssignmentHistory(
+    Number(req.params.id),
+    req.user?.permissions,
+    req.query.domain || req.query.domain_id,
+  )
   return okList(res, rows)
 })
 

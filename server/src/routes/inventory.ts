@@ -3,6 +3,7 @@ import { all, get, run, now, limitSql } from '../db/index.js'
 import { fail, nest, okItem, okList, okMessage } from '../utils/response.js'
 import { logAction } from '../services/actionLog.js'
 import { actorLabel, notifyWorkflow, resolveAssigneeEmail } from '../services/notify.js'
+import { assertRecordDomainAccess, domainJoinSql, domainPayload, domainRowCode, domainSelectFields, inventoryDomainClause, inventoryDomainColumnsReady, loadItemDomain, resolveWriteDomainId, tableHasColumn } from '../services/domainAuth.js'
 
 type QtyConfig = {
   table: 'accessories' | 'consumables' | 'components'
@@ -17,15 +18,18 @@ function remainingSql(cfg: QtyConfig) {
 }
 
 async function transform(cfg: QtyConfig, id: number) {
+  const domainReady = await inventoryDomainColumnsReady()
   const row = await get<Record<string, unknown>>(`
     SELECT t.*, cat.name as category_name, co.name as company_name, co.code as company_code,
       le.code as legal_entity_code, loc.name as location_name,
+      ${domainSelectFields(domainReady)},
       ${remainingSql(cfg)} as checked_out
     FROM ${cfg.table} t
     LEFT JOIN categories cat ON cat.id = t.category_id
     LEFT JOIN companies co ON co.id = t.company_id
     LEFT JOIN legal_entities le ON le.id = t.legal_entity_id
     LEFT JOIN locations loc ON loc.id = t.location_id
+    ${domainJoinSql('t', domainReady)}
     WHERE t.id = ? AND t.deleted_at IS NULL
   `, [id])
   if (!row) return null
@@ -40,6 +44,11 @@ async function transform(cfg: QtyConfig, id: number) {
       code: row.legal_entity_code || null,
     }),
     location: nest(row.location_id as number, row.location_name as string),
+    domain: domainPayload(
+      row.domain_id as number | null,
+      domainRowCode({ code: row.domain_code, name: row.domain_name }),
+      row.domain_name as string | null,
+    ),
     model_number: row.model_number,
     qty: row.qty,
     assigned,
@@ -71,6 +80,9 @@ function makeQtyRouter(cfg: QtyConfig) {
       sql += ' AND location_id = ?'
       params.push(Number(req.query.location_id))
     }
+    const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, '')
+    sql += domain.sql
+    params.push(...domain.params)
     sql += ' ORDER BY id DESC'
     const limit = Math.min(Number(req.query.limit) || 50, 500)
     const offset = Number(req.query.offset) || 0
@@ -82,6 +94,9 @@ function makeQtyRouter(cfg: QtyConfig) {
   })
 
   router.get('/:id', async (req, res) => {
+    const row = await loadItemDomain(cfg.table, 'id = ? AND deleted_at IS NULL', [req.params.id])
+    if (!row) return fail(res, 'Not found', 404)
+    if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
     const item = await transform(cfg, Number(req.params.id))
     if (!item) return fail(res, 'Not found', 404)
     return okItem(res, item)
@@ -90,14 +105,35 @@ function makeQtyRouter(cfg: QtyConfig) {
   router.post('/', async (req, res) => {
     const b = req.body || {}
     if (!b.name) return fail(res, 'name required')
+    let domain
+    try {
+      domain = await resolveWriteDomainId(req.user?.permissions, b)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Invalid domain'
+      return fail(res, msg, /Forbidden/.test(msg) ? 403 : 400)
+    }
     const ts = now()
-    const info = await run(`
+    const domainReady = await inventoryDomainColumnsReady()
+    const info = await run(
+      domainReady
+        ? `
+      INSERT INTO ${cfg.table} (domain_id, name, category_id, company_id, legal_entity_id, location_id, model_number, qty, min_amt, purchase_cost, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `
+        : `
       INSERT INTO ${cfg.table} (name, category_id, company_id, legal_entity_id, location_id, model_number, qty, min_amt, purchase_cost, notes, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      b.name, b.category_id || null, b.company_id || null, b.legal_entity_id || null, b.location_id || null,
-      b.model_number || null, b.qty || 1, b.min_amt || 0, b.purchase_cost || null, b.notes || null, ts, ts,
-    ])
+    `,
+      domainReady
+        ? [
+          domain.id, b.name, b.category_id || null, b.company_id || null, b.legal_entity_id || null, b.location_id || null,
+          b.model_number || null, b.qty || 1, b.min_amt || 0, b.purchase_cost || null, b.notes || null, ts, ts,
+        ]
+        : [
+          b.name, b.category_id || null, b.company_id || null, b.legal_entity_id || null, b.location_id || null,
+          b.model_number || null, b.qty || 1, b.min_amt || 0, b.purchase_cost || null, b.notes || null, ts, ts,
+        ],
+    )
     const id = Number(info.insertId)
     await logAction({ userId: req.user?.id, actionType: 'create', itemType: cfg.itemType, itemId: id })
     const created = await transform(cfg, id)
@@ -121,11 +157,25 @@ function makeQtyRouter(cfg: QtyConfig) {
 
   router.put('/:id', async (req, res) => {
     const id = Number(req.params.id)
+    const existing = await loadItemDomain(cfg.table, 'id = ? AND deleted_at IS NULL', [id])
+    if (!existing) return fail(res, 'Not found', 404)
+    if (!(await assertRecordDomainAccess(req, res, existing.domain_id))) return
     if (!(await transform(cfg, id))) return fail(res, 'Not found', 404)
     const b = req.body || {}
-    const fields = ['name', 'category_id', 'company_id', 'legal_entity_id', 'location_id', 'model_number', 'qty', 'min_amt', 'purchase_cost', 'notes'] as const
+    const fields = (await inventoryDomainColumnsReady())
+      ? (['name', 'category_id', 'company_id', 'legal_entity_id', 'location_id', 'model_number', 'qty', 'min_amt', 'purchase_cost', 'notes', 'domain_id'] as const)
+      : (['name', 'category_id', 'company_id', 'legal_entity_id', 'location_id', 'model_number', 'qty', 'min_amt', 'purchase_cost', 'notes'] as const)
     const sets: string[] = []
     const vals: unknown[] = []
+    if (b.domain_id !== undefined || b.domain !== undefined || b.domain_code !== undefined) {
+      try {
+        const domain = await resolveWriteDomainId(req.user?.permissions, b)
+        b.domain_id = domain.id
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Invalid domain'
+        return fail(res, msg, /Forbidden/.test(msg) ? 403 : 400)
+      }
+    }
     for (const f of fields) {
       if (b[f] !== undefined) {
         sets.push(`${f} = ?`)
@@ -140,6 +190,9 @@ function makeQtyRouter(cfg: QtyConfig) {
   })
 
   router.delete('/:id', async (req, res) => {
+    const existing = await loadItemDomain(cfg.table, 'id = ? AND deleted_at IS NULL', [req.params.id])
+    if (!existing) return fail(res, 'Not found', 404)
+    if (!(await assertRecordDomainAccess(req, res, existing.domain_id))) return
     await run(`UPDATE ${cfg.table} SET deleted_at = ?, updated_at = ? WHERE id = ?`, [now(), now(), req.params.id])
     await logAction({ userId: req.user?.id, actionType: 'delete', itemType: cfg.itemType, itemId: Number(req.params.id) })
     return okMessage(res, 'Deleted')
@@ -147,6 +200,9 @@ function makeQtyRouter(cfg: QtyConfig) {
 
   router.post('/:id/checkout', async (req, res) => {
     const id = Number(req.params.id)
+    const existing = await loadItemDomain(cfg.table, 'id = ? AND deleted_at IS NULL', [id])
+    if (!existing) return fail(res, 'Not found', 404)
+    if (!(await assertRecordDomainAccess(req, res, existing.domain_id))) return
     const item = await transform(cfg, id)
     if (!item) return fail(res, 'Not found', 404)
     const qty = Number(req.body?.assigned_qty || req.body?.qty || 1)
@@ -154,24 +210,39 @@ function makeQtyRouter(cfg: QtyConfig) {
 
     const ts = now()
     if (cfg.table === 'accessories') {
-      const assignedTo = Number(req.body?.assigned_to || req.body?.assigned_user)
-      if (!assignedTo) return fail(res, 'assigned_to required')
-      await run(`
-        INSERT INTO accessories_checkout (accessory_id, assigned_to, assigned_type, assigned_qty, note, created_by, created_at)
-        VALUES (?, ?, 'user', ?, ?, ?, ?)
-      `, [id, assignedTo, qty, req.body?.note || null, req.user?.id || null, ts])
-      await logAction({ userId: req.user?.id, actionType: 'checkout', itemType: 'accessory', itemId: id, targetType: 'user', targetId: assignedTo })
-      const email = await resolveAssigneeEmail('user', assignedTo)
+      const assignedEmployee = Number(req.body?.assigned_employee_id || req.body?.assigned_employee || (req.body?.checkout_to_type === 'employee' ? (req.body?.assigned_to || req.body?.assigned_user) : 0)) || null
+      const assignedTo = assignedEmployee ? null : Number(req.body?.assigned_to || req.body?.assigned_user)
+      if (!assignedTo && !assignedEmployee) return fail(res, 'assigned_to or assigned_employee_id required')
+      const empCol = await tableHasColumn('accessories_checkout', 'assigned_employee_id')
+      if (!empCol && assignedEmployee && !assignedTo) {
+        return fail(res, 'Employee assignment requires database migrations 037-040')
+      }
+      await run(
+        empCol
+          ? `INSERT INTO accessories_checkout (accessory_id, assigned_to, assigned_employee_id, assigned_type, assigned_qty, note, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          : `INSERT INTO accessories_checkout (accessory_id, assigned_to, assigned_type, assigned_qty, note, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        empCol
+          ? [id, assignedTo, assignedEmployee, assignedEmployee ? 'employee' : 'user', qty, req.body?.note || null, req.user?.id || null, ts]
+          : [id, assignedTo, 'user', qty, req.body?.note || null, req.user?.id || null, ts],
+      )
+      await logAction({
+        userId: req.user?.id, actionType: 'checkout', itemType: 'accessory', itemId: id,
+        targetType: assignedEmployee ? 'employee' : 'user',
+        targetId: Number(assignedEmployee || assignedTo),
+      })
+      const email = await resolveAssigneeEmail(assignedEmployee ? 'employee' : 'user', Number(assignedEmployee || assignedTo))
       notifyWorkflow({
         category: 'custody',
         event: 'accessory.assigned',
         subject: `Accessory assigned: ${item.name}`,
         title: 'Accessory assigned',
-        intro: 'An accessory was checked out to a user.',
+        intro: 'An accessory was checked out.',
         fields: [
           { label: 'Accessory', value: String(item.name) },
           { label: 'Qty', value: String(qty) },
-          { label: 'User id', value: String(assignedTo) },
+          { label: assignedEmployee ? 'Employee id' : 'User id', value: String(assignedEmployee || assignedTo) },
           { label: 'Assigned by', value: actorLabel(req.user) },
         ],
         ctaPath: `/accessories/${id}`,
@@ -180,24 +251,39 @@ function makeQtyRouter(cfg: QtyConfig) {
         assigneeEmail: email,
       })
     } else if (cfg.table === 'consumables') {
-      const assignedTo = Number(req.body?.assigned_to || req.body?.assigned_user)
-      if (!assignedTo) return fail(res, 'assigned_to required')
-      await run(`
-        INSERT INTO consumables_users (consumable_id, assigned_to, assigned_qty, note, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, [id, assignedTo, qty, req.body?.note || null, req.user?.id || null, ts])
-      await logAction({ userId: req.user?.id, actionType: 'checkout', itemType: 'consumable', itemId: id, targetType: 'user', targetId: assignedTo })
-      const email = await resolveAssigneeEmail('user', assignedTo)
+      const assignedEmployee = Number(req.body?.assigned_employee_id || req.body?.assigned_employee || (req.body?.checkout_to_type === 'employee' ? (req.body?.assigned_to || req.body?.assigned_user) : 0)) || null
+      const assignedTo = assignedEmployee ? null : Number(req.body?.assigned_to || req.body?.assigned_user)
+      if (!assignedTo && !assignedEmployee) return fail(res, 'assigned_to or assigned_employee_id required')
+      const empCol = await tableHasColumn('consumables_users', 'assigned_employee_id')
+      if (!empCol && assignedEmployee && !assignedTo) {
+        return fail(res, 'Employee assignment requires database migrations 037-040')
+      }
+      await run(
+        empCol
+          ? `INSERT INTO consumables_users (consumable_id, assigned_to, assigned_employee_id, assigned_qty, note, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`
+          : `INSERT INTO consumables_users (consumable_id, assigned_to, assigned_qty, note, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`,
+        empCol
+          ? [id, assignedTo, assignedEmployee, qty, req.body?.note || null, req.user?.id || null, ts]
+          : [id, assignedTo, qty, req.body?.note || null, req.user?.id || null, ts],
+      )
+      await logAction({
+        userId: req.user?.id, actionType: 'checkout', itemType: 'consumable', itemId: id,
+        targetType: assignedEmployee ? 'employee' : 'user',
+        targetId: Number(assignedEmployee || assignedTo),
+      })
+      const email = await resolveAssigneeEmail(assignedEmployee ? 'employee' : 'user', Number(assignedEmployee || assignedTo))
       notifyWorkflow({
         category: 'custody',
         event: 'consumable.issued',
         subject: `Consumable issued: ${item.name}`,
         title: 'Consumable issued',
-        intro: 'A consumable was issued to a user.',
+        intro: 'A consumable was issued.',
         fields: [
           { label: 'Consumable', value: String(item.name) },
           { label: 'Qty', value: String(qty) },
-          { label: 'User id', value: String(assignedTo) },
+          { label: assignedEmployee ? 'Employee id' : 'User id', value: String(assignedEmployee || assignedTo) },
           { label: 'Issued by', value: actorLabel(req.user) },
         ],
         ctaPath: `/consumables/${id}`,
@@ -235,6 +321,9 @@ function makeQtyRouter(cfg: QtyConfig) {
 
   router.post('/:id/checkin', async (req, res) => {
     const id = Number(req.params.id)
+    const existing = await loadItemDomain(cfg.table, 'id = ? AND deleted_at IS NULL', [id])
+    if (!existing) return fail(res, 'Not found', 404)
+    if (!(await assertRecordDomainAccess(req, res, existing.domain_id))) return
     const checkoutId = req.body?.checkout_id
     if (cfg.table === 'accessories') {
       if (checkoutId) await run(`DELETE FROM accessories_checkout WHERE id = ? AND accessory_id = ?`, [checkoutId, id])

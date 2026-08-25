@@ -214,7 +214,9 @@ export function AccountProfile() {
           <Field label="Last Name"><input className="form-control" value={lastName} onChange={(e) => setLastName(e.target.value)} /></Field>
           <Field label="Email"><input className="form-control" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
           <Field label="Phone"><input className="form-control" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
-          <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+          </div>
         </form>
       </Box>
     </AppLayout>
@@ -269,7 +271,9 @@ export function AccountPassword() {
           <Field label="Current Password"><input type="password" className="form-control" value={current} onChange={(e) => setCurrent(e.target.value)} required /></Field>
           <Field label="New Password"><input type="password" className="form-control" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
           <Field label="Confirm"><input type="password" className="form-control" value={confirm} onChange={(e) => setConfirm(e.target.value)} required /></Field>
-          <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Updating…' : 'Update Password'}</button>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Updating…' : 'Update Password'}</button>
+          </div>
         </form>
       </Box>
     </AppLayout>
@@ -380,7 +384,7 @@ export function AdminHub() {
     { to: '/reports', label: 'Reports', icon: 'fas fa-chart-bar' },
   ]
   return (
-    <AppLayout title="Admin">
+    <AppLayout title="Admin" backTo="/">
       <div className="row">
         {links.map((l) => (
           <div key={l.to} className="col-md-4" style={{ marginBottom: 15 }}>
@@ -415,7 +419,12 @@ export function LoginPage() {
     <InteractiveLoginPage
       onSubmit={async ({ email, password }) => {
         await login(email, password)
-        navigate('/')
+        let next = '/'
+        try {
+          next = sessionStorage.getItem('refex_login_next') || '/'
+          sessionStorage.removeItem('refex_login_next')
+        } catch { /* ignore */ }
+        navigate(next.startsWith('/') ? next : '/')
       }}
     />
   )
@@ -436,6 +445,7 @@ export function SettingsGeneral() {
   const [digestBusy, setDigestBusy] = useState(false)
   const [qrBusy, setQrBusy] = useState(false)
   const [tagMigrateBusy, setTagMigrateBusy] = useState(false)
+  const [tagRegenBusy, setTagRegenBusy] = useState(false)
   const [schemaMigrateBusy, setSchemaMigrateBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saml, setSaml] = useState<{
@@ -492,11 +502,11 @@ export function SettingsGeneral() {
   }
 
   if (loading) {
-    return <AppLayout title="General Settings"><p className="text-muted">Loading…</p></AppLayout>
+    return <AppLayout title="General Settings" backTo="/"><p className="text-muted">Loading…</p></AppLayout>
   }
 
   return (
-    <AppLayout title="General Settings">
+    <AppLayout title="General Settings" backTo="/">
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
       {okMsg ? <div className="callout callout-success"><p>{okMsg}</p></div> : null}
       <Box title="Settings" type="primary">
@@ -520,7 +530,8 @@ export function SettingsGeneral() {
           <Field label="Full Multiple Companies Support">
             <label className="checkbox"><input type="checkbox" checked={fmcs} onChange={(e) => setFmcs(e.target.checked)} /> Enable FMCS</label>
           </Field>
-          <button type="submit" className="btn btn-theme" disabled={busy || !canEdit}>{busy ? 'Saving…' : 'Save Settings'}</button>{' '}
+          <div className="form-actions">
+          <button type="submit" className="btn btn-theme" disabled={busy || !canEdit}>{busy ? 'Saving…' : 'Save Settings'}</button>
           <button
             type="button"
             className="btn btn-default"
@@ -544,6 +555,7 @@ export function SettingsGeneral() {
           >
             {digestBusy ? 'Sending…' : 'Send EOL digest now'}
           </button>
+          </div>
         </form>
       </Box>
 
@@ -628,7 +640,7 @@ export function SettingsGeneral() {
         <p className="help-block" style={{ marginTop: 0 }}>
           For every asset that still has an empty <strong>Old Asset Tag</strong>, copies the current{' '}
           <strong>Asset Tag</strong> into Old Asset Tag, then assigns a new auto tag (
-          <code>COMPANY/ENTITY-TYPE-0001</code>…). Safe to re-run — already-migrated assets (those with
+          <code>COMPANY/ENTITY-TYPE-FY-0001</code>…). Safe to re-run — already-migrated assets (those with
           Old Asset Tag set) are skipped. Assets missing company/entity or asset type are reported as failed.
           Reprint labels after migrating if tags are printed.
         </p>
@@ -663,6 +675,54 @@ export function SettingsGeneral() {
           }}
         >
           {tagMigrateBusy ? 'Migrating…' : 'Move Asset Tag → Old Asset Tag'}
+        </button>
+      </Box>
+
+      <Box title="Regenerate asset tags (keep Old Asset Tag)" type="warning">
+        <p className="help-block" style={{ marginTop: 0 }}>
+          Updates <strong>Asset Tag</strong> to the current format{' '}
+          <code>COMPANY/ENTITY-TYPE-2026-27-0001</code> (India FY Apr–Mar).{' '}
+          <strong>Old Asset Tag is never changed</strong> — existing values stay as they are.
+          Assets already on the current FY pattern are skipped. Missing company/entity or asset type
+          are reported as failed. Reprint labels after regenerating if tags are printed.
+        </p>
+        <button
+          type="button"
+          className="btn btn-warning"
+          disabled={tagRegenBusy || !canEdit}
+          onClick={() => {
+            if (!window.confirm(
+              'Regenerate asset tags?\n\nAsset Tag will be rewritten to include FY (e.g. MEMF-LAPTOP-2026-27-0001).\nOld Asset Tag values will NOT be changed.',
+            )) return
+            setTagRegenBusy(true)
+            setError('')
+            setOkMsg('')
+            api<{
+              messages?: string[]
+              payload?: {
+                regenerated?: number
+                failed?: number
+                skipped?: number
+                fy?: string
+                errors?: string[]
+              }
+            }>('/settings/regenerate-asset-tags', { method: 'POST' })
+              .then((res) => {
+                const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'Asset tag regeneration complete'
+                const errs = res.payload?.errors?.length
+                  ? `\n${res.payload.errors.slice(0, 10).join('\n')}`
+                  : ''
+                setOkMsg(msg + errs)
+                toast.success(msg)
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setTagRegenBusy(false))
+          }}
+        >
+          {tagRegenBusy ? 'Regenerating…' : 'Regenerate Asset Tags (keep Old)'}
         </button>
       </Box>
 

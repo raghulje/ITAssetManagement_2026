@@ -93,6 +93,60 @@ router.get('/assets/:token', async (req, res) => {
     }
   }
 
+  if (!asset) {
+    const { findLabelByTokenOrCode, presentLabel } = await import('../services/blankLabels.js')
+    const label = await findLabelByTokenOrCode(token)
+    if (label?.status === 'registered' && label.asset_id) {
+      asset = await get<Record<string, unknown>>(`
+        SELECT a.id, a.asset_tag, a.old_asset_tag, a.name, a.serial, a.qr_token, a.qr_url, a.qr_image_path,
+          a.purchase_date, a.purchase_cost, a.order_number, a.warranty_months, a.asset_eol_date,
+          a.map_latitude, a.map_longitude, a.map_address,
+          a.notes, a.last_checkout, a.last_checkin, a.last_audit_date, a.next_audit_date,
+          a.assigned_to, a.assigned_type, a.label_printed_at, a.label_print_count,
+          a.last_agent_sync_at, a.agent_hostname,
+          m.name as model_name, m.model_number,
+          mf.name as manufacturer_name,
+          s.name as status_name, s.type as status_type,
+          co.name as company_name,
+          dep.name as department_name,
+          loc.name as location_name,
+          rtd.name as rtd_location_name,
+          sup.name as supplier_name,
+          CASE
+            WHEN a.assigned_type = 'user' THEN (SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to)
+            WHEN a.assigned_type = 'employee' THEN (
+              SELECT CONCAT(first_name, ' ', last_name, ' (', employee_code, ')') FROM employees WHERE id = a.assigned_to
+            )
+            WHEN a.assigned_type = 'location' THEN (SELECT name FROM locations WHERE id = a.assigned_to)
+            WHEN a.assigned_type = 'asset' THEN (SELECT asset_tag FROM assets WHERE id = a.assigned_to)
+            ELSE NULL
+          END as assigned_name
+        FROM assets a
+        LEFT JOIN models m ON m.id = a.model_id
+        LEFT JOIN manufacturers mf ON mf.id = m.manufacturer_id
+        LEFT JOIN status_labels s ON s.id = a.status_id
+        LEFT JOIN companies co ON co.id = a.company_id
+        LEFT JOIN departments dep ON dep.id = a.department_id
+        LEFT JOIN locations loc ON loc.id = a.location_id
+        LEFT JOIN locations rtd ON rtd.id = a.rtd_location_id
+        LEFT JOIN suppliers sup ON sup.id = a.supplier_id
+        WHERE a.deleted_at IS NULL AND a.id = ?
+        LIMIT 1
+      `, [label.asset_id])
+    } else if (label && label.status === 'blank') {
+      const shown = presentLabel(label)
+      return okItem(res, {
+        registered: false,
+        token: shown.token,
+        code: shown.code,
+        kind: shown.kind,
+        public_url: shown.public_url,
+        qr_image_url: shown.qr_image_url,
+        barcode_image_url: shown.barcode_image_url,
+      })
+    }
+  }
+
   if (!asset) return fail(res, 'Asset not found', 404)
 
   const qrToken = String(asset.qr_token || token)
@@ -101,6 +155,7 @@ router.get('/assets/:token', async (req, res) => {
     : null
 
   return okItem(res, {
+    registered: true,
     id: asset.id,
     asset_tag: asset.asset_tag,
     old_asset_tag: asset.old_asset_tag || null,

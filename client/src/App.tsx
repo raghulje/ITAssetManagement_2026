@@ -48,10 +48,12 @@ import {
   LoginPage, SettingsGeneral,
 } from './pages/Misc'
 import RolesPermissions from './pages/settings/RolesPermissions'
+import SpaceManagement from './pages/spaces/SpaceManagement'
 import NotificationsSettings from './pages/settings/NotificationsSettings'
 import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset'
 import SsoCallback from './pages/SsoCallback'
 import PublicAsset from './pages/assets/PublicAsset'
+import LabelsModule from './pages/labels/LabelsModule'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
@@ -90,6 +92,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/hardware" element={<AssetsList />} />
+                <Route path="/labels" element={<LabelsModule />} />
                 <Route path="/hardware/create" element={<AssetForm />} />
                 {/* Audit feature — restore when needed
                 <Route path="/hardware/audit/due" element={<AuditDue />} />
@@ -161,6 +164,7 @@ export default function App() {
                 <Route path="/locations/create" element={<LocationForm />} />
                 <Route path="/locations/:id" element={<LocationDetail />} />
                 <Route path="/locations/:id/edit" element={<LocationForm />} />
+                <Route path="/spaces" element={<SpaceManagement />} />
                 <Route path="/companies" element={<CompaniesList />} />
                 <Route path="/companies/create" element={<CompanyForm />} />
                 <Route path="/companies/:id" element={<CompanyDetail />} />

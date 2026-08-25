@@ -1,0 +1,3 @@
+# Keep macOS double-click scripts Unix-friendly after clone/unzip on Mac
+ITAgent_2026/mac/*.command text eol=lf
+updated_agents/mac_agent/mac/*.command text eol=lf

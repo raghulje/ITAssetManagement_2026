@@ -41,12 +41,21 @@ export type EolListFilters = {
   companyId?: number | null
   locationId?: number | null
   search?: string
+  /** When set (user APIs), restrict to the caller's authorized domains. Omitted for background digest email. */
+  permissions?: Record<string, unknown> | null
+  domain?: unknown
 }
 
 /** Assets with EOL and/or warranty ending within lead window (or overdue). */
 export async function listEolDueAssets(filters: EolListFilters = {}): Promise<EolDueRow[]> {
   const params: unknown[] = []
   let extra = ''
+  if (filters.permissions) {
+    const { inventoryDomainClause } = await import('./domainAuth.js')
+    const domain = await inventoryDomainClause(filters.permissions, filters.domain, 'a')
+    extra += domain.sql
+    params.push(...domain.params)
+  }
   if (filters.companyId) {
     extra += ' AND a.company_id = ?'
     params.push(filters.companyId)

@@ -29,6 +29,7 @@ function statusToneClass(status: ReactNode): string {
 
 export function DetailLayout({
   title,
+  kicker = 'Record',
   status,
   meta,
   actions,
@@ -42,6 +43,7 @@ export function DetailLayout({
   backLabel = 'Back',
 }: {
   title: ReactNode
+  kicker?: ReactNode
   status?: ReactNode
   meta?: { label: string; value: ReactNode }[]
   actions?: ReactNode
@@ -60,6 +62,7 @@ export function DetailLayout({
       <div className="detail-summary">
         <div className="detail-summary-top">
           <div>
+            {kicker ? <p className="detail-kicker">{kicker}</p> : null}
             <h2 className="detail-summary-title">{title}</h2>
             {(status || (meta && meta.length > 0)) && (
               <div className="detail-summary-meta">
@@ -67,7 +70,7 @@ export function DetailLayout({
                   <span className={`detail-chip${statusToneClass(status)}`}>{status}</span>
                 ) : null}
                 {meta?.map((m) => (
-                  <span key={m.label}><strong>{m.label}</strong>{m.value}</span>
+                  <span key={m.label} className="detail-meta-item"><strong>{m.label}</strong>{m.value}</span>
                 ))}
               </div>
             )}
@@ -105,7 +108,7 @@ export function DetailLayout({
           <h3 className="detail-panel-title">{panelTitle}</h3>
           <div className="detail-fields">
             {fields.map((f) => (
-              <div key={f.label} style={f.full ? { gridColumn: '1 / -1' } : undefined}>
+              <div key={f.label} className={`detail-field${f.full ? ' is-full' : ''}`}>
                 <span className="detail-field-label">{f.label}</span>
                 <div className="detail-field-value">{f.value ?? '—'}</div>
               </div>

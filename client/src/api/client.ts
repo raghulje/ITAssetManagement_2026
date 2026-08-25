@@ -2,6 +2,21 @@ import { getApiBase } from './baseUrl'
 
 export type ApiList<T> = { total: number; rows: T[] }
 
+/** Backward-compatible API error; existing `catch (e: Error)` still works. */
+export class ApiError extends Error {
+  status: number
+  messages: string[]
+  payload: unknown
+  constructor(status: number, messages: string | string[], payload: unknown = null) {
+    const list = Array.isArray(messages) ? messages : [messages]
+    super(list.join(', '))
+    this.name = 'ApiError'
+    this.status = status
+    this.messages = list
+    this.payload = payload
+  }
+}
+
 function token() {
   return localStorage.getItem('refex_token')
 }
@@ -9,6 +24,21 @@ function token() {
 export function setToken(t: string | null) {
   if (t) localStorage.setItem('refex_token', t)
   else localStorage.removeItem('refex_token')
+}
+
+function storedInventoryDomain(): 'it' | 'admin' | '' {
+  try {
+    const v = localStorage.getItem('refex_active_domain')
+    return v === 'it' || v === 'admin' ? v : ''
+  } catch {
+    return ''
+  }
+}
+
+function withActiveDomain(params: Record<string, string | number | undefined> = {}) {
+  if (params.domain !== undefined) return params
+  const domain = storedInventoryDomain()
+  return domain ? { ...params, domain } : params
 }
 
 export async function api<T = unknown>(
@@ -31,10 +61,16 @@ export async function api<T = unknown>(
     body: options.json !== undefined ? JSON.stringify(options.json) : options.body,
   })
 
-  const data = await res.json().catch(() => ({}))
+  const data = await res.json().catch(() => ({})) as {
+    messages?: string | string[]
+    message?: string
+    payload?: unknown
+  }
   if (!res.ok) {
-    const msg = Array.isArray(data.messages) ? data.messages.join(', ') : (data.messages || data.message || res.statusText)
-    throw new Error(String(msg))
+    const messages = Array.isArray(data.messages)
+      ? data.messages
+      : [String(data.messages || data.message || res.statusText)]
+    throw new ApiError(res.status, messages, data.payload ?? null)
   }
   return data as T
 }
@@ -57,12 +93,12 @@ export const authApi = {
 export const hardwareApi = {
   list: (params: Record<string, string | number | undefined> = {}) => {
     const q = new URLSearchParams()
-    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') q.set(k, String(v)) })
+    Object.entries(withActiveDomain(params)).forEach(([k, v]) => { if (v !== undefined && v !== '') q.set(k, String(v)) })
     return api<ApiList<Record<string, unknown>>>(`/hardware?${q}`)
   },
   facets: (params: Record<string, string | number | undefined> = {}) => {
     const q = new URLSearchParams()
-    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') q.set(k, String(v)) })
+    Object.entries(withActiveDomain(params)).forEach(([k, v]) => { if (v !== undefined && v !== '') q.set(k, String(v)) })
     return api<{ statuses: string[]; assignees: string[] }>(`/hardware/facets?${q}`)
   },
   get: (id: number | string) => api<Record<string, unknown>>(`/hardware/${id}`),
@@ -75,7 +111,7 @@ export const hardwareApi = {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== '') q.set(k, String(v))
     })
-    return api<{ asset_tag: string; prefix: string; sequence: number }>(`/hardware/next-tag?${q}`)
+    return api<{ asset_tag: string; prefix: string; sequence: number; fy?: string }>(`/hardware/next-tag?${q}`)
   },
   create: (body: unknown) => api('/hardware', { method: 'POST', json: body }),
   update: (id: number | string, body: unknown) => api(`/hardware/${id}`, { method: 'PUT', json: body }),
@@ -102,14 +138,31 @@ export const hardwareApi = {
   },
 }
 
+export type DashSlice = { label: string; value: number }
+export type DashTrendPoint = { day: string; assigned: number; returned: number }
+export type DashCharts = {
+  status: DashSlice[]
+  types: DashSlice[]
+  companies: DashSlice[]
+  trend: DashTrendPoint[]
+}
+
 export const dashboardApi = {
   counts: (params: Record<string, string | number | undefined> = {}) => {
     const q = new URLSearchParams()
-    Object.entries(params).forEach(([k, v]) => {
+    Object.entries(withActiveDomain(params)).forEach(([k, v]) => {
       if (v !== undefined && v !== '') q.set(k, String(v))
     })
     const qs = q.toString()
     return api<Record<string, number>>(`/dashboard${qs ? `?${qs}` : ''}`)
+  },
+  charts: (params: Record<string, string | number | undefined> = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(withActiveDomain(params)).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') q.set(k, String(v))
+    })
+    const qs = q.toString()
+    return api<DashCharts>(`/dashboard/charts${qs ? `?${qs}` : ''}`)
   },
 }
 
@@ -175,15 +228,56 @@ export const mastersApi = {
   statuslabels: () => api<{ results: SelectOption[] }>('/statuslabels/selectlist'),
   suppliers: (search?: string) =>
     api<{ results: SelectOption[] }>(`/suppliers/selectlist${search ? `?search=${encodeURIComponent(search)}` : ''}`),
-  categories: (search?: string, categoryType?: string) => {
+  categories: (search?: string, categoryType?: string, domain?: string) => {
     const q = new URLSearchParams()
     if (search) q.set('search', search)
     if (categoryType) q.set('category_type', categoryType)
+    if (domain) q.set('domain', domain)
     const s = q.toString()
     return api<{ results: SelectOption[] }>(`/categories/selectlist${s ? `?${s}` : ''}`)
   },
   /** Hardware asset types: Laptop, Desktop, Tablet, Mobile, … */
-  assetTypes: (search?: string) => mastersApi.categories(search, 'asset'),
+  assetTypes: (search?: string, domain?: string) => mastersApi.categories(search, 'asset', domain),
+  // Wave 1 classification masters
+  assetDomains: (search?: string) =>
+    api<{ results: SelectOption[] }>(
+      `/asset-domains/selectlist${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+    ),
+  assetDomainCreate: (body: { name: string; code?: string | null }) =>
+    api<{ status: string; messages: string[]; payload: { id: number } }>('/asset-domains', {
+      method: 'POST',
+      json: body,
+    }),
+  assetDomainUpdate: (id: number | string, body: Record<string, unknown>) =>
+    api<{ status: string; messages: string[]; payload: Record<string, unknown> }>(`/asset-domains/${id}`, {
+      method: 'PUT',
+      json: body,
+    }),
+  assetDomainRemove: (id: number | string) =>
+    api<{ status: string; messages: string[] }>(`/asset-domains/${id}`, { method: 'DELETE' }),
+
+  // Asset type masters (Laptop / Desktop / …) — filtered for dropdowns by category_id.
+  assetTypeMasters: (search?: string, categoryId?: string | number) => {
+    const q = new URLSearchParams()
+    if (search) q.set('search', search)
+    if (categoryId != null && categoryId !== '') q.set('category_id', String(categoryId))
+    const s = q.toString()
+    return api<{ results: Array<SelectOption & { category_id?: number; asset_domain_id?: number }> }>(
+      `/asset-types/selectlist${s ? `?${s}` : ''}`,
+    )
+  },
+  assetTypeCreate: (body: { name: string; category_id: number; asset_domain_id?: number | null }) =>
+    api<{ status: string; messages: string[]; payload: { id: number } }>('/asset-types', {
+      method: 'POST',
+      json: body,
+    }),
+  assetTypeUpdate: (id: number | string, body: Record<string, unknown>) =>
+    api<{ status: string; messages: string[]; payload: Record<string, unknown> }>(`/asset-types/${id}`, {
+      method: 'PUT',
+      json: body,
+    }),
+  assetTypeRemove: (id: number | string) =>
+    api<{ status: string; messages: string[] }>(`/asset-types/${id}`, { method: 'DELETE' }),
   manufacturers: (search?: string) =>
     api<{ results: SelectOption[] }>(`/manufacturers/selectlist${search ? `?search=${encodeURIComponent(search)}` : ''}`),
 
@@ -257,6 +351,7 @@ export const mastersApi = {
     parent_id?: number | null
     address?: string | null
     notes?: string | null
+    is_office?: boolean | number
   }) =>
     api<{ status: string; messages: string[]; payload: { id: number; name: string } }>('/locations', {
       method: 'POST',
@@ -313,7 +408,7 @@ export const mastersApi = {
       method: 'POST',
       json: body,
     }),
-  createCategory: (body: { name: string; category_type?: string }) =>
+  createCategory: (body: { name: string; category_type?: string; domain_id?: number | null; domain?: string }) =>
     api<{ status: string; messages: string[]; payload: { id: number; name: string } }>('/categories', {
       method: 'POST',
       json: body,
@@ -322,7 +417,7 @@ export const mastersApi = {
 
 function listParams(params: Record<string, string | number | undefined> = {}) {
   const q = new URLSearchParams()
-  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') q.set(k, String(v)) })
+  Object.entries(withActiveDomain(params)).forEach(([k, v]) => { if (v !== undefined && v !== '') q.set(k, String(v)) })
   return q
 }
 
@@ -411,4 +506,207 @@ export const kitsApi = {
       method: 'POST',
       json: body,
     }),
+}
+
+/** Wave 2.8 — Facility hierarchy APIs (Wave 2.6 backend). Does not alter mastersApi selectlists. */
+export type FacilityTreeNode = {
+  id: number
+  name: string
+  parent_id: number | null
+  company_id: number | null
+  archived: boolean
+  location_type_id: number | null
+  location_type: { id: number; code: string; name: string } | null
+  space_subtype_id: number | null
+  space_subtype: { id: number; code: string; name: string } | null
+  children: FacilityTreeNode[]
+}
+
+export type FacilityTypeRow = {
+  id: number
+  name: string
+  code: string
+  hierarchy_level?: number
+  is_space?: number
+}
+
+export type FacilitySubtypeRow = {
+  id: number
+  name: string
+  code: string
+}
+
+export const facilitiesApi = {
+  getTree: (params: Record<string, string | number | boolean | undefined> = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v === undefined || v === '') return
+      q.set(k, String(v))
+    })
+    const s = q.toString()
+    return api<{
+      trees: FacilityTreeNode[]
+      operational?: FacilityTreeNode[]
+      meta?: { cycles_detected?: boolean; ordering?: string }
+    }>(`/locations/tree${s ? `?${s}` : ''}`)
+  },
+  getPath: (id: number | string) =>
+    api<{ path: Array<Omit<FacilityTreeNode, 'children'>> }>(`/locations/${id}/path`),
+  getChildren: (id: number | string, includeArchived?: boolean) => {
+    const q = includeArchived ? '?include_archived=true' : ''
+    return api<{ children: FacilityTreeNode[] }>(`/locations/${id}/children${q}`)
+  },
+  validateParentCreate: (params: {
+    parent_id?: number | null
+    location_type_id?: number | null
+    type?: string | null
+  }) => {
+    const q = new URLSearchParams()
+    if (params.parent_id != null) q.set('parent_id', String(params.parent_id))
+    if (params.location_type_id != null) q.set('location_type_id', String(params.location_type_id))
+    if (params.type) q.set('type', params.type)
+    return api<{ valid: boolean; parent_id: number | null }>(`/locations/validate-parent?${q}`)
+  },
+  validateParentMove: (id: number | string, parentId: number | null) => {
+    const q = new URLSearchParams()
+    if (parentId != null) q.set('parent_id', String(parentId))
+    return api<{ valid: boolean; parent_id: number | null }>(`/locations/${id}/validate-parent?${q}`)
+  },
+  createNode: (body: {
+    name: string
+    location_type_id: number
+    parent_id?: number | null
+    company_id?: number | null
+    space_subtype_id?: number | null
+    address?: string | null
+    notes?: string | null
+  }) =>
+    api<{ status: string; messages: string[]; payload: Record<string, unknown> }>('/locations', {
+      method: 'POST',
+      json: body,
+    }),
+  moveNode: (id: number | string, parent_id: number | null) =>
+    api<{ status: string; messages: string[]; payload: Record<string, unknown> }>(`/locations/${id}/move`, {
+      method: 'POST',
+      json: { parent_id },
+    }),
+  archiveNode: (id: number | string) =>
+    api<{ status: string; messages: string[]; payload: unknown }>(`/locations/${id}/archive`, {
+      method: 'POST',
+      json: {},
+    }),
+  restoreNode: (id: number | string) =>
+    api<{ status: string; messages: string[]; payload: Record<string, unknown> }>(`/locations/${id}/restore`, {
+      method: 'POST',
+      json: {},
+    }),
+  getNode: (id: number | string) => api<Record<string, unknown>>(`/locations/${id}`),
+  getAssets: (id: number | string, params: { limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.limit != null) q.set('limit', String(params.limit))
+    if (params.offset != null) q.set('offset', String(params.offset))
+    const s = q.toString()
+    return api<{
+      total: number
+      placement_count: number
+      rtd_count: number
+      rows: Record<string, unknown>[]
+    }>(`/locations/${id}/assets${s ? `?${s}` : ''}`)
+  },
+  getInventory: (id: number | string) =>
+    api<{
+      consumables: { total: number; rows: Record<string, unknown>[] }
+      accessories: { total: number; rows: Record<string, unknown>[] }
+      components: { total: number; rows: Record<string, unknown>[] }
+      total: number
+    }>(`/locations/${id}/inventory`),
+  listTypes: () => api<ApiList<FacilityTypeRow>>('/location-types'),
+  listSubtypes: () => api<ApiList<FacilitySubtypeRow>>('/space-subtypes'),
+}
+
+export const spacesApi = {
+  offices: () => api<ApiList<Record<string, unknown>>>('/spaces/offices'),
+  office: (id: number | string) => api<Record<string, unknown>>(`/spaces/offices/${id}`),
+  createFloor: (officeId: number | string, body: { name: string; seat_count?: number | null; space_active?: boolean }) =>
+    api<{ status: string; messages: string[]; payload: { id: number } }>(`/spaces/offices/${officeId}/floors`, {
+      method: 'POST',
+      json: body,
+    }),
+  updateFloor: (id: number | string, body: Record<string, unknown>) =>
+    api<{ status: string; messages: string[]; payload: { id: number } }>(`/spaces/floors/${id}`, {
+      method: 'PATCH',
+      json: body,
+    }),
+  createSpace: (floorId: number | string, body: {
+    name: string
+    subtype?: string
+    seat_count?: number | null
+    occupant_employee_id?: number | null
+  }) =>
+    api<{ status: string; messages: string[]; payload: { id: number } }>(`/spaces/floors/${floorId}/spaces`, {
+      method: 'POST',
+      json: body,
+    }),
+  generateWorkstations: (floorId: number | string, body: { count: number; prefix?: string }) =>
+    api<{ status: string; messages: string[]; payload: { count: number; ids: number[] } }>(
+      `/spaces/floors/${floorId}/workstations`,
+      { method: 'POST', json: body },
+    ),
+  updateSpace: (id: number | string, body: {
+    name?: string
+    seat_count?: number | null
+    occupant_employee_id?: number | null
+    subtype?: string
+  }) =>
+    api<{ status: string; messages: string[]; payload: { id: number } }>(`/spaces/spaces/${id}`, {
+      method: 'PATCH',
+      json: body,
+    }),
+  spaceAssets: (id: number | string) => api<ApiList<Record<string, unknown>>>(`/spaces/spaces/${id}/assets`),
+}
+
+export type BlankLabel = {
+  id: number
+  batch_id: number
+  token: string
+  code: string
+  kind: string
+  status: string
+  asset_id: number | null
+  public_url: string
+  qr_image_url: string | null
+  barcode_image_url: string | null
+  created_at: string | null
+  registered_at: string | null
+}
+
+export const labelCodesApi = {
+  list: (params: Record<string, string | number | undefined> = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') q.set(k, String(v))
+    })
+    const s = q.toString()
+    return api<ApiList<BlankLabel>>(`/label-codes${s ? `?${s}` : ''}`)
+  },
+  batches: () => api<ApiList<{
+    id: number
+    kind: string
+    count: number
+    created_at: string | null
+    blank: number
+    registered: number
+  }>>('/label-codes/batches'),
+  batch: (id: number | string) => api<ApiList<BlankLabel>>(`/label-codes/batches/${id}`),
+  generate: (body: { count: number; kind: 'qr' | 'barcode' | 'both' }) =>
+    api<{
+      status: string
+      messages: string[]
+      payload: { batch_id: number; count: number; kind: string; rows: BlankLabel[] }
+    }>('/label-codes/generate', { method: 'POST', json: body }),
+  register: (token: string, body: Record<string, unknown>) =>
+    api<{ status: string; messages: string[]; payload: Record<string, unknown> }>(
+      `/label-codes/${encodeURIComponent(token)}/register`,
+      { method: 'POST', json: body },
+    ),
 }

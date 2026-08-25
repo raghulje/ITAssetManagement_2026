@@ -29,7 +29,7 @@ export default function AgentActivity() {
   useEffect(() => { load() }, [])
 
   return (
-    <AppLayout title="Agent activity" subtitle="Every ITAgent sync attempt — update, create, unmatched, or failed">
+    <AppLayout title="Agent activity" subtitle="Every ITAgent sync attempt — update, create, unmatched, or failed" backTo="/reports">
       <Box title="ITAgent sync log" type="primary">
         <div className="form-inline" style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input

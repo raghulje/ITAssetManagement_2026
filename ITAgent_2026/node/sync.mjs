@@ -7,6 +7,10 @@ import si from 'systeminformation'
 import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 const apiBase = (process.env.REFEX_API_URL || 'https://asset.refexone.com/api/v1').replace(/\/$/, '')
 const agentKey = process.env.REFEX_AGENT_KEY || ''
@@ -18,6 +22,70 @@ const stateDir = process.env.REFEX_AGENT_STATE_DIR
   || path.join(process.env.PROGRAMDATA || process.env.HOME || '.', 'ITAgent_2026')
 const stateFile = path.join(stateDir, 'agent.json')
 
+function clean(s) {
+  return String(s || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+async function collectMacApps() {
+  try {
+    const { stdout } = await execFileAsync('system_profiler', ['SPApplicationsDataType', '-json'], {
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 120000,
+    })
+    const parsed = JSON.parse(stdout)
+    const rows = parsed?.SPApplicationsDataType || []
+    const apps = []
+    for (const row of rows) {
+      const name = clean(row._name || row.name)
+      if (!name) continue
+      apps.push({
+        name,
+        publisher: clean(row.obtained_from || row.info || ''),
+        version: clean(row.version),
+        install_date: clean(row.lastModified || ''),
+      })
+      if (apps.length >= 500) break
+    }
+    return apps
+  } catch {
+    return []
+  }
+}
+
+async function collectLinuxApps() {
+  try {
+    const { stdout } = await execFileAsync('bash', ['-lc', 'dpkg-query -W -f=\'${Package}\\t${Version}\\n\' 2>/dev/null | head -n 500'], {
+      timeout: 60000,
+    })
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [name, version] = line.split('\t')
+        return { name: clean(name), version: clean(version) }
+      })
+      .filter((a) => a.name)
+  } catch {
+    return []
+  }
+}
+
+async function collectSoftware() {
+  if (process.platform === 'darwin') return collectMacApps()
+  if (process.platform === 'linux') return collectLinuxApps()
+  // Windows Node path: keep light; prefer Windows EXE/PS1 for full registry list
+  try {
+    const apps = await si.versions()
+    return Object.entries(apps || {})
+      .filter(([, v]) => v)
+      .slice(0, 200)
+      .map(([name, version]) => ({ name: clean(name), version: clean(version) }))
+  } catch {
+    return []
+  }
+}
+
 async function collect() {
   const [system, bios, cpu, mem, osInfo] = await Promise.all([
     si.system(),
@@ -27,13 +95,10 @@ async function collect() {
     si.osInfo(),
   ])
 
-  let software = ''
-  try {
-    const apps = await si.versions()
-    software = JSON.stringify(apps).slice(0, 4000)
-  } catch {
-    software = ''
-  }
+  const list = await collectSoftware()
+  const legacyCsv = list
+    .map((a) => `"${a.name}", "${a.publisher || ''}", "${a.version || ''}", "${a.install_date || ''}"`)
+    .join(', ')
 
   return {
     Computer_Name: os.hostname(),
@@ -49,7 +114,9 @@ async function collect() {
     BIOS_Version: bios.version || '',
     Total_Physical_RAM: String(mem.total || ''),
     Virtual_RAM_Available: String(mem.available || ''),
-    Installed_Software: software,
+    Installed_Software: legacyCsv,
+    Installed_Software_List: list,
+    Installed_Software_Count: list.length,
     platform: process.platform,
     Created_By: 'ITAgent_2026',
     agent_version: agentVersion,
@@ -123,18 +190,22 @@ async function register() {
 
 async function ensureRegistered() {
   let state = loadState()
-  if (!state?.agent_uuid || !state?.agent_token) state = await register()
+  if (!state?.agent_uuid || !state?.agent_token || (state.api_base && state.api_base !== apiBase)) {
+    state = await register()
+  }
   return state
 }
 
 async function syncOnce(state, commandId = null) {
   const payload = await collect()
   if (commandId) payload.command_id = commandId
+  console.log(`Inventory sync… software=${payload.Installed_Software_Count}`)
   const data = await post('/agent/sync', payload, state)
   console.log('Sync OK', JSON.stringify({
-    matched: data.payload?.matched,
+    action: data.payload?.action,
     matched_by: data.payload?.matched_by,
     asset_id: data.payload?.asset?.id,
+    software: payload.Installed_Software_Count,
   }))
   return data
 }
@@ -158,7 +229,6 @@ async function ackFailed(state, commandId, error) {
 const loop = process.argv.includes('--loop') || process.argv.includes('watch')
 
 if (!loop) {
-  // One-shot: sync only (legacy). Optional register if REFEX_AGENT_REGISTER=1
   let state = loadState()
   if (process.env.REFEX_AGENT_REGISTER === '1' || !state) {
     try { state = await ensureRegistered() } catch (e) {
@@ -174,14 +244,18 @@ console.log(`ITAgent_2026 service → ${apiBase} (poll ${pollMs}ms)`)
 console.log('State:', stateFile)
 
 let state = await ensureRegistered()
-try { await syncOnce(state) } catch (e) { console.error('Initial sync failed', e.message) }
-
-let lastFull = Date.now()
+// Heartbeat first so remote scans are claimed quickly; inventory follows.
+let lastFull = Date.now() - fullSyncMs
+let hbCount = 0
 
 async function tick() {
   try {
     const hb = await heartbeat(state)
+    hbCount += 1
     const cmds = hb.payload?.commands || []
+    if (hbCount === 1 || hbCount % 10 === 0) {
+      console.log(new Date().toISOString(), `Heartbeat OK (#${hbCount}) commands=${cmds.length}`)
+    }
     for (const cmd of cmds) {
       console.log(new Date().toISOString(), `Command #${cmd.id}: ${cmd.command}`)
       if (cmd.command === 'scan' || cmd.command === 'rerun') {
@@ -194,8 +268,12 @@ async function tick() {
       }
     }
     if (Date.now() - lastFull >= fullSyncMs) {
-      await syncOnce(state)
-      lastFull = Date.now()
+      try {
+        await syncOnce(state)
+        lastFull = Date.now()
+      } catch (e) {
+        console.error('Periodic sync failed', e.message)
+      }
     }
   } catch (e) {
     console.error(new Date().toISOString(), 'Loop error', e.message)

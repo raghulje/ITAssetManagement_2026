@@ -4,6 +4,15 @@ import bcrypt from 'bcryptjs'
 import { all, get, run, now } from '../db/index.js'
 import { logAction } from './actionLog.js'
 import { allocateAssetTag } from './assetTag.js'
+import {
+  allowedDomainCodes,
+  canAccessDomainId,
+  INVENTORY_IMPORT_TYPES,
+  inventoryDomainColumnsReady,
+  loadAssetDomains,
+  resolveImportDomainId,
+  type AssetDomainRow,
+} from './domainAuth.js'
 
 export const IMPORT_FIELDS: Record<string, { key: string; label: string; required?: boolean; aliases?: string[] }[]> = {
   asset: [
@@ -275,6 +284,8 @@ export async function processImport(opts: {
   updateExisting?: boolean
   userId?: number
   filePath: string
+  permissions?: Record<string, unknown>
+  domain?: unknown
 }) {
   const { rows } = parseCsvFile(opts.filePath)
   const errors: { row: number; message: string }[] = []
@@ -282,6 +293,24 @@ export async function processImport(opts: {
   let updated = 0
   const ts = now()
   const map = opts.mappings
+
+  const inventoryType = (INVENTORY_IMPORT_TYPES as readonly string[]).includes(opts.type)
+  const domainReady = inventoryType ? await inventoryDomainColumnsReady() : false
+  const domainRows: AssetDomainRow[] = domainReady ? await loadAssetDomains() : []
+  let importDomainId: number | null = null
+  let importDomainCode: string | null = null
+  if (inventoryType && domainReady) {
+    const resolved = await resolveImportDomainId(opts.permissions, opts.domain)
+    importDomainId = resolved.id
+    importDomainCode = resolved.code
+  }
+
+  const assertTouch = (domainId: number | null | undefined) => {
+    if (!domainReady) return
+    if (!canAccessDomainId(allowedDomainCodes(opts.permissions), domainId, domainRows)) {
+      throw new Error('Forbidden: no access to record domain')
+    }
+  }
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
@@ -310,13 +339,15 @@ export async function processImport(opts: {
         const locationId = await findOrCreateByName('locations', cell(row, map, 'location'), { company_id: companyId })
         const supplierId = await findOrCreateByName('suppliers', cell(row, map, 'supplier'))
         // Match by legacy tag (old) or current system tag
-        const existing = await get<{ id: number }>(`
-          SELECT id FROM assets
-          WHERE deleted_at IS NULL AND (old_asset_tag = ? OR asset_tag = ?)
-          LIMIT 1
-        `, [legacyTag, legacyTag])
+        const existing = await get<{ id: number; domain_id?: number | null }>(
+          domainReady
+            ? `SELECT id, domain_id FROM assets WHERE deleted_at IS NULL AND (old_asset_tag = ? OR asset_tag = ?) LIMIT 1`
+            : `SELECT id FROM assets WHERE deleted_at IS NULL AND (old_asset_tag = ? OR asset_tag = ?) LIMIT 1`,
+          [legacyTag, legacyTag],
+        )
         const cost = cell(row, map, 'purchase_cost') ? Number(cell(row, map, 'purchase_cost')) : null
         if (existing && opts.updateExisting) {
+          assertTouch(existing.domain_id)
           await run(`
             UPDATE assets SET name=?, serial=?, model_id=?, status_id=?, company_id=?, location_id=?, rtd_location_id=COALESCE(?, rtd_location_id),
               supplier_id=?, purchase_date=NULLIF(?,''), purchase_cost=?, order_number=NULLIF(?,''), notes=?,
@@ -338,14 +369,28 @@ export async function processImport(opts: {
             legalEntityId: null,
             categoryId,
           })
-          const info = await run(`
+          const info = await run(
+            domainReady
+              ? `
+            INSERT INTO assets (domain_id, asset_tag, old_asset_tag, name, serial, model_id, status_id, company_id, location_id, rtd_location_id, supplier_id,
+              purchase_date, purchase_cost, order_number, notes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?,''), ?, NULLIF(?,''), ?, ?, ?)
+          `
+              : `
             INSERT INTO assets (asset_tag, old_asset_tag, name, serial, model_id, status_id, company_id, location_id, rtd_location_id, supplier_id,
               purchase_date, purchase_cost, order_number, notes, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?,''), ?, NULLIF(?,''), ?, ?, ?)
-          `, [
-            newTag, legacyTag, cell(row, map, 'name') || null, cell(row, map, 'serial') || null, modelId, statusId, companyId, locationId, locationId,
-            supplierId, cell(row, map, 'purchase_date'), cost, cell(row, map, 'order_number'), cell(row, map, 'notes') || null, ts, ts,
-          ])
+          `,
+            domainReady
+              ? [
+                importDomainId, newTag, legacyTag, cell(row, map, 'name') || null, cell(row, map, 'serial') || null, modelId, statusId, companyId, locationId, locationId,
+                supplierId, cell(row, map, 'purchase_date'), cost, cell(row, map, 'order_number'), cell(row, map, 'notes') || null, ts, ts,
+              ]
+              : [
+                newTag, legacyTag, cell(row, map, 'name') || null, cell(row, map, 'serial') || null, modelId, statusId, companyId, locationId, locationId,
+                supplierId, cell(row, map, 'purchase_date'), cost, cell(row, map, 'order_number'), cell(row, map, 'notes') || null, ts, ts,
+              ],
+          )
           created++
           const username = cell(row, map, 'assigned_to')
           if (username) {
@@ -401,11 +446,14 @@ export async function processImport(opts: {
         const minAmt = Number(cell(row, map, 'min_amt') || 0) || 0
         const modelNumber = cell(row, map, 'model_number') || null
         const purchaseCost = cell(row, map, 'purchase_cost') ? Number(cell(row, map, 'purchase_cost')) : null
-        const existing = await get<{ id: number }>(
-          `SELECT id FROM ${table} WHERE name = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`,
+        const existing = await get<{ id: number; domain_id?: number | null }>(
+          domainReady
+            ? `SELECT id, domain_id FROM ${table} WHERE name = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`
+            : `SELECT id FROM ${table} WHERE name = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`,
           [name],
         )
         if (existing && opts.updateExisting) {
+          assertTouch(existing.domain_id)
           if (table === 'components') {
             await run(`
               UPDATE components SET category_id=?, company_id=?, location_id=?, model_number=?, qty=?, min_amt=?, purchase_cost=?, serial=?, updated_at=?, deleted_at=NULL
@@ -421,22 +469,40 @@ export async function processImport(opts: {
         } else if (existing && !opts.updateExisting) {
           throw new Error(`${opts.type} "${name}" already exists`)
         } else if (table === 'components') {
-          await run(`
-            INSERT INTO components (name, category_id, company_id, location_id, model_number, qty, min_amt, purchase_cost, serial, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, [name, catId, companyId, locationId, modelNumber, qty, minAmt, purchaseCost, cell(row, map, 'serial') || null, ts, ts])
+          await run(
+            domainReady
+              ? `INSERT INTO components (domain_id, name, category_id, company_id, location_id, model_number, qty, min_amt, purchase_cost, serial, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              : `INSERT INTO components (name, category_id, company_id, location_id, model_number, qty, min_amt, purchase_cost, serial, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            domainReady
+              ? [importDomainId, name, catId, companyId, locationId, modelNumber, qty, minAmt, purchaseCost, cell(row, map, 'serial') || null, ts, ts]
+              : [name, catId, companyId, locationId, modelNumber, qty, minAmt, purchaseCost, cell(row, map, 'serial') || null, ts, ts],
+          )
           created++
         } else if (table === 'accessories') {
-          await run(`
-            INSERT INTO accessories (name, category_id, company_id, location_id, model_number, qty, min_amt, purchase_cost, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, [name, catId, companyId, locationId, modelNumber, qty, minAmt, purchaseCost, ts, ts])
+          await run(
+            domainReady
+              ? `INSERT INTO accessories (domain_id, name, category_id, company_id, location_id, model_number, qty, min_amt, purchase_cost, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              : `INSERT INTO accessories (name, category_id, company_id, location_id, model_number, qty, min_amt, purchase_cost, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            domainReady
+              ? [importDomainId, name, catId, companyId, locationId, modelNumber, qty, minAmt, purchaseCost, ts, ts]
+              : [name, catId, companyId, locationId, modelNumber, qty, minAmt, purchaseCost, ts, ts],
+          )
           created++
         } else {
-          await run(`
-            INSERT INTO consumables (name, category_id, company_id, location_id, model_number, qty, min_amt, purchase_cost, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, [name, catId, companyId, locationId, modelNumber, qty, minAmt, purchaseCost, ts, ts])
+          await run(
+            domainReady
+              ? `INSERT INTO consumables (domain_id, name, category_id, company_id, location_id, model_number, qty, min_amt, purchase_cost, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              : `INSERT INTO consumables (name, category_id, company_id, location_id, model_number, qty, min_amt, purchase_cost, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            domainReady
+              ? [importDomainId, name, catId, companyId, locationId, modelNumber, qty, minAmt, purchaseCost, ts, ts]
+              : [name, catId, companyId, locationId, modelNumber, qty, minAmt, purchaseCost, ts, ts],
+          )
           created++
         }
       } else if (opts.type === 'license') {
@@ -446,8 +512,14 @@ export async function processImport(opts: {
         if (!Number.isFinite(seats) || seats < 1) throw new Error('Licenses count must be at least 1')
         const companyId = await findOrCreateByName('companies', cell(row, map, 'company'))
         const manufacturerId = await findOrCreateByName('manufacturers', cell(row, map, 'manufacturer'))
-        const existing = await get<{ id: number }>(`SELECT id FROM licenses WHERE name = ? AND deleted_at IS NULL LIMIT 1`, [name])
+        const existing = await get<{ id: number; domain_id?: number | null }>(
+          domainReady
+            ? `SELECT id, domain_id FROM licenses WHERE name = ? AND deleted_at IS NULL LIMIT 1`
+            : `SELECT id FROM licenses WHERE name = ? AND deleted_at IS NULL LIMIT 1`,
+          [name],
+        )
         if (existing && opts.updateExisting) {
+          assertTouch(existing.domain_id)
           await run(`
             UPDATE licenses SET serial=?, company_id=?, manufacturer_id=?, expiration_date=NULLIF(?,''), purchase_cost=?, updated_at=?, deleted_at=NULL
             WHERE id=?
@@ -461,13 +533,22 @@ export async function processImport(opts: {
         } else if (existing) {
           throw new Error(`License "${name}" already exists`)
         } else {
-          const info = await run(`
-            INSERT INTO licenses (name, serial, seats, company_id, manufacturer_id, expiration_date, purchase_cost, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, NULLIF(?,''), ?, ?, ?)
-          `, [
-            name, cell(row, map, 'serial') || null, seats, companyId, manufacturerId,
-            cell(row, map, 'expiration_date'), cell(row, map, 'purchase_cost') ? Number(cell(row, map, 'purchase_cost')) : null, ts, ts,
-          ])
+          const info = await run(
+            domainReady
+              ? `INSERT INTO licenses (domain_id, name, serial, seats, company_id, manufacturer_id, expiration_date, purchase_cost, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, NULLIF(?,''), ?, ?, ?)`
+              : `INSERT INTO licenses (name, serial, seats, company_id, manufacturer_id, expiration_date, purchase_cost, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, NULLIF(?,''), ?, ?, ?)`,
+            domainReady
+              ? [
+                importDomainId, name, cell(row, map, 'serial') || null, seats, companyId, manufacturerId,
+                cell(row, map, 'expiration_date'), cell(row, map, 'purchase_cost') ? Number(cell(row, map, 'purchase_cost')) : null, ts, ts,
+              ]
+              : [
+                name, cell(row, map, 'serial') || null, seats, companyId, manufacturerId,
+                cell(row, map, 'expiration_date'), cell(row, map, 'purchase_cost') ? Number(cell(row, map, 'purchase_cost')) : null, ts, ts,
+              ],
+          )
           await insertLicenseRows(Number(info.insertId), seats, ts)
           created++
         }
@@ -636,5 +717,5 @@ export async function processImport(opts: {
     note: `${opts.type}: +${created} ~${updated} !${errors.length}`,
   })
 
-  return { created, updated, errors, total_rows: rows.length }
+  return { created, updated, errors, total_rows: rows.length, domain: importDomainCode }
 }

@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useEffect, useState, type FormEvent } from 'react'
 import AppLayout from '../../layout/AppLayout'
-import { AppSelect, Box, DataTable, DateField, Field, PageForm } from '../../components/ui'
+import { AppSelect, Box, DataTable, DateField, EmployeeSelect, Field, PageForm } from '../../components/ui'
 // import { ModuleInsights } from '../../components/ModuleInsights' // restore with insight cards when needed
 import { DetailLayout, DetailPanel } from '../../components/DetailLayout'
 import { MasterSelect, masterPayloadId } from '../../components/MasterSelect'
@@ -14,10 +14,12 @@ import {
   usersApi,
   type SelectOption,
 } from '../../api/client'
-import { employeesApi } from '../../api/employees'
 import { formatINR } from '../../utils/money'
 import { useToast } from '../../components/Toast'
 import { getApiBase } from '../../api/baseUrl'
+import { useAuth } from '../../api/AuthContext'
+import { DomainSelect } from '../../components/DomainSelect'
+import { defaultDomainCode } from '../../lib/domainScope'
 
 /** Mirror server computeSubscriptionEnd for live form preview. */
 function computeSubEnd(
@@ -87,6 +89,7 @@ type FormState = {
   subscription_cycles: string
   is_recurring: boolean
   notes: string
+  domain: string
 }
 
 const emptyForm: FormState = {
@@ -107,9 +110,11 @@ const emptyForm: FormState = {
   subscription_cycles: '1',
   is_recurring: false,
   notes: '',
+  domain: 'it',
 }
 
 export function LicensesList() {
+  const { activeDomain } = useAuth()
   const [q, setQ] = useState('')
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [total, setTotal] = useState(0)
@@ -152,7 +157,7 @@ export function LicensesList() {
   useEffect(() => {
     const t = setTimeout(load, 250)
     return () => clearTimeout(t)
-  }, [q, companyId])
+  }, [q, companyId, activeDomain])
 
   return (
     <AppLayout title="Licenses" subtitle={loading ? 'Loading…' : `${total} licenses`}>
@@ -689,8 +694,9 @@ export function LicenseForm() {
   const { id } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
+  const { domainScope, activeDomain } = useAuth()
   const isEdit = Boolean(id)
-  const [form, setForm] = useState<FormState>(emptyForm)
+  const [form, setForm] = useState<FormState>({ ...emptyForm, domain: activeDomain || defaultDomainCode(domainScope) })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(isEdit)
@@ -698,18 +704,15 @@ export function LicenseForm() {
   const [companies, setCompanies] = useState<SelectOption[]>([])
   const [manufacturers, setManufacturers] = useState<SelectOption[]>([])
   const [categories, setCategories] = useState<SelectOption[]>([])
-  const [employees, setEmployees] = useState<SelectOption[]>([])
-  const [empSearch, setEmpSearch] = useState('')
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
   useEffect(() => {
-    Promise.all([mastersApi.companies(), mastersApi.manufacturers(), mastersApi.categories()])
-      .then(([c, m, cat]) => {
+    Promise.all([mastersApi.companies(), mastersApi.manufacturers()])
+      .then(([c, m]) => {
         setCompanies(c.results || [])
         setManufacturers(m.results || [])
-        setCategories(cat.results || [])
         if (!isEdit) {
           setForm((f) => ({
             ...f,
@@ -721,11 +724,11 @@ export function LicenseForm() {
   }, [isEdit])
 
   useEffect(() => {
-    employeesApi
-      .selectlist(empSearch || undefined)
-      .then((r) => setEmployees(r.results || []))
-      .catch(() => setEmployees([]))
-  }, [empSearch])
+    mastersApi
+      .categories(undefined, 'license', form.domain || defaultDomainCode(domainScope))
+      .then((cat) => setCategories(cat.results || []))
+      .catch(() => setCategories([]))
+  }, [form.domain, domainScope])
 
   // Auto-fill subscription end from purchase date + period × cycles
   useEffect(() => {
@@ -772,9 +775,8 @@ export function LicenseForm() {
           subscription_cycles: String(lic.subscription_cycles ?? 1),
           is_recurring: Boolean(lic.is_recurring),
           notes: String(lic.notes || ''),
+          domain: String((lic.domain as { code?: string } | null)?.code || defaultDomainCode(domainScope)),
         })
-        const reqName = nestName(lic.requested_by_employee)
-        if (reqName && reqName !== '—') setEmpSearch(reqName)
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false))
@@ -814,6 +816,7 @@ export function LicenseForm() {
         : 1,
       is_recurring: form.is_recurring,
       notes: form.notes || null,
+      domain: form.domain,
     }
     try {
       if (isEdit && id) {
@@ -850,6 +853,12 @@ export function LicenseForm() {
         submitLabel={busy ? 'Saving…' : isEdit ? 'Update' : 'Create'}
         submitDisabled={busy}
       >
+        <DomainSelect
+          value={form.domain}
+          allowed={domainScope.codes}
+          onChange={(code) => set('domain', code)}
+          required
+        />
         <Field label="Software Name" required>
           <input className="form-control" value={form.name} onChange={(e) => set('name', e.target.value)} required />
         </Field>
@@ -897,23 +906,11 @@ export function LicenseForm() {
         />
 
         <Field label="Requested by (employee)">
-          <input
-            className="form-control"
-            style={{ marginBottom: 8 }}
-            placeholder="Search employees…"
-            value={empSearch}
-            onChange={(e) => setEmpSearch(e.target.value)}
-          />
-          <select
-            className="form-control"
+          <EmployeeSelect
             value={form.requested_by_employee_id}
-            onChange={(e) => set('requested_by_employee_id', e.target.value)}
-          >
-            <option value="">— Select requester —</option>
-            {employees.map((o) => (
-              <option key={o.id} value={o.id}>{o.text}</option>
-            ))}
-          </select>
+            onChange={(v) => set('requested_by_employee_id', v)}
+            emptyOption="— Select requester —"
+          />
           <p className="help-block">HRMS employee who requested this license (e.g. for Cursor Pro)</p>
         </Field>
 
@@ -1034,8 +1031,9 @@ export function LicenseCheckout() {
   const navigate = useNavigate()
   const toast = useToast()
   const [lic, setLic] = useState<Record<string, unknown> | null>(null)
-  const [target, setTarget] = useState<'user' | 'asset'>('user')
+  const [target, setTarget] = useState<'employee' | 'user' | 'asset'>('employee')
   const [userId, setUserId] = useState('')
+  const [employeeId, setEmployeeId] = useState('')
   const [assetId, setAssetId] = useState('')
   const [note, setNote] = useState('')
   const [users, setUsers] = useState<SelectOption[]>([])
@@ -1067,7 +1065,9 @@ export function LicenseCheckout() {
     setError('')
     try {
       await licensesApi.checkout(id, {
+        checkout_to_type: target,
         assigned_user: target === 'user' && userId ? Number(userId) : null,
+        assigned_employee_id: target === 'employee' && employeeId ? Number(employeeId) : null,
         asset_id: target === 'asset' && assetId ? Number(assetId) : null,
         note: note || null,
       })
@@ -1095,13 +1095,20 @@ export function LicenseCheckout() {
         <form className="form-horizontal" onSubmit={(e) => { void submit(e) }}>
           <Field label="Assign to">
             <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
-              {(['user', 'asset'] as const).map((t) => (
+              {(['employee', 'user', 'asset'] as const).map((t) => (
                 <label key={t} className="radio">
-                  <input type="radio" checked={target === t} onChange={() => setTarget(t)} /> {t === 'user' ? 'App User' : 'Asset'}
+                  <input type="radio" checked={target === t} onChange={() => setTarget(t)} />{' '}
+                  {t === 'employee' ? 'Employee' : t === 'user' ? 'App User' : 'Asset'}
                 </label>
               ))}
             </div>
-            {target === 'user' ? (
+            {target === 'employee' ? (
+              <EmployeeSelect
+                value={employeeId}
+                onChange={setEmployeeId}
+                required
+              />
+            ) : target === 'user' ? (
               <select className="form-control" value={userId} onChange={(e) => setUserId(e.target.value)} required>
                 <option value="">Select user…</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.text}</option>)}
@@ -1114,8 +1121,10 @@ export function LicenseCheckout() {
             )}
           </Field>
           <Field label="Notes"><textarea className="form-control" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-          <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Assigning…' : 'Assign'}</button>{' '}
-          <Link to={`/licenses/${lic.id}`} className="btn btn-default">Cancel</Link>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-theme" disabled={busy}>{busy ? 'Assigning…' : 'Assign'}</button>
+            <Link to={`/licenses/${lic.id}`} className="btn btn-default">Cancel</Link>
+          </div>
         </form>
       </Box>
     </AppLayout>

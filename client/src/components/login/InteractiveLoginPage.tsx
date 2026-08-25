@@ -1,12 +1,7 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import {
-  ArrowRight, BarChart3, Boxes, CheckCircle2,
-  // ClipboardCheck, // Audit feature — restore when needed
-  Eye, EyeOff, LayoutDashboard, Lock, Monitor, Package,
-  Rocket, ShieldCheck, Sparkles, User, Zap,
-} from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Lock, User, Zap } from 'lucide-react'
 import confetti from 'canvas-confetti'
 import AnimatedCharacters, { type MascotMood } from './animated-characters/AnimatedCharacters'
 import './login-suite.css'
@@ -15,39 +10,9 @@ type Props = {
   onSubmit: (creds: { email: string; password: string }) => Promise<void>
 }
 
-function useCountUp(target: number, duration = 1200, suffix = '') {
-  const [value, setValue] = useState(0)
-  const reduce = useReducedMotion()
-  useEffect(() => {
-    if (reduce) {
-      setValue(target)
-      return
-    }
-    let raf = 0
-    const start = performance.now()
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration)
-      const eased = 1 - (1 - t) ** 3
-      setValue(Math.round(target * eased))
-      if (t < 1) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [target, duration, reduce])
-  return `${value.toLocaleString()}${suffix}`
-}
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 18 },
-  show: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: 0.08 * i, duration: 0.55, ease: [0.22, 1, 0.36, 1] as const },
-  }),
-}
-
 export default function InteractiveLoginPage({ onSubmit: onSubmitProp }: Props) {
   const reduce = useReducedMotion()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -59,14 +24,6 @@ export default function InteractiveLoginPage({ onSubmit: onSubmitProp }: Props) 
   const [passwordError, setPasswordError] = useState(false)
   const [shake, setShake] = useState(false)
   const [mascotMood, setMascotMood] = useState<MascotMood>('idle')
-
-  const assets = useCountUp(1200, 1400)
-  const deployed = useCountUp(640, 1300)
-  // Audit feature — restore when needed
-  // const audited = useCountUp(98, 1500, '%')
-  // const due = useCountUp(120, 1200)
-  const inStock = useCountUp(380, 1200)
-  const licenses = useCountUp(210, 1350)
 
   const mood: MascotMood = useMemo(() => {
     if (mascotMood === 'success' || mascotMood === 'fail') return mascotMood
@@ -108,7 +65,7 @@ export default function InteractiveLoginPage({ onSubmit: onSubmitProp }: Props) 
         confetti({
           particleCount: 70,
           spread: 62,
-          origin: { y: 0.55, x: 0.72 },
+          origin: { y: 0.55, x: 0.5 },
           colors: ['#0F9D8A', '#34D399', '#3B82F6', '#F97316'],
         })
       }
@@ -133,117 +90,6 @@ export default function InteractiveLoginPage({ onSubmit: onSubmitProp }: Props) 
       </div>
 
       <div className="em-shell">
-        {/* LEFT — marketing */}
-        <section className="em-hero">
-          <motion.div custom={0} variants={fadeUp} initial="hidden" animate="show" className="em-badge">
-            <Sparkles size={14} />
-            IT ASSET MANAGEMENT
-          </motion.div>
-
-          <motion.h1 custom={1} variants={fadeUp} initial="hidden" animate="show" className="em-title">
-            Smarter Assets.<br />
-            <span>Stronger Business.</span>
-          </motion.h1>
-
-          <motion.p custom={2} variants={fadeUp} initial="hidden" animate="show" className="em-lead">
-            Track, manage and optimize your IT assets across the organization with complete visibility and control.
-          </motion.p>
-
-          <motion.div custom={3} variants={fadeUp} initial="hidden" animate="show" className="em-features">
-            {[
-              { icon: Boxes, title: 'Track', desc: 'Tags, serials & custody', color: 'green' },
-              { icon: Package, title: 'Assign', desc: 'Employees & locations', color: 'violet' },
-              // { icon: ClipboardCheck, title: 'Audit', desc: 'Due lists & reports', color: 'blue' }, // Audit feature — restore when needed
-              { icon: Rocket, title: 'Inventory', desc: 'Hardware & licenses', color: 'blue' },
-              { icon: Rocket, title: 'Ready', desc: 'Ready-to-assign assets', color: 'teal' },
-            ].map((f) => (
-              <article key={f.title} className={`em-feature em-feature--${f.color}`}>
-                <div className="em-feature-icon"><f.icon size={18} strokeWidth={2.2} /></div>
-                <strong>{f.title}</strong>
-                <span>{f.desc}</span>
-              </article>
-            ))}
-          </motion.div>
-
-          <motion.div custom={4} variants={fadeUp} initial="hidden" animate="show" className="em-preview">
-            <aside className="em-preview-side">
-              <button type="button" className="is-active" aria-label="Dashboard"><LayoutDashboard size={16} /></button>
-              <button type="button" aria-label="Hardware"><Monitor size={16} /></button>
-              <button type="button" aria-label="Inventory"><Package size={16} /></button>
-              <button type="button" aria-label="Reports"><BarChart3 size={16} /></button>
-              <button type="button" aria-label="Security"><ShieldCheck size={16} /></button>
-            </aside>
-
-            <div className="em-preview-main">
-              <div className="em-stats">
-                {[
-                  { label: 'Total Assets', value: assets, tone: 'teal' },
-                  { label: 'Assigned', value: deployed, tone: 'blue' },
-                  // { label: 'Audited', value: audited, tone: 'green' }, // Audit feature — restore when needed
-                  // { label: 'Due for Audit', value: due, tone: 'orange' },
-                  { label: 'In Stock', value: inStock, tone: 'green' },
-                  { label: 'Licenses', value: licenses, tone: 'orange' },
-                ].map((s) => (
-                  <div key={s.label} className={`em-stat em-stat--${s.tone}`}>
-                    <span>{s.label}</span>
-                    <em>{s.value}</em>
-                    <svg className="em-spark" viewBox="0 0 80 24" preserveAspectRatio="none" aria-hidden>
-                      <path d="M0 18 C12 16, 18 8, 28 12 S48 22, 60 10 S72 4, 80 8" fill="none" stroke="currentColor" strokeWidth="2" />
-                    </svg>
-                  </div>
-                ))}
-              </div>
-
-              <div className="em-preview-grid">
-                <div className="em-panel">
-                  <header>Asset Overview</header>
-                  <div className="em-donut-wrap">
-                    <div className="em-donut" aria-hidden />
-                    <ul className="em-legend">
-                      <li><i className="t" /> Hardware</li>
-                      <li><i className="b" /> Licenses</li>
-                      <li><i className="o" /> Accessories</li>
-                      <li><i className="g" /> Other</li>
-                    </ul>
-                  </div>
-                </div>
-                <div className="em-panel">
-                  <header>Recent Activity</header>
-                  <ul className="em-timeline">
-                    <li>Asset assigned to employee</li>
-                    {/* <li>Audit completed</li> */}{/* Audit feature — restore when needed */}
-                    <li>Agent inventory synced</li>
-                    <li>Accessory returned to stock</li>
-                    <li>License Pack assigned</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.ul custom={5} variants={fadeUp} initial="hidden" animate="show" className="em-trust">
-            <li><CheckCircle2 size={15} /> Secure by Design</li>
-            <li><CheckCircle2 size={15} /> Role Based Access</li>
-            <li><CheckCircle2 size={15} /> Real-time Insights</li>
-            <li><CheckCircle2 size={15} /> Enterprise Ready</li>
-          </motion.ul>
-
-          <motion.div
-            className="em-bot"
-            aria-hidden
-            animate={reduce ? undefined : { y: [0, -6, 0] }}
-            transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            <div className="em-bot-body">
-              <div className="em-bot-eye" />
-              <div className="em-bot-eye" />
-              <div className="em-bot-mouth" />
-            </div>
-            <div className="em-bot-arm" />
-          </motion.div>
-        </section>
-
-        {/* RIGHT — auth */}
         <section className="em-auth">
           <motion.div
             className={`em-card${shake ? ' is-shake' : ''}`}
@@ -252,9 +98,10 @@ export default function InteractiveLoginPage({ onSubmit: onSubmitProp }: Props) 
             transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: 0.12 }}
           >
             <div className="em-card-head">
+              <img className="em-card-logo" src="/refexone-logo.png" alt="RefexOne" />
               <div>
                 <h2>Welcome back!</h2>
-                <p>Sign in to your asset workspace.</p>
+                <p>Sign in to Asset Management.</p>
               </div>
             </div>
 
@@ -315,7 +162,7 @@ export default function InteractiveLoginPage({ onSubmit: onSubmitProp }: Props) 
                   <button
                     type="button"
                     className="em-eye-btn"
-                    onClick={() => setShowPassword((p) => !p)}
+                    onClick={() => setShowPassword((prev) => !prev)}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -350,7 +197,7 @@ export default function InteractiveLoginPage({ onSubmit: onSubmitProp }: Props) 
 
       <footer className="em-foot">
         <Zap size={12} />
-        Refex · Enterprise IT Asset Management
+        Refex · Asset Management
       </footer>
     </div>
   )

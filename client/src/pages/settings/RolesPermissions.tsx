@@ -33,7 +33,7 @@ const ACTION_LABELS: Record<string, string> = {
   checkout: 'Assign / Unassign',
 }
 
-const BUILTIN = new Set(['Superusers', 'Admin', 'IT Asset Manager', 'Viewer'])
+const BUILTIN = new Set(['Superusers', 'Admin', 'IT Asset Manager', 'Admin Asset Manager', 'Viewer'])
 const ACTIONS = ['view', 'create', 'edit', 'delete', 'checkout'] as const
 
 function userCountLabel(n: number) {
@@ -221,7 +221,7 @@ export default function RolesPermissions() {
   }, [allUsers, memberFilter])
 
   return (
-    <AppLayout title="Roles & permissions" subtitle="Choose a role, tick module permissions, then Save">
+    <AppLayout title="Roles & permissions" subtitle="Choose a role, tick module permissions, then Save" backTo="/settings">
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
 
       <div className="roles-layout">
@@ -333,6 +333,32 @@ export default function RolesPermissions() {
                   onChange={() => toggle('notify.ops')}
                 />
                 {' '}Receive ops workflow emails (assign, maintenance, inventory alerts)
+              </label>
+
+              <div className="roles-perm-head" style={{ marginTop: 16 }}>
+                <h4 className="roles-section-title" style={{ margin: 0 }}>Asset domains</h4>
+              </div>
+              <p className="help-block" style={{ marginTop: 6 }}>
+                Domain access is enforced by the API. Superusers and Admin roles can always access IT and ADMIN.
+              </p>
+              <label className="checkbox-inline roles-notify">
+                <input
+                  type="checkbox"
+                  checked={Boolean(perms['domains.it'])}
+                  disabled={!canEdit}
+                  onChange={() => toggle('domains.it')}
+                />
+                {' '}IT
+              </label>
+              {' '}
+              <label className="checkbox-inline roles-notify">
+                <input
+                  type="checkbox"
+                  checked={Boolean(perms['domains.admin'])}
+                  disabled={!canEdit}
+                  onChange={() => toggle('domains.admin')}
+                />
+                {' '}ADMIN
               </label>
 
               <div className="roles-perm-head">

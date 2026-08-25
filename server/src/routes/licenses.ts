@@ -10,6 +10,7 @@ import {
   listLicenseInvoices,
   syncLicenseInvoiceSlots,
 } from '../services/licenseInvoices.js'
+import { assertRecordDomainAccess, inventoryDomainClause, inventoryDomainColumnsReady, loadItemDomain, resolveWriteDomainId, tableHasColumn } from '../services/domainAuth.js'
 
 const router = Router()
 
@@ -90,6 +91,9 @@ router.get('/', async (req, res) => {
     sql += ' AND company_id = ?'
     params.push(Number(req.query.company_id))
   }
+  const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, '')
+  sql += domain.sql
+  params.push(...domain.params)
   sql += ' ORDER BY id DESC'
   const limit = Math.min(Number(req.query.limit) || 50, 500)
   const offset = Number(req.query.offset) || 0
@@ -106,6 +110,9 @@ router.put('/invoices/:invoiceId', async (req, res) => {
     SELECT id, license_id FROM license_invoices WHERE id = ? AND deleted_at IS NULL
   `, [invoiceId])
   if (!row) return fail(res, 'Invoice period not found', 404)
+  const lic = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [row.license_id])
+  if (!lic) return fail(res, 'Invoice period not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, lic.domain_id))) return
 
   const b = req.body || {}
   const map: Record<string, unknown> = {}
@@ -148,6 +155,9 @@ router.delete('/invoices/:invoiceId', async (req, res) => {
     SELECT id, license_id FROM license_invoices WHERE id = ? AND deleted_at IS NULL
   `, [invoiceId])
   if (!row) return fail(res, 'Invoice period not found', 404)
+  const lic = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [row.license_id])
+  if (!lic) return fail(res, 'Invoice period not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, lic.domain_id))) return
   await run(`UPDATE license_invoices SET deleted_at = ?, updated_at = ? WHERE id = ?`, [now(), now(), invoiceId])
   await run(`
     UPDATE uploads SET deleted_at = ? WHERE uploadable_type = 'license_invoice' AND uploadable_id = ? AND deleted_at IS NULL
@@ -163,15 +173,25 @@ router.delete('/invoices/:invoiceId', async (req, res) => {
 })
 
 router.get('/:id', async (req, res) => {
+  const row = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [req.params.id])
+  if (!row) return fail(res, 'License not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
   const lic = await transformLicense(Number(req.params.id))
   if (!lic) return fail(res, 'License not found', 404)
   return okItem(res, lic)
 })
 
 router.get('/:id/seats', async (req, res) => {
+  const row = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [req.params.id])
+  if (!row) return fail(res, 'License not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
+  const empCol = await tableHasColumn('license_seats', 'assigned_employee_id')
   const rows = await all(`
     SELECT ls.*,
       CASE WHEN ls.assigned_to IS NOT NULL THEN (SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = ls.assigned_to) END as user_name,
+      ${empCol ? `CASE WHEN ls.assigned_employee_id IS NOT NULL THEN (
+        SELECT TRIM(CONCAT(COALESCE(first_name,''), ' ', COALESCE(last_name,''))) FROM employees WHERE id = ls.assigned_employee_id
+      ) END as employee_name,` : 'NULL as employee_name,'}
       CASE WHEN ls.asset_id IS NOT NULL THEN (SELECT asset_tag FROM assets WHERE id = ls.asset_id) END as asset_tag
     FROM license_seats ls WHERE ls.license_id = ? ORDER BY ls.id ASC
   `, [req.params.id])
@@ -180,6 +200,9 @@ router.get('/:id/seats', async (req, res) => {
 
 router.get('/:id/invoices', async (req, res) => {
   const id = Number(req.params.id)
+  const row = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [id])
+  if (!row) return fail(res, 'License not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
   if (!(await transformLicense(id))) return fail(res, 'License not found', 404)
   const rows = await listLicenseInvoices(id)
   return okList(res, rows)
@@ -187,6 +210,9 @@ router.get('/:id/invoices', async (req, res) => {
 
 router.post('/:id/invoices', async (req, res) => {
   const id = Number(req.params.id)
+  const existing = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [id])
+  if (!existing) return fail(res, 'License not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, existing.domain_id))) return
   if (!(await transformLicense(id))) return fail(res, 'License not found', 404)
   const row = await appendInvoicePeriod(id, req.user?.id)
   if (!row) return fail(res, 'Could not add invoice period (set purchase date + subscription period first)')
@@ -203,26 +229,54 @@ router.post('/:id/invoices', async (req, res) => {
 router.post('/', async (req, res) => {
   const b = req.body || {}
   if (!b.name) return fail(res, 'name required')
+  let domain
+  try {
+    domain = await resolveWriteDomainId(req.user?.permissions, b)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Invalid domain'
+    return fail(res, msg, /Forbidden/.test(msg) ? 403 : 400)
+  }
   const seats = Number(b.seats) || 1
   const sub = normalizeLicenseBody(b)
   if (sub.subscription_period === 'custom' && !sub.subscription_custom_value) {
     return fail(res, 'Custom subscription requires a duration value')
   }
   const ts = now()
-  const info = await run(`
+  const domainReady = await inventoryDomainColumnsReady()
+  const info = await run(
+    domainReady
+      ? `
+    INSERT INTO licenses (
+      domain_id, name, serial, seats, company_id, legal_entity_id, manufacturer_id, category_id,
+      requested_by_employee_id, expiration_date, subscription_period, subscription_custom_value,
+      subscription_custom_unit, is_recurring, subscription_cycles, purchase_cost, purchase_date, notes, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `
+      : `
     INSERT INTO licenses (
       name, serial, seats, company_id, legal_entity_id, manufacturer_id, category_id,
       requested_by_employee_id, expiration_date, subscription_period, subscription_custom_value,
       subscription_custom_unit, is_recurring, subscription_cycles, purchase_cost, purchase_date, notes, created_at, updated_at
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [
-    b.name, b.product_key || b.serial || null, seats, b.company_id || null, b.legal_entity_id || null, b.manufacturer_id || null,
-    b.category_id || null, sub.requested_by_employee_id, sub.expiration_date,
-    sub.subscription_period, sub.subscription_custom_value, sub.subscription_custom_unit, sub.is_recurring,
-    sub.subscription_cycles,
-    b.purchase_cost || null, sub.purchase_date, b.notes || null, ts, ts,
-  ])
+  `,
+    domainReady
+      ? [
+        domain.id, b.name, b.product_key || b.serial || null, seats, b.company_id || null, b.legal_entity_id || null, b.manufacturer_id || null,
+        b.category_id || null, sub.requested_by_employee_id, sub.expiration_date,
+        sub.subscription_period, sub.subscription_custom_value, sub.subscription_custom_unit, sub.is_recurring,
+        sub.subscription_cycles,
+        b.purchase_cost || null, sub.purchase_date, b.notes || null, ts, ts,
+      ]
+      : [
+        b.name, b.product_key || b.serial || null, seats, b.company_id || null, b.legal_entity_id || null, b.manufacturer_id || null,
+        b.category_id || null, sub.requested_by_employee_id, sub.expiration_date,
+        sub.subscription_period, sub.subscription_custom_value, sub.subscription_custom_unit, sub.is_recurring,
+        sub.subscription_cycles,
+        b.purchase_cost || null, sub.purchase_date, b.notes || null, ts, ts,
+      ],
+  )
   const id = Number(info.insertId)
   const BATCH = 200
   for (let offset = 0; offset < seats; offset += BATCH) {
@@ -254,11 +308,23 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   const id = Number(req.params.id)
+  const existingRow = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [id])
+  if (!existingRow) return fail(res, 'License not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, existingRow.domain_id))) return
   if (!(await transformLicense(id))) return fail(res, 'License not found', 404)
   const b = req.body || {}
   const map: Record<string, unknown> = {}
   for (const f of ['name', 'company_id', 'legal_entity_id', 'manufacturer_id', 'category_id', 'purchase_cost', 'notes'] as const) {
     if (b[f] !== undefined) map[f] = b[f]
+  }
+  if ((b.domain_id !== undefined || b.domain !== undefined || b.domain_code !== undefined) && (await inventoryDomainColumnsReady())) {
+    try {
+      const domain = await resolveWriteDomainId(req.user?.permissions, b)
+      map.domain_id = domain.id
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Invalid domain'
+      return fail(res, msg, /Forbidden/.test(msg) ? 403 : 400)
+    }
   }
   if (b.product_key !== undefined || b.serial !== undefined) map.serial = b.product_key ?? b.serial
 
@@ -334,6 +400,9 @@ router.put('/:id', async (req, res) => {
 })
 
 router.delete('/:id', async (req, res) => {
+  const row = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [req.params.id])
+  if (!row) return fail(res, 'License not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, row.domain_id))) return
   await run(`UPDATE licenses SET deleted_at = ?, updated_at = ? WHERE id = ?`, [now(), now(), req.params.id])
   await logAction({ userId: req.user?.id, actionType: 'delete', itemType: 'license', itemId: Number(req.params.id) })
   return okMessage(res, 'License deleted')
@@ -341,20 +410,35 @@ router.delete('/:id', async (req, res) => {
 
 router.post('/:id/checkout', async (req, res) => {
   const id = Number(req.params.id)
-  const seat = await get<{ id: number }>(`
-    SELECT id FROM license_seats WHERE license_id = ? AND assigned_to IS NULL AND asset_id IS NULL LIMIT 1
-  `, [id])
+  const licRow = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [id])
+  if (!licRow) return fail(res, 'License not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, licRow.domain_id))) return
+  const empCol = await tableHasColumn('license_seats', 'assigned_employee_id')
+  const seat = await get<{ id: number }>(
+    empCol
+      ? `SELECT id FROM license_seats WHERE license_id = ? AND assigned_to IS NULL AND assigned_employee_id IS NULL AND asset_id IS NULL LIMIT 1`
+      : `SELECT id FROM license_seats WHERE license_id = ? AND assigned_to IS NULL AND asset_id IS NULL LIMIT 1`,
+    [id],
+  )
   if (!seat) return fail(res, 'No free licenses available')
   const b = req.body || {}
   const assignedTo = b.assigned_to || b.assigned_user || null
+  const assignedEmployee = b.assigned_employee_id || b.assigned_employee || (b.checkout_to_type === 'employee' ? b.assigned_to : null) || null
   const assetId = b.asset_id || null
-  if (!assignedTo && !assetId) return fail(res, 'User or asset required')
-  await run(`UPDATE license_seats SET assigned_to = ?, asset_id = ?, notes = ?, updated_at = ? WHERE id = ?`, [
-    assignedTo, assetId, b.note || null, now(), seat.id,
-  ])
+  if (!assignedTo && !assignedEmployee && !assetId) return fail(res, 'User, employee or asset required')
+  if (empCol) {
+    await run(`UPDATE license_seats SET assigned_to = ?, assigned_employee_id = ?, asset_id = ?, notes = ?, updated_at = ? WHERE id = ?`, [
+      assignedEmployee ? null : assignedTo, assignedEmployee || null, assetId, b.note || null, now(), seat.id,
+    ])
+  } else {
+    await run(`UPDATE license_seats SET assigned_to = ?, asset_id = ?, notes = ?, updated_at = ? WHERE id = ?`, [
+      assignedTo, assetId, b.note || null, now(), seat.id,
+    ])
+  }
   await logAction({
     userId: req.user?.id, actionType: 'checkout', itemType: 'license', itemId: id,
-    targetType: assignedTo ? 'user' : 'asset', targetId: Number(assignedTo || assetId), note: b.note || null,
+    targetType: assignedEmployee ? 'employee' : assignedTo ? 'user' : 'asset',
+    targetId: Number(assignedEmployee || assignedTo || assetId), note: b.note || null,
   })
   const lic = await transformLicense(id)
   const assigneeEmail = assignedTo ? await resolveAssigneeEmail('user', Number(assignedTo)) : null
@@ -380,19 +464,27 @@ router.post('/:id/checkout', async (req, res) => {
 
 router.post('/:id/checkin', async (req, res) => {
   const id = Number(req.params.id)
+  const licRow = await loadItemDomain('licenses', 'id = ? AND deleted_at IS NULL', [id])
+  if (!licRow) return fail(res, 'License not found', 404)
+  if (!(await assertRecordDomainAccess(req, res, licRow.domain_id))) return
+  const empCol = await tableHasColumn('license_seats', 'assigned_employee_id')
   const seatId = req.body?.seat_id
   let seat: { id: number } | undefined
   if (seatId) {
     seat = await get<{ id: number }>(`SELECT id FROM license_seats WHERE id = ? AND license_id = ?`, [seatId, id])
   } else {
-    seat = await get<{ id: number }>(`
-      SELECT id FROM license_seats WHERE license_id = ? AND (assigned_to IS NOT NULL OR asset_id IS NOT NULL) LIMIT 1
-    `, [id])
+    seat = await get<{ id: number }>(empCol
+      ? `SELECT id FROM license_seats WHERE license_id = ? AND (assigned_to IS NOT NULL OR assigned_employee_id IS NOT NULL OR asset_id IS NOT NULL) LIMIT 1`
+      : `SELECT id FROM license_seats WHERE license_id = ? AND (assigned_to IS NOT NULL OR asset_id IS NOT NULL) LIMIT 1`, [id])
   }
   if (!seat) return fail(res, 'No assigned license found')
   const seatRow = await get<{ assigned_to: number | null }>(`SELECT assigned_to FROM license_seats WHERE id = ?`, [seat.id])
   const prevUser = seatRow?.assigned_to ? Number(seatRow.assigned_to) : null
-  await run(`UPDATE license_seats SET assigned_to = NULL, asset_id = NULL, notes = NULL, updated_at = ? WHERE id = ?`, [now(), seat.id])
+  if (empCol) {
+    await run(`UPDATE license_seats SET assigned_to = NULL, assigned_employee_id = NULL, asset_id = NULL, notes = NULL, updated_at = ? WHERE id = ?`, [now(), seat.id])
+  } else {
+    await run(`UPDATE license_seats SET assigned_to = NULL, asset_id = NULL, notes = NULL, updated_at = ? WHERE id = ?`, [now(), seat.id])
+  }
   await logAction({ userId: req.user?.id, actionType: 'checkin', itemType: 'license', itemId: id })
   const lic = await transformLicense(id)
   const assigneeEmail = prevUser ? await resolveAssigneeEmail('user', prevUser) : null

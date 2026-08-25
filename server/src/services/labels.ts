@@ -5,6 +5,7 @@ import { get, all } from '../db/index.js'
 import { ensureAssetQr, markLabelPrinted } from './assetQr.js'
 import { storageRoot, recordUpload } from './uploads.js'
 import { now } from '../db/index.js'
+import { allowedDomainCodes, canAccessDomainId, loadAssetDomains, tableHasColumn } from './domainAuth.js'
 
 /** Compact sticker with boxed safe zone. Slightly wider so long company names fit. */
 const LABEL_W = 148
@@ -20,14 +21,16 @@ type AssetLabel = {
   id: number
   asset_tag: string
   company_name?: string | null
+  domain_id?: number | null
 }
 
 async function loadAssets(idsOrTags: (string | number)[]) {
   if (!idsOrTags.length) return []
   const tags = idsOrTags.map(String)
   const placeholders = tags.map(() => '?').join(',')
+  const ready = await tableHasColumn('assets', 'domain_id')
   const rows = await all<AssetLabel>(`
-    SELECT a.id, a.asset_tag, c.name as company_name
+    SELECT a.id, a.asset_tag, c.name as company_name, ${ready ? 'a.domain_id' : 'CAST(NULL AS UNSIGNED) as domain_id'}
     FROM assets a
     LEFT JOIN companies c ON c.id = a.company_id
     WHERE a.deleted_at IS NULL AND (a.asset_tag IN (${placeholders}) OR CAST(a.id AS CHAR) IN (${placeholders}))
@@ -103,9 +106,14 @@ function drawWrappedText(
 /** Compact QR + asset tag + company only. */
 export async function generateLabelsPdf(
   assetTagsOrIds: (string | number)[],
-  opts?: { userId?: number; persist?: boolean },
+  opts?: { userId?: number; persist?: boolean; permissions?: Record<string, unknown> },
 ) {
-  const assets = await loadAssets(assetTagsOrIds)
+  let assets = await loadAssets(assetTagsOrIds)
+  if (opts?.permissions) {
+    const allowed = allowedDomainCodes(opts.permissions)
+    const domains = await loadAssetDomains()
+    assets = assets.filter((a) => canAccessDomainId(allowed, a.domain_id, domains))
+  }
   if (!assets.length) throw new Error('No assets found for labels')
 
   const pageSize: [number, number] = [LABEL_W, LABEL_H]

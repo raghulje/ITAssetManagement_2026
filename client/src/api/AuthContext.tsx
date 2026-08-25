@@ -1,5 +1,23 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { authApi, setToken } from './client'
+import { domainScopeFromPermissions, type DomainCode, type DomainScope } from '../lib/domainScope'
+
+const ACTIVE_DOMAIN_KEY = 'refex_active_domain'
+
+function readStoredDomain(): DomainCode | '' {
+  try {
+    const v = localStorage.getItem(ACTIVE_DOMAIN_KEY)
+    return v === 'it' || v === 'admin' ? v : ''
+  } catch {
+    return ''
+  }
+}
+
+function writeStoredDomain(code: DomainCode) {
+  try {
+    localStorage.setItem(ACTIVE_DOMAIN_KEY, code)
+  } catch { /* ignore */ }
+}
 
 type User = {
   id: number
@@ -17,6 +35,10 @@ type AuthCtx = {
   permissions: Record<string, unknown>
   /** Admin or Superuser role flag — Settings / Reports / HRMS Profile */
   isAdmin: boolean
+  domainScope: DomainScope
+  /** Current IT / Admin workspace for Superuser (and anyone with both domains). */
+  activeDomain: DomainCode
+  setActiveDomain: (code: DomainCode) => void
   can: (permission: string) => boolean
   login: (email: string, password: string) => Promise<void>
   loginWithToken: (token: string) => Promise<void>
@@ -33,6 +55,7 @@ function isTruthy(v: unknown) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [activeDomain, setActiveDomainState] = useState<DomainCode>(() => readStoredDomain() || 'it')
 
   useEffect(() => {
     const t = localStorage.getItem('refex_token')
@@ -51,6 +74,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     : {}
 
   const isAdmin = isTruthy(permissions.superuser) || isTruthy(permissions.admin)
+  const domainScope = domainScopeFromPermissions(permissions)
+
+  useEffect(() => {
+    if (!user) return
+    if (!domainScope.codes.includes(activeDomain)) {
+      const next = domainScope.codes[0] || 'it'
+      setActiveDomainState(next)
+      writeStoredDomain(next)
+    }
+  }, [user, domainScope, activeDomain])
+
+  const setActiveDomain = useCallback((code: DomainCode) => {
+    if (code !== 'it' && code !== 'admin') return
+    setActiveDomainState(code)
+    writeStoredDomain(code)
+  }, [])
 
   const can = useCallback((permission: string) => {
     if (isTruthy(permissions.superuser) || isTruthy(permissions.admin)) return true
@@ -62,6 +101,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     permissions,
     isAdmin,
+    domainScope,
+    activeDomain,
+    setActiveDomain,
     can,
     async login(email, password) {
       const res = await authApi.login(email, password)
@@ -81,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const u = await authApi.me()
       setUser(u as User)
     },
-  }), [user, loading, permissions, isAdmin, can])
+  }), [user, loading, permissions, isAdmin, domainScope, activeDomain, setActiveDomain, can])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
