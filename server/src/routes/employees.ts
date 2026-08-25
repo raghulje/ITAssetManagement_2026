@@ -10,6 +10,7 @@ import { isAdrenalinConfigured } from '../services/adrenalinHrms.js'
 import { syncMastersFromEmployees } from '../services/hrmsMastersSync.js'
 import { inventoryDomainClause } from '../services/domainAuth.js'
 import { listEmployeeAssignmentHistory, listEmployeeAssignments } from '../services/employeeAssignments.js'
+import { ACTIVE_EMPLOYEE_SQL } from '../services/employeeStatus.js'
 
 export const employeesRouter = Router()
 const uploadFile = makeUploader('private_uploads/imports', 'file')
@@ -92,10 +93,10 @@ employeesRouter.get('/', async (req, res) => {
     params.push(`%${req.query.company}%`)
   }
   if (req.query.active === '1' || req.query.active === 'true') {
-    sql += ` AND (employment_status_description = 'Active' OR employment_status = '1')`
+    sql += ` AND ${ACTIVE_EMPLOYEE_SQL}`
   }
   if (req.query.active === '0' || req.query.active === 'false') {
-    sql += ` AND NOT (employment_status_description = 'Active' OR employment_status = '1')`
+    sql += ` AND NOT ${ACTIVE_EMPLOYEE_SQL}`
   }
   if (q) {
     sql += ` AND (
@@ -123,7 +124,7 @@ employeesRouter.get('/selectlist', async (req, res) => {
     SELECT id, CONCAT(first_name, ' ', last_name, ' (', employee_code, ')') as text
     FROM employees
     WHERE deleted_at IS NULL
-      AND (employment_status_description = 'Active' OR employment_status = '1' OR employment_status IS NULL)
+      AND ${ACTIVE_EMPLOYEE_SQL}
   `
   const params: unknown[] = []
   if (q) {

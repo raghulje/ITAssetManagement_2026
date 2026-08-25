@@ -19,6 +19,7 @@ import {
   resolveWriteDomainId,
   tableHasColumn,
 } from '../services/domainAuth.js'
+import { requireActiveEmployee } from '../services/employeeStatus.js'
 
 const router = Router()
 
@@ -804,8 +805,8 @@ router.post('/:id/checkout', async (req, res) => {
   )
   if (!assignedTo) return fail(res, 'Assign target is required')
   if (checkoutToType === 'employee') {
-    const emp = await get(`SELECT id FROM employees WHERE id = ? AND deleted_at IS NULL`, [assignedTo])
-    if (!emp) return fail(res, 'Employee not found', 404)
+    const check = await requireActiveEmployee(assignedTo)
+    if (!check.ok) return fail(res, check.message, check.status)
   }
 
   const statusId = b.status_id || asset.status_id

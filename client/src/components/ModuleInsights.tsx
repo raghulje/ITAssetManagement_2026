@@ -32,6 +32,8 @@ const LABEL_STYLE: Record<string, { color: string; icon: string }> = {
   'Seats available': { color: 'bg-olive', icon: 'fas fa-check-circle' },
   Employees: { color: 'bg-navy', icon: 'fas fa-users' },
   'Active (page)': { color: 'bg-teal', icon: 'fas fa-user-check' },
+  Active: { color: 'bg-teal', icon: 'fas fa-user-check' },
+  Inactive: { color: 'bg-maroon', icon: 'fas fa-user-slash' },
   'Assets assigned': { color: 'bg-orange', icon: 'fas fa-laptop' },
   'Catalog items': { color: 'bg-orange', icon: 'fas fa-cubes' },
   'Assigned qty': { color: 'bg-maroon', icon: 'fas fa-share' },

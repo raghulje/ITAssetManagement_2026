@@ -11,6 +11,7 @@ import {
   syncLicenseInvoiceSlots,
 } from '../services/licenseInvoices.js'
 import { assertRecordDomainAccess, inventoryDomainClause, inventoryDomainColumnsReady, loadItemDomain, resolveWriteDomainId, tableHasColumn } from '../services/domainAuth.js'
+import { requireActiveEmployee } from '../services/employeeStatus.js'
 
 const router = Router()
 
@@ -426,6 +427,10 @@ router.post('/:id/checkout', async (req, res) => {
   const assignedEmployee = b.assigned_employee_id || b.assigned_employee || (b.checkout_to_type === 'employee' ? b.assigned_to : null) || null
   const assetId = b.asset_id || null
   if (!assignedTo && !assignedEmployee && !assetId) return fail(res, 'User, employee or asset required')
+  if (assignedEmployee) {
+    const check = await requireActiveEmployee(Number(assignedEmployee))
+    if (!check.ok) return fail(res, check.message, check.status)
+  }
   if (empCol) {
     await run(`UPDATE license_seats SET assigned_to = ?, assigned_employee_id = ?, asset_id = ?, notes = ?, updated_at = ? WHERE id = ?`, [
       assignedEmployee ? null : assignedTo, assignedEmployee || null, assetId, b.note || null, now(), seat.id,

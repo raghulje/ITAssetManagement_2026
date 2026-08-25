@@ -20,7 +20,7 @@ export function EmployeeSelect({
   onChange,
   required,
   disabled,
-  placeholder = 'Search employee name or ID…',
+  placeholder = 'Search active employee name or ID…',
   searchPlaceholder = 'Type a name or employee ID…',
   emptyOption,
   excludeId,

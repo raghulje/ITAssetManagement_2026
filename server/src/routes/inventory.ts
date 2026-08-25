@@ -4,6 +4,7 @@ import { fail, nest, okItem, okList, okMessage } from '../utils/response.js'
 import { logAction } from '../services/actionLog.js'
 import { actorLabel, notifyWorkflow, resolveAssigneeEmail } from '../services/notify.js'
 import { assertRecordDomainAccess, domainJoinSql, domainPayload, domainRowCode, domainSelectFields, inventoryDomainClause, inventoryDomainColumnsReady, loadItemDomain, resolveWriteDomainId, tableHasColumn } from '../services/domainAuth.js'
+import { requireActiveEmployee } from '../services/employeeStatus.js'
 
 type QtyConfig = {
   table: 'accessories' | 'consumables' | 'components'
@@ -213,6 +214,10 @@ function makeQtyRouter(cfg: QtyConfig) {
       const assignedEmployee = Number(req.body?.assigned_employee_id || req.body?.assigned_employee || (req.body?.checkout_to_type === 'employee' ? (req.body?.assigned_to || req.body?.assigned_user) : 0)) || null
       const assignedTo = assignedEmployee ? null : Number(req.body?.assigned_to || req.body?.assigned_user)
       if (!assignedTo && !assignedEmployee) return fail(res, 'assigned_to or assigned_employee_id required')
+      if (assignedEmployee) {
+        const check = await requireActiveEmployee(assignedEmployee)
+        if (!check.ok) return fail(res, check.message, check.status)
+      }
       const empCol = await tableHasColumn('accessories_checkout', 'assigned_employee_id')
       if (!empCol && assignedEmployee && !assignedTo) {
         return fail(res, 'Employee assignment requires database migrations 037-040')
@@ -254,6 +259,10 @@ function makeQtyRouter(cfg: QtyConfig) {
       const assignedEmployee = Number(req.body?.assigned_employee_id || req.body?.assigned_employee || (req.body?.checkout_to_type === 'employee' ? (req.body?.assigned_to || req.body?.assigned_user) : 0)) || null
       const assignedTo = assignedEmployee ? null : Number(req.body?.assigned_to || req.body?.assigned_user)
       if (!assignedTo && !assignedEmployee) return fail(res, 'assigned_to or assigned_employee_id required')
+      if (assignedEmployee) {
+        const check = await requireActiveEmployee(assignedEmployee)
+        if (!check.ok) return fail(res, check.message, check.status)
+      }
       const empCol = await tableHasColumn('consumables_users', 'assigned_employee_id')
       if (!empCol && assignedEmployee && !assignedTo) {
         return fail(res, 'Employee assignment requires database migrations 037-040')

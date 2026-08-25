@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { all, get, run, now } from '../db/index.js'
 import { fail, okItem, okList, okMessage } from '../utils/response.js'
 import { inventoryDomainClause, tableHasColumn } from '../services/domainAuth.js'
+import { requireActiveEmployee } from '../services/employeeStatus.js'
 
 export const spacesRouter = Router()
 
@@ -195,6 +196,11 @@ spacesRouter.post('/floors/:id/spaces', async (req, res) => {
   if (!name) return fail(res, 'Space name is required')
   const subtypeCode = String(req.body?.subtype || req.body?.space_subtype || 'OTHER').toUpperCase()
   const stId = await subtypeId(subtypeCode) || await subtypeId('OTHER')
+  const occupantId = req.body?.occupant_employee_id ? Number(req.body.occupant_employee_id) : null
+  if (occupantId) {
+    const check = await requireActiveEmployee(occupantId)
+    if (!check.ok) return fail(res, check.message, check.status)
+  }
   const ts = now()
   const info = await run(
     `INSERT INTO locations (name, parent_id, company_id, location_type_id, space_subtype_id, seat_count, occupant_employee_id, created_at, updated_at)
@@ -206,7 +212,7 @@ spacesRouter.post('/floors/:id/spaces', async (req, res) => {
       spaceType,
       stId,
       req.body?.seat_count != null ? Number(req.body.seat_count) : null,
-      req.body?.occupant_employee_id ? Number(req.body.occupant_employee_id) : null,
+      occupantId,
       ts,
       ts,
     ],
@@ -267,6 +273,8 @@ spacesRouter.patch('/spaces/:id', async (req, res) => {
       ? null
       : Number(req.body.occupant_employee_id)
     if (occupantId) {
+      const check = await requireActiveEmployee(occupantId)
+      if (!check.ok) return fail(res, check.message, check.status)
       const emp = await get<{ id: number; first_name: string | null; last_name: string | null }>(
         `SELECT id, first_name, last_name FROM employees WHERE id = ? AND deleted_at IS NULL`,
         [occupantId],

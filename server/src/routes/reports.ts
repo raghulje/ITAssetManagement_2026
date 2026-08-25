@@ -10,6 +10,7 @@ import { recordUpload, storageRoot } from '../services/uploads.js'
 import { actorLabel, notifyWorkflow, resolveAssigneeEmail } from '../services/notify.js'
 import { actionLogDomainSql, assertRecordDomainAccess, inventoryDomainClause, loadItemDomain } from '../services/domainAuth.js'
 import { ASSET_AGE_DATE_SQL } from '../utils/period.js'
+import { ACTIVE_EMPLOYEE_SQL } from '../services/employeeStatus.js'
 
 export const reportsRouter = Router()
 
@@ -631,6 +632,8 @@ dashboardRouter.get('/', async (req, res) => {
     components: await count(`SELECT COUNT(*) as c FROM components WHERE ${invWhere}`, invParams),
     users: await count(`SELECT COUNT(*) as c FROM users WHERE deleted_at IS NULL`),
     employees: await count(`SELECT COUNT(*) as c FROM employees WHERE deleted_at IS NULL`),
+    employees_active: await count(`SELECT COUNT(*) as c FROM employees WHERE deleted_at IS NULL AND ${ACTIVE_EMPLOYEE_SQL}`),
+    employees_inactive: await count(`SELECT COUNT(*) as c FROM employees WHERE deleted_at IS NULL AND NOT ${ACTIVE_EMPLOYEE_SQL}`),
     deployed: await count(
       `SELECT COUNT(*) as c FROM assets a WHERE ${assetWhere} AND a.assigned_to IS NOT NULL`,
       assetParams,

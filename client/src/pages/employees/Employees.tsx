@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import AppLayout from '../../layout/AppLayout'
 import { AppSelect, Box, DataTable, Field, FileInput, PageForm, StackField } from '../../components/ui'
@@ -15,6 +15,8 @@ import { domainLabel } from '../../lib/domainScope'
 type Row = Record<string, unknown>
 
 export function EmployeesList() {
+  const [searchParams] = useSearchParams()
+  const activeParam = searchParams.get('active')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [rows, setRows] = useState<Row[]>([])
@@ -23,13 +25,29 @@ export function EmployeesList() {
   const [error, setError] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
-  const [insights, setInsights] = useState({ employees: 0, deployed: 0 })
+  const [insights, setInsights] = useState({ employees: 0, employees_active: 0, employees_inactive: 0, deployed: 0 })
   const pageSize = 15
+
+  const loadCounts = () => {
+    dashboardApi.counts().then((c) => {
+      setInsights({
+        employees: Number(c.employees || 0),
+        employees_active: Number(c.employees_active || 0),
+        employees_inactive: Number(c.employees_inactive || 0),
+        deployed: Number(c.deployed || 0),
+      })
+    }).catch(() => undefined)
+  }
 
   const load = () => {
     setLoading(true)
     employeesApi
-      .list({ search: search || undefined, limit: pageSize, offset: page * pageSize })
+      .list({
+        search: search || undefined,
+        limit: pageSize,
+        offset: page * pageSize,
+        active: activeParam === '1' ? '1' : activeParam === '0' ? '0' : undefined,
+      })
       .then((res) => {
         setRows(res.rows)
         setTotal(res.total)
@@ -44,12 +62,7 @@ export function EmployeesList() {
   }
 
   useEffect(() => {
-    dashboardApi.counts().then((c) => {
-      setInsights({
-        employees: Number(c.employees || 0),
-        deployed: Number(c.deployed || 0),
-      })
-    }).catch(() => undefined)
+    loadCounts()
   }, [])
 
   const syncHrms = async () => {
@@ -60,11 +73,8 @@ export function EmployeesList() {
       const res = await employeesApi.syncFromHrms()
       const p = res.payload
       const m = p.masters
-      setSyncMsg(
-        `HRMS sync: fetched ${p.fetched} · created ${p.created} · updated ${p.updated} · skipped ${p.skipped}`
-        + (m ? ` · masters ${m.companies.total} companies / ${m.departments.total} departments / ${m.locations.total} locations` : ''),
-      )
       load()
+      loadCounts()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'HRMS sync failed')
     } finally {
@@ -73,28 +83,35 @@ export function EmployeesList() {
   }
 
   useEffect(() => {
+    setPage(0)
+  }, [activeParam])
+
+  useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, page])
+  }, [search, page, activeParam])
 
   const onSearch = (value: string) => {
     setPage(0)
     setSearch(value)
   }
 
-  const activeCount = rows.filter((r) =>
-    String(r.employment_status_description || '') === 'Active' || r.employment_status === '1',
-  ).length
+  const listLabel = activeParam === '1'
+    ? 'active employees'
+    : activeParam === '0'
+      ? 'inactive employees'
+      : 'employees'
 
   return (
-    <AppLayout title="Employees" subtitle={loading ? 'Loading…' : `${total} employees`}>
+    <AppLayout title="Employees" subtitle={loading ? 'Loading…' : `${total} ${listLabel}`}>
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
       {syncMsg ? <div className="callout callout-success"><p>{syncMsg}</p></div> : null}
       <ModuleInsights
         title="People insights"
         cards={[
-          { label: 'Employees', value: insights.employees || total, tone: 'teal' },
-          { label: 'Active (page)', value: activeCount, tone: 'default' },
+          { label: 'Employees', value: insights.employees || total, tone: 'slate', to: '/employees' },
+          { label: 'Active', value: insights.employees_active, tone: 'teal', to: '/employees?active=1', hint: 'Can be assigned assets' },
+          { label: 'Inactive', value: insights.employees_inactive, tone: 'rose', to: '/employees?active=0', hint: 'Hidden from assign dropdowns' },
           { label: 'Assets assigned', value: insights.deployed, tone: 'amber', to: '/hardware?status_type=Assigned', hint: 'Across all employees' },
         ]}
       />
