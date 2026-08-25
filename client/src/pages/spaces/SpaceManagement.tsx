@@ -535,7 +535,8 @@ export default function SpaceManagement() {
                 description="Add the first floor for this office, then create cabins, meeting rooms and workstations on it."
               />
             ) : (
-              <div className="table-responsive">
+              <>
+              <div className="table-responsive data-table-desktop">
                 <table className="table table-hover space-floor-table">
                   <thead>
                     <tr>
@@ -597,6 +598,52 @@ export default function SpaceManagement() {
                   </tbody>
                 </table>
               </div>
+              <div className="data-table-mobile space-floor-cards" aria-label="Floors">
+                {detail.floors.map((f) => {
+                  const cabins = f.spaces.filter((s) => kindOf(s.subtype) === 'CABIN')
+                  const rooms = f.spaces.filter((s) => kindOf(s.subtype) === 'MEETING_ROOM')
+                  const desks = f.spaces.filter((s) => kindOf(s.subtype) === 'WORKSTATION')
+                  const items = f.spaces.reduce((n, s) => n + Number(s.asset_count || 0), 0)
+                  return (
+                    <article key={f.id} className={`data-card${f.space_active ? '' : ' is-muted'}`}>
+                      <button
+                        type="button"
+                        className="space-floor-card-main"
+                        onClick={() => setDrill({ office: officeId, floor: String(f.id) })}
+                      >
+                        <div className="data-card-title">{f.name}</div>
+                        <span className={`space-occupancy-pill ${f.space_active ? 'is-free' : 'is-occupied'}`}>
+                          {f.space_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </button>
+                      <dl className="data-card-fields">
+                        <div className="data-card-field"><dt>Cabins</dt><dd>{cabins.length}</dd></div>
+                        <div className="data-card-field"><dt>Meeting</dt><dd>{rooms.length}</dd></div>
+                        <div className="data-card-field"><dt>Workstations</dt><dd>{desks.length}</dd></div>
+                        <div className="data-card-field"><dt>Seats</dt><dd>{f.seat_count || desks.length || '—'}</dd></div>
+                        <div className="data-card-field"><dt>Items</dt><dd>{items || '—'}</dd></div>
+                      </dl>
+                      <div className="data-card-actions">
+                        <button
+                          type="button"
+                          className="btn btn-theme btn-sm"
+                          onClick={() => setDrill({ office: officeId, floor: String(f.id) })}
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-default btn-sm"
+                          onClick={() => { void toggleFloor(f) }}
+                        >
+                          {f.space_active ? 'Mark inactive' : 'Mark active'}
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+              </>
             )}
           </Box>
           <Box title="Add floor">

@@ -31,10 +31,9 @@ export default function AgentActivity() {
   return (
     <AppLayout title="Agent activity" subtitle="Every ITAgent sync attempt — update, create, unmatched, or failed" backTo="/reports">
       <Box title="ITAgent sync log" type="primary">
-        <div className="form-inline" style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="toolbar-inline">
           <input
-            className="form-control"
-            style={{ maxWidth: 320 }}
+            className="form-control toolbar-inline-search"
             placeholder="Search hostname, serial, tag…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -47,7 +46,7 @@ export default function AgentActivity() {
           When a friend runs <code>ITAgent_2026.ps1</code>, a row appears here.
           If the device serial/hostname already matches an asset, action is <strong>updated</strong> (no duplicate).
         </p>
-        <div className="table-responsive">
+        <div className="table-responsive data-table-desktop">
           <table className="table table-striped table-condensed">
             <thead>
               <tr>
@@ -90,6 +89,40 @@ export default function AgentActivity() {
               })}
             </tbody>
           </table>
+        </div>
+        <div className="data-table-mobile" aria-label="ITAgent sync log">
+          {loading ? <p className="text-muted data-card-empty">Loading…</p> : null}
+          {!loading && rows.length === 0 ? (
+            <p className="text-muted data-card-empty">No agent syncs yet — ask them to run the script again.</p>
+          ) : null}
+          {!loading ? rows.map((r) => {
+            const assetId = r.asset_id != null ? Number(r.asset_id) : null
+            const tag = String(r.linked_asset_tag || r.asset_tag || '')
+            return (
+              <article key={String(r.id)} className="data-card">
+                <div className="data-card-title">{String(r.hostname || r.serial_number || 'Sync')}</div>
+                <dl className="data-card-fields">
+                  <div className="data-card-field"><dt>When</dt><dd>{formatAppDateTime(r.created_at)}</dd></div>
+                  <div className="data-card-field">
+                    <dt>Action</dt>
+                    <dd><span className={actionClass(String(r.action || ''))}>{String(r.action || '—')}</span></dd>
+                  </div>
+                  <div className="data-card-field"><dt>Message</dt><dd>{String(r.message || '—')}</dd></div>
+                  <div className="data-card-field"><dt>Serial</dt><dd>{String(r.serial_number || '—')}</dd></div>
+                  <div className="data-card-field">
+                    <dt>Asset</dt>
+                    <dd>
+                      {assetId
+                        ? <Link to={`/hardware/${assetId}`}>{tag || `#${assetId}`}</Link>
+                        : (tag || '—')}
+                    </dd>
+                  </div>
+                  <div className="data-card-field"><dt>Matched by</dt><dd>{String(r.matched_by || '—')}</dd></div>
+                  <div className="data-card-field"><dt>IP</dt><dd>{String(r.client_ip || '—')}</dd></div>
+                </dl>
+              </article>
+            )
+          }) : null}
         </div>
       </Box>
     </AppLayout>

@@ -88,7 +88,7 @@ export default function LabelsModule() {
               Labels have no asset data yet. Print them, stick on hardware, then scan once to register.
             </p>
             <Field label="Type">
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div className="choice-row">
                 {([
                   ['qr', 'QR code'],
                   ['barcode', 'Barcode'],
@@ -144,7 +144,7 @@ export default function LabelsModule() {
 
           <Box title="Look up / scan">
             <p className="help-block">Type a code from a sticker (or paste the QR token). First scan registers; later scans only show details.</p>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="label-lookup-row">
               <input
                 className="form-control"
                 value={lookup}
@@ -174,7 +174,7 @@ export default function LabelsModule() {
             )}
           >
             <p className="text-muted" style={{ marginTop: 0 }}>{total} label(s)</p>
-            <div className="table-responsive">
+            <div className="table-responsive data-table-desktop">
               <table className="table table-hover">
                 <thead>
                   <tr>
@@ -211,6 +211,35 @@ export default function LabelsModule() {
                   ) : null}
                 </tbody>
               </table>
+            </div>
+            <div className="data-table-mobile" aria-label="Labels">
+              {rows.map((r) => (
+                <article key={r.id} className="data-card">
+                  <div className="data-card-title">
+                    {r.qr_image_url ? (
+                      <img className="label-thumb" src={assetImageSrc(r.qr_image_url) || r.qr_image_url} alt="" />
+                    ) : r.barcode_image_url ? (
+                      <img className="label-thumb" src={assetImageSrc(r.barcode_image_url) || r.barcode_image_url} alt="" />
+                    ) : null}
+                    <Link to={`/asset/${r.token}`}>{r.code}</Link>
+                  </div>
+                  <dl className="data-card-fields">
+                    <div className="data-card-field"><dt>Type</dt><dd>{r.kind}</dd></div>
+                    <div className="data-card-field">
+                      <dt>Status</dt>
+                      <dd>
+                        <span className={`space-occupancy-pill ${r.status === 'registered' ? 'is-occupied' : 'is-free'}`}>
+                          {r.status === 'registered' ? 'Registered' : 'Blank'}
+                        </span>
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="data-card-actions">
+                    {r.asset_id ? <Link to={`/hardware/${r.asset_id}`} className="btn btn-theme btn-sm">Asset</Link> : <span className="text-muted">Not registered</span>}
+                  </div>
+                </article>
+              ))}
+              {!rows.length ? <p className="text-muted data-card-empty">No labels yet. Generate a batch to start.</p> : null}
             </div>
           </Box>
         </div>
