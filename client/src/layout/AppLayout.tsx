@@ -4,6 +4,7 @@ import { siteName } from '../data/mockData'
 import { useAuth } from '../api/AuthContext'
 import { softwareLicensesInDomain } from '../lib/domainScope'
 import { PageBack } from '../components/ui'
+import { goToRefexOne } from '../utils/refexOneUrl'
 
 const NARROW_MQ = '(max-width: 991px)'
 
@@ -294,6 +295,24 @@ function SectionTabs({ section }: { section: SectionKey }) {
   )
 }
 
+function RefexOneShell({ onRefresh }: { onRefresh: () => void }) {
+  return (
+    <div className="refexone-shell">
+      <button type="button" className="refexone-shell-back" onClick={() => goToRefexOne()} title="Back to RefexOne">
+        <i className="fas fa-arrow-left" aria-hidden="true" />
+        <span className="refexone-shell-titles">
+          <strong>RefexOne</strong>
+          <small>Application</small>
+        </span>
+      </button>
+      <button type="button" className="refexone-shell-refresh" onClick={onRefresh} title="Sign out and return to RefexOne">
+        <i className="fas fa-sync-alt" aria-hidden="true" />
+        <span>Refresh</span>
+      </button>
+    </div>
+  )
+}
+
 export default function AppLayout({ children, title, subtitle, hideHeader, backTo, backLabel, onBack }: Props) {
   const isNarrow = useIsNarrow()
   /** Desktop: false = sidebar visible. Mobile: true = drawer closed. */
@@ -352,7 +371,8 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
   }
 
   return (
-    <div className={`wrapper ${collapsed ? 'sidebar-collapse' : ''} ${!collapsed ? 'sidebar-open' : ''}${isNarrow ? ' is-narrow' : ''}`}>
+    <div className={`wrapper has-refexone-shell ${collapsed ? 'sidebar-collapse' : ''} ${!collapsed ? 'sidebar-open' : ''}${isNarrow ? ' is-narrow' : ''}`}>
+      <RefexOneShell onRefresh={logout} />
       {drawerOpen ? (
         <button
           type="button"
@@ -437,7 +457,7 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
                   <NavLink to="/account/profile" onClick={() => setUserOpen(false)}>Edit Profile</NavLink>
                   <NavLink to="/account/password" onClick={() => setUserOpen(false)}>Change Password</NavLink>
                   <div className="divider" />
-                  <button type="button" onClick={() => { logout(); navigate('/login') }}>Logout</button>
+                  <button type="button" onClick={logout}>Logout</button>
                 </div>
               </li>
             </ul>

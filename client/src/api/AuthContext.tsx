@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { authApi, setToken } from './client'
 import { domainScopeFromPermissions, type DomainCode, type DomainScope } from '../lib/domainScope'
+import { goToRefexOne } from '../utils/refexOneUrl'
 
 const ACTIVE_DOMAIN_KEY = 'refex_active_domain'
 
@@ -118,6 +119,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout() {
       setToken(null)
       setUser(null)
+      try {
+        sessionStorage.removeItem('refex_login_next')
+      } catch { /* ignore */ }
+      // Match P2P: leave this app and return to the RefexOne portal
+      goToRefexOne()
     },
     async refreshUser() {
       const u = await authApi.me()
