@@ -96,18 +96,19 @@ img { max-width: 100%; }
   z-index: 1;
 }
 
+/* Desktop/web: no host chrome. Phone + tablet only (P2P `lg` is 1024px; 1199px keeps iPad landscape). */
 .wrapper.has-refexone-shell {
-  --chrome-offset: var(--refexone-shell-height);
+  --chrome-offset: 0px;
 }
 
 .refexone-shell {
+  display: none;
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1050;
   height: var(--refexone-shell-height);
-  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -115,6 +116,15 @@ img { max-width: 100%; }
   background: #eef6f2;
   border-bottom: 1px solid #d7e8e2;
   color: #0f172a;
+}
+
+@media (max-width: 1199px) {
+  .wrapper.has-refexone-shell {
+    --chrome-offset: var(--refexone-shell-height);
+  }
+  .refexone-shell {
+    display: flex;
+  }
 }
 
 .refexone-shell-back,
