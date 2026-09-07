@@ -54,6 +54,7 @@ import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset'
 import SsoCallback from './pages/SsoCallback'
 import PublicAsset from './pages/assets/PublicAsset'
 import LabelsModule from './pages/labels/LabelsModule'
+import LogoutPage from './pages/Logout'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
@@ -84,6 +85,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/login/sso/callback" element={<SsoCallback />} />
+          <Route path="/logout" element={<LogoutPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/asset/:token" element={<PublicAsset />} />
