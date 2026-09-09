@@ -113,7 +113,7 @@ export function BarList({ slices, empty }: { slices: DashSlice[]; empty: string 
   )
 }
 
-export function TrendChart({ points }: { points: DashTrendPoint[] }) {
+export function TrendChart({ points, empty = 'No assignment activity in the last 14 days.' }: { points: DashTrendPoint[]; empty?: string }) {
   const w = 640
   const h = 200
   const pad = { t: 16, r: 12, b: 36, l: 28 }
@@ -123,10 +123,11 @@ export function TrendChart({ points }: { points: DashTrendPoint[] }) {
   const group = innerW / Math.max(points.length, 1)
   const barW = Math.min(10, group * 0.32)
   const ticks = [0, Math.round(max / 2), max]
-  if (!points.length) return <p className="text-muted mb-0">No assignment activity in the last 14 days.</p>
+  const labelEvery = points.length > 16 ? 4 : points.length > 10 ? 2 : 1
+  if (!points.length) return <p className="text-muted mb-0">{empty}</p>
   return (
     <div className="dash-trend">
-      <svg viewBox={`0 0 ${w} ${h}`} className="dash-trend-svg" role="img" aria-label="Assignments over the last 14 days">
+      <svg viewBox={`0 0 ${w} ${h}`} className="dash-trend-svg" role="img" aria-label="Assignment activity">
         {ticks.map((t) => {
           const y = pad.t + innerH - (t / max) * innerH
           return (
@@ -140,7 +141,6 @@ export function TrendChart({ points }: { points: DashTrendPoint[] }) {
           const x = pad.l + i * group + group / 2
           const aH = (p.assigned / max) * innerH
           const rH = (p.returned / max) * innerH
-          const labelEvery = points.length > 10 ? 2 : 1
           return (
             <g key={p.day}>
               <rect x={x - barW - 1} y={pad.t + innerH - aH} width={barW} height={aH} rx="2" fill="#F97316">

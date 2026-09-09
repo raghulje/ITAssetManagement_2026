@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useState, type FormEvent } from 'react'
 import AppLayout from '../../layout/AppLayout'
 import { AppSelect, Box, DataTable, DateField, EmployeeSelect, Field, PageForm } from '../../components/ui'
@@ -115,11 +115,12 @@ const emptyForm: FormState = {
 
 export function LicensesList() {
   const { activeDomain } = useAuth()
+  const [params] = useSearchParams()
   const [q, setQ] = useState('')
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [companyId, setCompanyId] = useState('')
+  const [companyId, setCompanyId] = useState(() => params.get('company_id') || '')
   const [companies, setCompanies] = useState<SelectOption[]>([])
   // const [dash, setDash] = useState<Record<string, number>>({}) // restore with insight cards when needed
 

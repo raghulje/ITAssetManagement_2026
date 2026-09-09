@@ -103,6 +103,15 @@ export default function AssetsList() {
   useEffect(() => {
     if (params.has('company_id')) setCompanyId(params.get('company_id') || '')
     if (params.has('location_id')) setLocationId(params.get('location_id') || '')
+    if (params.has('period_from') || params.has('period_to')) {
+      const from = params.get('period_from') || ''
+      const to = params.get('period_to') || ''
+      setPeriod({
+        mode: '',
+        range: { from, to },
+        summaryLabel: from && to ? `${from} – ${to}` : from || to,
+      })
+    }
     if (params.has('q')) {
       const nextQ = params.get('q') || ''
       setSearch(nextQ)
@@ -140,9 +149,11 @@ export default function AssetsList() {
     if (companyId) q.set('company_id', companyId)
     if (locationId) q.set('location_id', locationId)
     if (search) q.set('q', search)
+    if (period.range.from) q.set('period_from', period.range.from)
+    if (period.range.to) q.set('period_to', period.range.to)
     const s = q.toString()
     return s ? `&${s}` : ''
-  }, [companyId, locationId, search])
+  }, [companyId, locationId, search, period.range.from, period.range.to])
 
   const titleMap: Record<string, string> = {
     Assigned: 'Assigned Assets',

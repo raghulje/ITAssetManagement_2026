@@ -404,6 +404,8 @@ router.get('/eol/due', async (req, res) => {
   const rows = await listEolDueAssets({
     permissions: req.user?.permissions,
     domain: req.query.domain || req.query.domain_id,
+    companyId: req.query.company_id ? Number(req.query.company_id) : null,
+    locationId: req.query.location_id ? Number(req.query.location_id) : null,
   })
   return okList(res, rows)
 })
