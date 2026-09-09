@@ -7,6 +7,7 @@ import { useAuth } from '../api/AuthContext'
 import { softwareLicensesInDomain } from '../lib/domainScope'
 import { BarList, DonutChart, Legend, TrendChart } from '../components/DashCharts'
 import AssetPeriodPicker, { getEmptyPeriodState, type PeriodState } from '../components/AssetPeriodPicker'
+import { DashFilterSheet, DashFiltersButton, filterCount } from '../components/DashMobileFilters'
 
 type DashCounts = Record<string, number>
 
@@ -63,6 +64,7 @@ export default function Dashboard() {
       summaryLabel: from && to ? `${from} – ${to}` : from || to,
     }
   })
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   const filterParams = useMemo(() => ({
     domain: activeDomain,
@@ -80,8 +82,12 @@ export default function Dashboard() {
   }), [companyId, locationId, period.range.from, period.range.to])
 
   useEffect(() => {
-    mastersApi.companies().then((r) => setCompanies(r.results || [])).catch(() => setCompanies([]))
-    mastersApi.locations().then((r) => setLocations(r.results || [])).catch(() => setLocations([]))
+    const mq = window.matchMedia('(min-width: 992px)')
+    const onChange = () => {
+      if (mq.matches) setSheetOpen(false)
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
   }, [])
 
   useEffect(() => {
@@ -117,6 +123,22 @@ export default function Dashboard() {
   }
 
   const hasFilters = Boolean(companyId || locationId || period.range.from)
+  const activeFilterCount = filterCount(companyId, locationId, period)
+
+  const clearFilters = () => {
+    setCompanyId('')
+    setLocationId('')
+    setPeriod(getEmptyPeriodState())
+  }
+
+  const companyOptions = [
+    { value: '', label: 'All companies' },
+    ...companies.map((c) => ({ value: String(c.id), label: c.text })),
+  ]
+  const locationOptions = [
+    { value: '', label: 'All locations' },
+    ...locations.map((l) => ({ value: String(l.id), label: l.text })),
+  ]
   const assigned = counts.deployed || 0
   const totalAssets = counts.assets || 0
   const assignedPct = totalAssets ? `${Math.round((assigned / totalAssets) * 100)}%` : '0%'
@@ -133,64 +155,76 @@ export default function Dashboard() {
 
   return (
     <AppLayout title="Dashboard">
-      <Box type="primary">
-        <div className="asset-toolbar dash-toolbar">
-          <div className="asset-toolbar-bar">
-            <div className="asset-toolbar-actions">
-              <span className="dash-filter-kicker">Filters</span>
+      <div className="dash-filters-mobile">
+        <DashFiltersButton count={activeFilterCount} onClick={() => setSheetOpen(true)} />
+      </div>
+
+      <div className="dash-filters-desktop">
+        <Box type="primary">
+          <div className="asset-toolbar dash-toolbar">
+            <div className="asset-toolbar-bar">
+              <div className="asset-toolbar-actions">
+                <span className="dash-filter-kicker">Filters</span>
+              </div>
+              <div className="asset-toolbar-tools">
+                <button type="button" className="btn btn-default btn-sm" onClick={load} disabled={loading} title="Refresh">
+                  <i className={`fas fa-sync ${loading ? 'fa-spin' : ''}`} />
+                </button>
+              </div>
             </div>
-            <div className="asset-toolbar-tools">
-              <button type="button" className="btn btn-default btn-sm" onClick={load} disabled={loading} title="Refresh">
-                <i className={`fas fa-sync ${loading ? 'fa-spin' : ''}`} />
-              </button>
+            <div className="asset-toolbar-filters">
+              <AppSelect
+                className="filter-app-select"
+                value={companyId}
+                onChange={setCompanyId}
+                searchable
+                placeholder="All companies"
+                options={companyOptions}
+              />
+              <AppSelect
+                className="filter-app-select"
+                value={locationId}
+                onChange={setLocationId}
+                searchable
+                placeholder="All locations"
+                options={locationOptions}
+              />
+              <AssetPeriodPicker
+                className="filter-period-picker"
+                mode={period.mode}
+                range={period.range}
+                summaryLabel={period.summaryLabel}
+                onChange={setPeriod}
+              />
+              {hasFilters ? (
+                <button
+                  type="button"
+                  className="btn btn-default btn-sm asset-toolbar-clear"
+                  onClick={clearFilters}
+                >
+                  Clear
+                </button>
+              ) : null}
             </div>
           </div>
-          <div className="asset-toolbar-filters">
-            <AppSelect
-              className="filter-app-select"
-              value={companyId}
-              onChange={setCompanyId}
-              searchable
-              placeholder="All companies"
-              options={[
-                { value: '', label: 'All companies' },
-                ...companies.map((c) => ({ value: String(c.id), label: c.text })),
-              ]}
-            />
-            <AppSelect
-              className="filter-app-select"
-              value={locationId}
-              onChange={setLocationId}
-              searchable
-              placeholder="All locations"
-              options={[
-                { value: '', label: 'All locations' },
-                ...locations.map((l) => ({ value: String(l.id), label: l.text })),
-              ]}
-            />
-            <AssetPeriodPicker
-              className="filter-period-picker"
-              mode={period.mode}
-              range={period.range}
-              summaryLabel={period.summaryLabel}
-              onChange={setPeriod}
-            />
-            {hasFilters ? (
-              <button
-                type="button"
-                className="btn btn-default btn-sm asset-toolbar-clear"
-                onClick={() => {
-                  setCompanyId('')
-                  setLocationId('')
-                  setPeriod(getEmptyPeriodState())
-                }}
-              >
-                Clear
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </Box>
+        </Box>
+      </div>
+
+      <DashFilterSheet
+        open={sheetOpen}
+        companies={companies}
+        locations={locations}
+        companyId={companyId}
+        locationId={locationId}
+        period={period}
+        onClose={() => setSheetOpen(false)}
+        onApply={(next) => {
+          setCompanyId(next.companyId)
+          setLocationId(next.locationId)
+          setPeriod(next.period)
+          setSheetOpen(false)
+        }}
+      />
 
       <div className="row">
         <SmallBox to={appendFilters('/hardware', hrefFilters)} count={counts.assets} label="Assets" color="bg-teal" icon="fas fa-barcode" />
