@@ -148,6 +148,8 @@ type AppSelectProps = {
   className?: string
   searchable?: boolean
   searchPlaceholder?: string
+  /** Optional icon rendered at the start of the trigger. */
+  leading?: ReactNode
   /** When set, typing in the menu search box is forwarded (debounced) for remote lists. */
   onSearch?: (query: string) => void
   loading?: boolean
@@ -165,6 +167,7 @@ export function AppSelect({
   className = '',
   searchable,
   searchPlaceholder = 'Search…',
+  leading,
   onSearch,
   loading,
   id,
@@ -297,6 +300,7 @@ export function AppSelect({
           if (!disabled) setOpen((o) => !o)
         }}
       >
+        {leading ? <span className="app-select-leading" aria-hidden>{leading}</span> : null}
         <span className={`app-select-value${!selected || selected.value === '' ? ' is-placeholder' : ''}`}>
           {selected && selected.value !== '' ? selected.label : (selected?.label || placeholder)}
         </span>
