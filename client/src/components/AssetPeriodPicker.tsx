@@ -348,6 +348,7 @@ export default function AssetPeriodPicker({
         ref={triggerRef}
         aria-expanded={open}
         aria-label="Period filter"
+        title="Filters by purchase date. If an asset has no purchase date, the date it was added is used."
         data-testid="asset-period-picker"
         onClick={() => setOpen((prev) => !prev)}
         className="asset-period-trigger"

@@ -92,6 +92,21 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false
+    Promise.all([
+      mastersApi.companies().then((r) => r.results || []).catch(() => [] as SelectOption[]),
+      mastersApi.locations().then((r) => r.results || []).catch(() => [] as SelectOption[]),
+    ]).then(([nextCompanies, nextLocations]) => {
+      if (cancelled) return
+      setCompanies(nextCompanies)
+      setLocations(nextLocations)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
     setLoading(true)
     Promise.all([
       dashboardApi.counts(filterParams).then((c) => {
