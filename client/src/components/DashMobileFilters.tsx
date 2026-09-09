@@ -28,12 +28,13 @@ export function DashFiltersButton({
   )
 }
 
-function SheetField({ label, children }: { label: string; children: ReactNode }) {
+function SheetField({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
-    <label className="dash-filter-sheet-field">
+    <div className="dash-filter-sheet-field">
       <span>{label}</span>
       {children}
-    </label>
+      {hint ? <p className="dash-filter-sheet-field-note">{hint}</p> : null}
+    </div>
   )
 }
 
@@ -129,7 +130,10 @@ export function DashFilterSheet({
               options={locationOptions}
             />
           </SheetField>
-          <SheetField label="Period">
+          <SheetField
+            label="Period"
+            hint="Uses purchase date. If an asset has no purchase date, the date it was added is used."
+          >
             <AssetPeriodPicker
               className="filter-period-picker"
               mode={draftPeriod.mode}
@@ -156,7 +160,7 @@ export function DashFilterSheet({
           </button>
           <button
             type="button"
-            className="btn btn-theme dash-filter-sheet-action dash-filter-sheet-apply"
+            className="btn btn-theme dash-filter-sheet-action"
             onClick={() => onApply({ companyId: draftCompany, locationId: draftLocation, period: draftPeriod })}
           >
             Apply

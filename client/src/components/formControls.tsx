@@ -57,6 +57,8 @@ export function useFloatingStyle(
       const spaceBelow = vh - rect.bottom - gap
       const spaceAbove = rect.top - gap
       const openUp = spaceBelow < estimated && spaceAbove > spaceBelow
+      const avail = Math.max(0, openUp ? spaceAbove : spaceBelow)
+      const maxH = Math.min(280, Math.max(avail || 160, 96))
 
       const maxW = Math.min(opts?.maxWidth ?? 420, vw - pad * 2)
       const floor = opts?.minWidth ?? (opts?.matchTriggerWidth === false ? 280 : 160)
@@ -92,7 +94,8 @@ export function useFloatingStyle(
         width,
         minWidth: width,
         maxWidth: width,
-        zIndex: 5600,
+        maxHeight: maxH,
+        zIndex: 5800,
         ...(openUp
           ? { bottom: vh - rect.top + gap, top: 'auto' }
           : { top: rect.bottom + gap, bottom: 'auto' }),
