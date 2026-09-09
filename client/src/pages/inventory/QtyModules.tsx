@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useState, type FormEvent } from 'react'
 import AppLayout from '../../layout/AppLayout'
 import { AppSelect, Box, DataTable, EmployeeSelect, Field, PageForm } from '../../components/ui'
@@ -77,16 +77,20 @@ function QtyList({
   createLabel?: string
 }) {
   const { activeDomain } = useAuth()
+  const [params] = useSearchParams()
   const [q, setQ] = useState('')
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [companyId, setCompanyId] = useState('')
+  const [companyId, setCompanyId] = useState(() => params.get('company_id') || '')
+  const [locationId, setLocationId] = useState(() => params.get('location_id') || '')
   const [companies, setCompanies] = useState<SelectOption[]>([])
+  const [locations, setLocations] = useState<SelectOption[]>([])
   // const [dash, setDash] = useState<Record<string, number>>({}) // restore with insight cards when needed
 
   useEffect(() => {
     mastersApi.companies().then((c) => setCompanies(c.results || [])).catch(() => undefined)
+    mastersApi.locations().then((l) => setLocations(l.results || [])).catch(() => undefined)
   }, [])
 
   // restore with insight cards when needed
@@ -104,7 +108,12 @@ function QtyList({
   const load = () => {
     setLoading(true)
     api
-      .list({ search: q || undefined, company_id: companyId || undefined, limit: 200 })
+      .list({
+        search: q || undefined,
+        company_id: companyId || undefined,
+        location_id: locationId || undefined,
+        limit: 200,
+      })
       .then((r) => {
         setRows(r.rows || [])
         setTotal(r.total || 0)
@@ -119,7 +128,7 @@ function QtyList({
   useEffect(() => {
     const t = setTimeout(load, 250)
     return () => clearTimeout(t)
-  }, [q, companyId, api, activeDomain])
+  }, [q, companyId, locationId, api, activeDomain])
 
   // restore with insight cards when needed
   // const kindKey = basePath.replace(/^\//, '') as 'accessories' | 'consumables' | 'components'
@@ -135,7 +144,7 @@ function QtyList({
         title={title}
         tools={<Link to={`${basePath}/create`} className="btn btn-primary btn-sm"><i className="fas fa-plus icon-white" /> {createLabel}</Link>}
       >
-        <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap', maxWidth: 280 }}>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap', maxWidth: 560 }}>
           <AppSelect
             value={companyId}
             onChange={setCompanyId}
@@ -143,6 +152,15 @@ function QtyList({
             options={[
               { value: '', label: 'All companies' },
               ...companies.map((c) => ({ value: String(c.id), label: c.text })),
+            ]}
+          />
+          <AppSelect
+            value={locationId}
+            onChange={setLocationId}
+            searchable
+            options={[
+              { value: '', label: 'All locations' },
+              ...locations.map((l) => ({ value: String(l.id), label: l.text })),
             ]}
           />
         </div>

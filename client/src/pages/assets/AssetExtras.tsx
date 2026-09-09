@@ -135,15 +135,22 @@ export function AuditDue() {
 }
 
 export function EolDue() {
+  const [params] = useSearchParams()
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api<{ rows: Record<string, unknown>[] }>('/hardware/eol/due')
+    const q = new URLSearchParams()
+    const companyId = params.get('company_id')
+    const locationId = params.get('location_id')
+    if (companyId) q.set('company_id', companyId)
+    if (locationId) q.set('location_id', locationId)
+    const qs = q.toString()
+    api<{ rows: Record<string, unknown>[] }>(`/hardware/eol/due${qs ? `?${qs}` : ''}`)
       .then((r) => setRows(r.rows || []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false))
-  }, [])
+  }, [params])
 
   const daysLabel = (d: unknown) => {
     if (d == null || d === '') return '—'

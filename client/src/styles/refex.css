@@ -3578,6 +3578,15 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
 .dash-status-fill.tone-slate { background: #64748b; }
 
 .dash-chart-row { margin-top: 4px; }
+.dash-toolbar {
+  margin-bottom: 0;
+}
+.dash-filter-kicker {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: 0.02em;
+}
 .dash-donut-panel {
   display: flex;
   align-items: center;

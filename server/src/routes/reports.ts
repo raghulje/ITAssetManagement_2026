@@ -586,7 +586,20 @@ dashboardRouter.get('/', async (req, res) => {
     invClauses.push('company_id = ?')
     invParams.push(companyId)
   }
-  const invWhere = invClauses.join(' AND ')
+  const licWhere = invClauses.join(' AND ')
+  const qtyClauses = [...invClauses]
+  const qtyParams = [...invParams]
+  if (locationId) {
+    qtyClauses.push('location_id = ?')
+    qtyParams.push(locationId)
+  }
+  const qtyWhere = qtyClauses.join(' AND ')
+  const qtyAssignedExtra = `${companyId ? ' AND t.company_id = ?' : ''}${locationId ? ' AND t.location_id = ?' : ''}`
+  const qtyAssignedParams = [
+    ...invDomainT.params,
+    ...(companyId ? [companyId] : []),
+    ...(locationId ? [locationId] : []),
+  ]
 
   const { countEolDue } = await import('../services/eolAlerts.js')
 
@@ -594,27 +607,27 @@ dashboardRouter.get('/', async (req, res) => {
     SELECT COALESCE(SUM(ac.assigned_qty),0) as c
     FROM accessories_checkout ac
     JOIN accessories t ON t.id = ac.accessory_id
-    WHERE t.deleted_at IS NULL${invDomainT.sql}${companyId ? ' AND t.company_id = ?' : ''}
-  `, companyId ? [...invDomainT.params, companyId] : invDomainT.params)
+    WHERE t.deleted_at IS NULL${invDomainT.sql}${qtyAssignedExtra}
+  `, qtyAssignedParams)
   const consumableAssigned = await count(`
     SELECT COALESCE(SUM(cu.assigned_qty),0) as c
     FROM consumables_users cu
     JOIN consumables t ON t.id = cu.consumable_id
-    WHERE t.deleted_at IS NULL${invDomainT.sql}${companyId ? ' AND t.company_id = ?' : ''}
-  `, companyId ? [...invDomainT.params, companyId] : invDomainT.params)
+    WHERE t.deleted_at IS NULL${invDomainT.sql}${qtyAssignedExtra}
+  `, qtyAssignedParams)
   const componentAssigned = await count(`
     SELECT COALESCE(SUM(ca.assigned_qty),0) as c
     FROM components_assets ca
     JOIN components t ON t.id = ca.component_id
-    WHERE t.deleted_at IS NULL${invDomainT.sql}${companyId ? ' AND t.company_id = ?' : ''}
-  `, companyId ? [...invDomainT.params, companyId] : invDomainT.params)
+    WHERE t.deleted_at IS NULL${invDomainT.sql}${qtyAssignedExtra}
+  `, qtyAssignedParams)
 
-  const accessoryQty = await count(`SELECT COALESCE(SUM(qty),0) as c FROM accessories WHERE ${invWhere}`, invParams)
-  const consumableQty = await count(`SELECT COALESCE(SUM(qty),0) as c FROM consumables WHERE ${invWhere}`, invParams)
-  const componentQty = await count(`SELECT COALESCE(SUM(qty),0) as c FROM components WHERE ${invWhere}`, invParams)
+  const accessoryQty = await count(`SELECT COALESCE(SUM(qty),0) as c FROM accessories WHERE ${qtyWhere}`, qtyParams)
+  const consumableQty = await count(`SELECT COALESCE(SUM(qty),0) as c FROM consumables WHERE ${qtyWhere}`, qtyParams)
+  const componentQty = await count(`SELECT COALESCE(SUM(qty),0) as c FROM components WHERE ${qtyWhere}`, qtyParams)
 
   const licenseSeats = await count(
-    `SELECT COALESCE(SUM(seats),0) as c FROM licenses WHERE ${invWhere}`,
+    `SELECT COALESCE(SUM(seats),0) as c FROM licenses WHERE ${licWhere}`,
     invParams,
   )
   const licenseAssigned = await count(`
@@ -626,10 +639,10 @@ dashboardRouter.get('/', async (req, res) => {
 
   return okItem(res, {
     assets: await count(`SELECT COUNT(*) as c FROM assets a WHERE ${assetWhere}`, assetParams),
-    licenses: await count(`SELECT COUNT(*) as c FROM licenses WHERE ${invWhere}`, invParams),
-    accessories: await count(`SELECT COUNT(*) as c FROM accessories WHERE ${invWhere}`, invParams),
-    consumables: await count(`SELECT COUNT(*) as c FROM consumables WHERE ${invWhere}`, invParams),
-    components: await count(`SELECT COUNT(*) as c FROM components WHERE ${invWhere}`, invParams),
+    licenses: await count(`SELECT COUNT(*) as c FROM licenses WHERE ${licWhere}`, invParams),
+    accessories: await count(`SELECT COUNT(*) as c FROM accessories WHERE ${qtyWhere}`, qtyParams),
+    consumables: await count(`SELECT COUNT(*) as c FROM consumables WHERE ${qtyWhere}`, qtyParams),
+    components: await count(`SELECT COUNT(*) as c FROM components WHERE ${qtyWhere}`, qtyParams),
     users: await count(`SELECT COUNT(*) as c FROM users WHERE deleted_at IS NULL`),
     employees: await count(`SELECT COUNT(*) as c FROM employees WHERE deleted_at IS NULL`),
     employees_active: await count(`SELECT COUNT(*) as c FROM employees WHERE deleted_at IS NULL AND ${ACTIVE_EMPLOYEE_SQL}`),
@@ -683,9 +696,46 @@ function ymdLocal(d: Date) {
   return `${y}-${m}-${day}`
 }
 
+function parseYmdLocal(value: string): Date | null {
+  const m = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  d.setHours(12, 0, 0, 0)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function addDaysLocal(d: Date, n: number) {
+  const next = new Date(d)
+  next.setDate(next.getDate() + n)
+  return next
+}
+
+/** Daily assignment trend window. Long periods (FY) clip to the last 14 days of the range. */
+function assignmentTrendWindow(periodFrom: string, periodTo: string): { from: Date; to: Date } {
+  const today = new Date()
+  today.setHours(12, 0, 0, 0)
+  const fromP = parseYmdLocal(periodFrom)
+  const toP = parseYmdLocal(periodTo)
+  if (!fromP && !toP) {
+    return { from: addDaysLocal(today, -13), to: today }
+  }
+  let from = fromP || toP as Date
+  let to = toP || today
+  if (to > today) to = today
+  if (from > to) from = to
+  const span = Math.round((to.getTime() - from.getTime()) / 86400000) + 1
+  if (span > 31) {
+    const clipped = addDaysLocal(to, -13)
+    from = clipped < from ? from : clipped
+  }
+  return { from, to }
+}
+
 dashboardRouter.get('/charts', async (req, res) => {
   const companyId = req.query.company_id ? Number(req.query.company_id) : null
   const locationId = req.query.location_id ? Number(req.query.location_id) : null
+  const periodFrom = String(req.query.period_from || req.query.purchase_from || '').trim()
+  const periodTo = String(req.query.period_to || req.query.purchase_to || '').trim()
   const { inventoryDomainClause, tableHasColumn } = await import('../services/domainAuth.js')
   const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
   const clauses = ['a.deleted_at IS NULL']
@@ -700,6 +750,16 @@ dashboardRouter.get('/charts', async (req, res) => {
   if (locationId) {
     clauses.push('(a.location_id = ? OR a.rtd_location_id = ?)')
     params.push(locationId, locationId)
+  }
+  const trendWhere = clauses.join(' AND ')
+  const trendParams = [...params]
+  if (periodFrom) {
+    clauses.push(`${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} >= ?`)
+    params.push(periodFrom)
+  }
+  if (periodTo) {
+    clauses.push(`${ASSET_AGE_DATE_SQL} IS NOT NULL AND ${ASSET_AGE_DATE_SQL} <= ?`)
+    params.push(periodTo)
   }
   const where = clauses.join(' AND ')
   const hasAssetType = await tableHasColumn('models', 'asset_type_id')
@@ -744,6 +804,9 @@ dashboardRouter.get('/charts', async (req, res) => {
     LIMIT 6
   `, params)
 
+  const window = assignmentTrendWindow(periodFrom, periodTo)
+  const trendFrom = ymdLocal(window.from)
+  const trendTo = ymdLocal(window.to)
   const trendRaw = await all<{ day: string; assigned: number; returned: number }>(`
     SELECT DATE(al.action_date) AS day,
       SUM(CASE WHEN al.action_type = 'checkout' THEN 1 ELSE 0 END) AS assigned,
@@ -753,25 +816,24 @@ dashboardRouter.get('/charts', async (req, res) => {
     WHERE al.deleted_at IS NULL
       AND al.item_type = 'asset'
       AND al.action_type IN ('checkout', 'checkin')
-      AND al.action_date >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
-      AND ${where}
+      AND DATE(al.action_date) >= ?
+      AND DATE(al.action_date) <= ?
+      AND ${trendWhere}
     GROUP BY DATE(al.action_date)
     ORDER BY day ASC
-  `, params)
+  `, [trendFrom, trendTo, ...trendParams])
   const byDay = new Map(trendRaw.map((r) => [String(r.day).slice(0, 10), r]))
   const trend: Array<{ day: string; assigned: number; returned: number }> = []
-  const cursor = new Date()
-  cursor.setHours(12, 0, 0, 0)
-  for (let i = 13; i >= 0; i -= 1) {
-    const d = new Date(cursor)
-    d.setDate(cursor.getDate() - i)
-    const key = ymdLocal(d)
+  const cursor = new Date(window.from)
+  while (cursor.getTime() <= window.to.getTime()) {
+    const key = ymdLocal(cursor)
     const hit = byDay.get(key)
     trend.push({
       day: key,
       assigned: Number(hit?.assigned || 0),
       returned: Number(hit?.returned || 0),
     })
+    cursor.setDate(cursor.getDate() + 1)
   }
 
   return okItem(res, {
