@@ -3,7 +3,7 @@ import { useAuth } from '../api/AuthContext'
 
 /**
  * /logout — clear the Asset Management session and send the user to RefexOne.
- * Used by the in-app Refresh control and by the RefexOne host Refresh URL.
+ * Used by the user-menu Logout action and by the RefexOne host logout URL.
  */
 export default function LogoutPage() {
   const { logout } = useAuth()

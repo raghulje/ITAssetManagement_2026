@@ -1,4 +1,4 @@
-/** RefexOne portal — same destination P2P uses on logout / Refresh. */
+/** RefexOne portal — same destination P2P uses on logout / Back. */
 export const DEFAULT_REFEXONE_URL = 'https://refexone.com'
 
 export function getRefexOneUrl(): string {

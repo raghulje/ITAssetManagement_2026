@@ -295,7 +295,7 @@ function SectionTabs({ section }: { section: SectionKey }) {
   )
 }
 
-function RefexOneShell({ onRefresh }: { onRefresh: () => void }) {
+function RefexOneShell() {
   return (
     <div className="refexone-shell">
       <button type="button" className="refexone-shell-back" onClick={() => goToRefexOne()} title="Back to RefexOne">
@@ -305,7 +305,12 @@ function RefexOneShell({ onRefresh }: { onRefresh: () => void }) {
           <small>Application</small>
         </span>
       </button>
-      <button type="button" className="refexone-shell-refresh" onClick={onRefresh} title="Sign out and return to RefexOne">
+      <button
+        type="button"
+        className="refexone-shell-refresh"
+        onClick={() => window.location.reload()}
+        title="Reload this page"
+      >
         <i className="fas fa-sync-alt" aria-hidden="true" />
         <span>Refresh</span>
       </button>
@@ -372,7 +377,7 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
 
   return (
     <div className={`wrapper has-refexone-shell ${collapsed ? 'sidebar-collapse' : ''} ${!collapsed ? 'sidebar-open' : ''}${isNarrow ? ' is-narrow' : ''}`}>
-      <RefexOneShell onRefresh={logout} />
+      <RefexOneShell />
       {drawerOpen ? (
         <button
           type="button"
