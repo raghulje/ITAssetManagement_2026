@@ -952,6 +952,51 @@ settingsRouter.post('/run-migrations', async (req, res) => {
   }
 })
 
+settingsRouter.get('/battery', async (_req, res) => {
+  const { getBatteryAdminConfig } = await import('../services/batteryConfig.js')
+  return okItem(res, await getBatteryAdminConfig())
+})
+
+settingsRouter.put('/battery', async (req, res) => {
+  const { saveBatteryAdminConfig } = await import('../services/batteryConfig.js')
+  const b = req.body || {}
+  const saved = await saveBatteryAdminConfig({
+    agent_id: b.agent_id !== undefined ? String(b.agent_id) : undefined,
+    notify_email: b.notify_email !== undefined ? String(b.notify_email) : undefined,
+  })
+  await logAction({
+    userId: req.user?.id,
+    actionType: 'update',
+    itemType: 'settings',
+    itemId: 1,
+    note: 'Updated Battery Degradation settings',
+  })
+  return okMessage(res, 'Battery Degradation settings saved', saved)
+})
+
+settingsRouter.post('/run-battery-migration', async (req, res) => {
+  try {
+    const { runBatteryDegradationSetup } = await import('../services/batterySetup.js')
+    const result = await runBatteryDegradationSetup()
+    await logAction({
+      userId: req.user?.id,
+      actionType: 'run_battery_migration',
+      itemType: 'settings',
+      itemId: 1,
+      note: `Battery setup: migrations applied ${result.migrations.applied.length}; contacts +${result.seed.inserted} (skipped ${result.seed.skipped})`,
+      meta: result,
+    })
+    const applied = result.migrations.applied.length ? result.migrations.applied.join(', ') : 'none'
+    return okMessage(
+      res,
+      `Battery Degradation setup complete — schema applied: ${applied}; contacts imported ${result.seed.inserted} of ${result.seed.total} (skipped ${result.seed.skipped} existing). No conversation history was copied.`,
+      result,
+    )
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Battery Degradation setup failed', 500)
+  }
+})
+
 /** Seed office floors / cabins / Admin-domain inventory (idempotent). */
 settingsRouter.post('/seed-admin-spaces', async (req, res) => {
   try {

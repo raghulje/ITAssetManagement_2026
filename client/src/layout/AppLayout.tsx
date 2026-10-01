@@ -166,6 +166,7 @@ const SECTION_TABS: Record<SectionKey, SectionTab[]> = {
   ],
   settings: [
     { to: '/settings', label: 'General', isActive: (p) => p === '/settings' },
+    { to: '/settings/battery', label: 'Battery Degradation', isActive: (p) => p.startsWith('/settings/battery') },
     { to: '/settings/roles', label: 'Roles & permissions', isActive: (p) => p.startsWith('/settings/roles') },
     { to: '/settings/notifications', label: 'Notifications', isActive: (p) => p.startsWith('/settings/notifications') },
     { to: '/categories', label: 'Categories', isActive: (p) => p.startsWith('/categories') },
@@ -240,6 +241,7 @@ function shouldShowSectionTabs(pathname: string): boolean {
     /^\/suppliers\/?$/,
     /^\/models\/?$/,
     /^\/settings\/?$/,
+    /^\/settings\/battery\/?$/,
     /^\/settings\/roles\/?$/,
     /^\/settings\/notifications\/?$/,
     /^\/categories\/?$/,
@@ -434,6 +436,7 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
               {can('accessories.view') ? <li><NavLink to="/accessories" title="Accessories"><i className="fas fa-keyboard" /></NavLink></li> : null}
               {can('consumables.view') ? <li><NavLink to="/consumables" title="Consumables"><i className="fas fa-tint" /></NavLink></li> : null}
               {can('components.view') ? <li><NavLink to="/components" title="Components"><i className="fas fa-hdd" /></NavLink></li> : null}
+              {can('battery_issues.view') ? <li><NavLink to="/battery-issues" title="Battery Degradation"><i className="fas fa-battery-half" /></NavLink></li> : null}
               {can('people.view') ? <li><NavLink to="/employees" title="Employees"><i className="fas fa-id-badge" /></NavLink></li> : null}
               {can('people.view') ? <li><NavLink to="/users" title="App Users"><i className="fas fa-users" /></NavLink></li> : null}
               {(can('assets.create') || can('licenses.create') || can('people.create')) ? (
@@ -449,6 +452,7 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
                     {can('components.create') ? <NavLink to="/components/create" onClick={() => setCreateOpen(false)}>Component</NavLink> : null}
                     {can('people.create') ? <NavLink to="/employees/create" onClick={() => setCreateOpen(false)}>Employee</NavLink> : null}
                     {can('people.create') ? <NavLink to="/users/create" onClick={() => setCreateOpen(false)}>App User</NavLink> : null}
+                    {can('battery_issues.create') ? <NavLink to="/battery-issues/create" onClick={() => setCreateOpen(false)}>Battery issue</NavLink> : null}
                   </div>
                 </li>
               ) : null}
@@ -505,6 +509,11 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
           {can('components.view') ? (
             <li className={path.startsWith('/components') ? 'active' : ''}>
               <NavLink to="/components" onClick={closeDrawer}><i className="fas fa-hdd fa-fw" /><span>Components</span></NavLink>
+            </li>
+          ) : null}
+          {can('battery_issues.view') ? (
+            <li className={path.startsWith('/battery-issues') ? 'active' : ''}>
+              <NavLink to="/battery-issues" onClick={closeDrawer}><i className="fas fa-battery-half fa-fw" /><span>Battery Degradation</span></NavLink>
             </li>
           ) : null}
 

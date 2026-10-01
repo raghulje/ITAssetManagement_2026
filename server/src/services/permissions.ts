@@ -12,6 +12,7 @@ export const MODULES = [
   'reports',
   'settings',
   'maintenance',
+  'battery_issues',
 ] as const
 
 export type ModuleKey = (typeof MODULES)[number]
@@ -30,6 +31,7 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   reports: ['view'],
   settings: ['view', 'edit'],
   maintenance: ['view', 'create', 'edit', 'delete'],
+  battery_issues: ['view', 'create', 'edit', 'delete'],
 }
 
 export function permissionCatalog() {
@@ -80,7 +82,7 @@ export function withDomainPerms(
 
 export function viewerPerms(): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const mod of ['assets', 'licenses', 'accessories', 'consumables', 'components', 'people', 'reports', 'maintenance'] as ModuleKey[]) {
+  for (const mod of ['assets', 'licenses', 'accessories', 'consumables', 'components', 'people', 'reports', 'maintenance', 'battery_issues'] as ModuleKey[]) {
     out[`${mod}.view`] = '1'
   }
   return withDomainPerms(out, ['it'])
@@ -226,6 +228,41 @@ export async function ensureDefaultRoles() {
     }
   }
 
+  // One-time: Battery Degradation Issue module on existing manager / viewer roles
+  for (const spec of [
+    { name: 'IT Asset Manager', actions: ['view', 'create', 'edit', 'delete'] },
+    { name: 'Admin Asset Manager', actions: ['view', 'create', 'edit', 'delete'] },
+    { name: 'Viewer', actions: ['view'] },
+  ]) {
+    const group = await get<{ id: number; permissions: unknown }>(
+      `SELECT id, permissions FROM permission_groups WHERE name = ? LIMIT 1`,
+      [spec.name],
+    )
+    if (!group) continue
+    const p = parsePerms(group.permissions)
+    let changed = false
+    for (const act of spec.actions) {
+      const key = `battery_issues.${act}`
+      if (!isTruthyPerm(p[key])) {
+        p[key] = '1'
+        changed = true
+      }
+    }
+    if (!changed) continue
+    await run(`UPDATE permission_groups SET permissions = ?, updated_at = ? WHERE id = ?`, [
+      JSON.stringify(mergePermissions(p)),
+      ts,
+      group.id,
+    ])
+    const members = await all<{ user_id: number }>(
+      `SELECT user_id FROM users_groups WHERE group_id = ?`,
+      [group.id],
+    )
+    for (const m of members) {
+      await syncUserPermissions(Number(m.user_id))
+    }
+  }
+
   const su = await get<{ id: number }>(`SELECT id FROM permission_groups WHERE name = 'Superusers' LIMIT 1`)
   const adminGroup = await get<{ id: number }>(`SELECT id FROM permission_groups WHERE name = 'Admin' LIMIT 1`)
 
@@ -280,7 +317,7 @@ export function moduleGate(module: ModuleKey) {
     } else if (req.method === 'POST') {
       if (/\/(checkout|checkin|replace|checkinbytag)\b/i.test(path) || /\/(checkout|checkin|replace)\b/i.test(req.path)) {
         action = 'checkout'
-      } else if (/\/(complete|audit)\b/i.test(req.path)) {
+      } else if (/\/(complete|audit|call|sync-call|close|run-migrations|run-battery-migration|seed-admin-spaces|migrate-asset-tags|regenerate-asset-tags|reset-qr)\b/i.test(req.path)) {
         action = 'edit'
       } else if (/\/labels\b/i.test(path) || /\/labels\b/i.test(req.baseUrl || '')) {
         // Print label is not "create asset" — allow with view or edit

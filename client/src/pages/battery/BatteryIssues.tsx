@@ -1,0 +1,889 @@
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import AppLayout from '../../layout/AppLayout'
+import { Box, DataTable, Field, PageForm } from '../../components/ui'
+import { useToast } from '../../components/Toast'
+import { useAuth } from '../../api/AuthContext'
+import { formatAppDateTime } from '../../lib/datetime'
+import { ModuleInsights } from '../../components/ModuleInsights'
+import {
+  batteryIssuesApi,
+  type BatteryCall,
+  type BatteryCallQueue,
+  type BatteryCallStats,
+  type BatteryIssue,
+  type BatteryTrackerStep,
+  type BatteryTranscriptLine,
+} from '../../api/batteryIssues'
+
+const STATUS_OPTIONS = [
+  { value: 'open', label: 'Open' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'closed', label: 'Closed' },
+]
+
+function statusLabel(status: string) {
+  return STATUS_OPTIONS.find((s) => s.value === status)?.label || status || 'In Progress'
+}
+
+function statusClass(status: string) {
+  if (status === 'completed' || status === 'closed') return 'bdi-pill bdi-pill--ok'
+  if (status === 'open') return 'bdi-pill bdi-pill--muted'
+  return 'bdi-pill bdi-pill--progress'
+}
+
+function callResultLabel(result: string) {
+  switch (String(result || '').toLowerCase()) {
+    case 'yet_to_call': return 'Yet to call'
+    case 'queued':
+    case 'in_progress': return 'Calling'
+    case 'completed':
+    case 'ended': return 'Call completed'
+    case 'rejected': return 'Rejected'
+    case 'ignored': return 'Ignored'
+    default: return result ? result.replace(/_/g, ' ') : 'Yet to call'
+  }
+}
+
+function callResultClass(result: string) {
+  const r = String(result || '').toLowerCase()
+  if (r === 'completed' || r === 'ended') return 'bdi-pill bdi-pill--ok'
+  if (r === 'rejected') return 'bdi-pill bdi-pill--danger'
+  if (r === 'ignored') return 'bdi-pill bdi-pill--warn'
+  if (r === 'queued' || r === 'in_progress') return 'bdi-pill bdi-pill--progress'
+  return 'bdi-pill bdi-pill--muted'
+}
+
+function initials(name: string) {
+  const parts = name.split(/\s+/).filter(Boolean).slice(0, 2)
+  return parts.map((p) => p[0]?.toUpperCase() || '').join('') || '?'
+}
+
+function trackerTone(status: BatteryTrackerStep['status']) {
+  if (status === 'completed') return 'completed'
+  if (status === 'in_progress') return 'progress'
+  if (status === 'skipped') return 'skipped'
+  return 'idle'
+}
+
+function trackerBadge(status: BatteryTrackerStep['status']) {
+  if (status === 'completed') return 'Completed'
+  if (status === 'in_progress') return 'In Progress'
+  if (status === 'skipped') return 'Skipped'
+  return 'Not Started'
+}
+
+function callStateIcon(result: string) {
+  const r = String(result || 'yet_to_call').toLowerCase()
+  if (r === 'completed' || r === 'ended') return { icon: 'fas fa-phone', cls: 'bdi-call-ico bdi-call-ico--ok', title: 'Call completed' }
+  if (r === 'rejected') return { icon: 'fas fa-phone-slash', cls: 'bdi-call-ico bdi-call-ico--danger', title: 'Rejected' }
+  if (r === 'ignored') return { icon: 'fas fa-phone-alt', cls: 'bdi-call-ico bdi-call-ico--warn', title: 'Ignored / no answer' }
+  if (r === 'queued' || r === 'in_progress') return { icon: 'fas fa-spinner fa-spin', cls: 'bdi-call-ico bdi-call-ico--progress', title: 'Calling' }
+  return { icon: 'far fa-clock', cls: 'bdi-call-ico bdi-call-ico--muted', title: 'Yet to call' }
+}
+
+export function BatteryIssuesList() {
+  const { can } = useAuth()
+  const toast = useToast()
+  const [search, setSearch] = useState('')
+  const [callFilter, setCallFilter] = useState('')
+  const [page, setPage] = useState(0)
+  const [rows, setRows] = useState<BatteryIssue[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [stats, setStats] = useState<BatteryCallStats | null>(null)
+  const [queue, setQueue] = useState<BatteryCallQueue | null>(null)
+  const [startingQueue, setStartingQueue] = useState(false)
+  const pageSize = 15
+
+  const loadStats = () => {
+    batteryIssuesApi.stats().then(setStats).catch(() => undefined)
+    batteryIssuesApi.queueStatus().then(setQueue).catch(() => undefined)
+  }
+
+  const load = () => {
+    setLoading(true)
+    batteryIssuesApi
+      .list({
+        search: search || undefined,
+        call_result: callFilter || undefined,
+        limit: pageSize,
+        offset: page * pageSize,
+      })
+      .then((res) => {
+        setRows(res.rows)
+        setTotal(res.total)
+        setError('')
+      })
+      .catch((e: Error) => {
+        setError(e.message)
+        setRows([])
+        setTotal(0)
+      })
+      .finally(() => setLoading(false))
+    loadStats()
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, page, callFilter])
+
+  useEffect(() => {
+    if (!queue?.running) return
+    const timer = window.setInterval(() => {
+      void batteryIssuesApi.queueStatus().then((q) => {
+        setQueue(q)
+        if (!q.running) load()
+      })
+    }, 2500)
+    return () => window.clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue?.running])
+
+  const startQueue = async () => {
+    if (!window.confirm('Call every pending contact that has a phone number, one after another? Each person is dialed once now. Ignored or rejected numbers are retried after 30 minutes.')) return
+    setStartingQueue(true)
+    try {
+      const res = await batteryIssuesApi.startQueue()
+      if (res.payload) setQueue(res.payload)
+      toast.success(res.messages?.[0] || 'Call queue started')
+      load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not start the call queue')
+    } finally {
+      setStartingQueue(false)
+    }
+  }
+
+  const setFilter = (value: string) => {
+    setCallFilter((prev) => (prev === value ? '' : value))
+    setPage(0)
+  }
+
+  return (
+    <AppLayout title="Battery Degradation Issue" subtitle={loading ? 'Loading…' : `${total} issues`}>
+      {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
+      <ModuleInsights
+        title="Call insights"
+        cards={[
+          { filter: '', label: 'Total users', value: stats?.total ?? '—', icon: 'fas fa-users', color: 'bg-navy', hint: 'All contacts' },
+          { filter: 'called', label: 'Called', value: stats?.called ?? '—', icon: 'fas fa-phone', color: 'bg-teal', hint: 'At least one attempt' },
+          { filter: 'yet_to_call', label: 'Yet to call', value: stats?.yet_to_call ?? '—', icon: 'far fa-clock', color: 'bg-olive', hint: 'No call yet' },
+          { filter: 'completed', label: 'Attended', value: stats?.attended ?? '—', icon: 'fas fa-user-check', color: 'bg-green', hint: 'Picked up' },
+          { filter: 'rejected', label: 'Rejected', value: stats?.rejected ?? '—', icon: 'fas fa-phone-slash', color: 'bg-maroon', hint: 'Declined' },
+          { filter: 'ignored', label: 'Ignored', value: stats?.ignored ?? '—', icon: 'fas fa-phone-alt', color: 'bg-orange', hint: 'No answer' },
+        ].map((c) => ({
+          label: c.label,
+          value: c.value,
+          icon: c.icon,
+          color: c.color,
+          hint: c.filter && callFilter === c.filter ? 'Showing this filter' : c.hint,
+          active: Boolean(c.filter) && callFilter === c.filter,
+          onClick: () => setFilter(c.filter),
+        }))}
+      />
+      {queue?.running || queue?.message ? (
+        <div className={`callout ${queue.running ? 'callout-info' : 'callout-success'}`}>
+          <p>
+            {queue.running ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-check" />}
+            {' '}{queue.message}
+            {queue.running && queue.total ? ` (${queue.done + queue.failed} / ${queue.total})` : ''}
+            {queue.current_name ? ` — ${queue.current_name}` : ''}
+          </p>
+        </div>
+      ) : null}
+      <Box
+        title="Issues"
+        type="primary"
+        tools={
+          <>
+            {can('battery_issues.edit') ? (
+              <button
+                type="button"
+                className="btn btn-theme btn-sm"
+                disabled={startingQueue || queue?.running || !stats?.yet_to_call}
+                onClick={() => { void startQueue() }}
+              >
+                <i className="fas fa-phone-volume" /> {startingQueue || queue?.running ? 'Calling…' : 'Call pending contacts'}
+              </button>
+            ) : null}
+            {can('battery_issues.create') ? (
+              <Link to="/battery-issues/create" className="btn btn-default btn-sm">
+                <i className="fas fa-plus" /> Create New
+              </Link>
+            ) : null}
+          </>
+        }
+      >
+        <DataTable
+          search={search}
+          onSearch={(v) => { setSearch(v); setPage(0) }}
+          rows={rows as unknown as Record<string, unknown>[]}
+          exportName="battery-degradation-issues"
+          storageKey="battery_issues_columns_v3"
+          onRefresh={load}
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onBulkDelete={can('battery_issues.delete') ? async (ids) => {
+            for (const id of ids) await batteryIssuesApi.remove(id)
+            load()
+          } : undefined}
+          columns={[
+            {
+              key: 'name',
+              label: 'Name',
+              render: (r) => {
+                const result = String(r.call_result || (Number(r.call_count || 0) ? r.call_status : 'yet_to_call'))
+                const ico = callStateIcon(result)
+                return (
+                  <span className="bdi-name-cell">
+                    <i className={`${ico.icon} ${ico.cls}`} title={ico.title} />
+                    <Link to={`/battery-issues/${r.id}`}>{String(r.name)}</Link>
+                  </span>
+                )
+              },
+            },
+            { key: 'phone', label: 'Phone' },
+            { key: 'email', label: 'Email' },
+            { key: 'company', label: 'Company' },
+            {
+              key: 'assigned_name',
+              label: 'Assigned',
+              exportValue: (r) => String(r.assigned_name || ''),
+              render: (r) => String(r.assigned_name || '') || <span className="cell-muted">—</span>,
+            },
+            {
+              key: 'call_result',
+              label: 'Call',
+              exportValue: (r) => callResultLabel(String(r.call_result || (Number(r.call_count || 0) ? r.call_status : 'yet_to_call'))),
+              render: (r) => {
+                const result = String(r.call_result || (Number(r.call_count || 0) ? r.call_status : 'yet_to_call'))
+                return <span className={callResultClass(result)}>{callResultLabel(result)}</span>
+              },
+            },
+            {
+              key: 'status',
+              label: 'Status',
+              exportValue: (r) => statusLabel(String(r.status || '')),
+              render: (r) => <span className={statusClass(String(r.status || ''))}>{statusLabel(String(r.status || ''))}</span>,
+            },
+            {
+              key: 'created_at',
+              label: 'Created',
+              exportValue: (r) => formatAppDateTime(r.created_at, ''),
+              render: (r) => formatAppDateTime(r.created_at),
+            },
+            {
+              key: 'actions',
+              label: '',
+              exportable: false,
+              render: (r) => (
+                <span className="actions">
+                  <Link to={`/battery-issues/${r.id}`} className="btn btn-sm btn-default" title="View"><i className="fas fa-eye" /></Link>
+                  {can('battery_issues.edit') ? (
+                    <Link to={`/battery-issues/${r.id}/edit`} className="btn btn-sm btn-warning" title="Edit"><i className="fas fa-pencil-alt" /></Link>
+                  ) : null}
+                </span>
+              ),
+            },
+          ]}
+        />
+      </Box>
+    </AppLayout>
+  )
+}
+
+function RecordingPlayer({ recordingUrl }: { recordingUrl: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [playing, setPlaying] = useState(false)
+  const [current, setCurrent] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const src = /^https?:\/\//i.test(recordingUrl) ? recordingUrl : ''
+
+  const fmt = (n: number) => {
+    if (!Number.isFinite(n) || n < 0) return '0:00'
+    const m = Math.floor(n / 60)
+    const s = Math.floor(n % 60)
+    return `${m}:${String(s).padStart(2, '0')}`
+  }
+
+  if (!src) {
+    return <p className="bdi-muted">No recording attached.</p>
+  }
+
+  return (
+    <div className="bdi-player">
+      <audio
+        ref={audioRef}
+        src={src}
+        onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+      />
+      <button
+        type="button"
+        className="bdi-play"
+        onClick={() => {
+          const el = audioRef.current
+          if (!el) return
+          if (el.paused) void el.play()
+          else el.pause()
+        }}
+      >
+        <i className={`fas ${playing ? 'fa-pause' : 'fa-play'}`} /> {playing ? 'Pause' : 'Play'}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={duration || 0}
+        step={0.1}
+        value={current}
+        onChange={(e) => {
+          const el = audioRef.current
+          const v = Number(e.target.value)
+          if (el) el.currentTime = v
+          setCurrent(v)
+        }}
+      />
+      <span className="bdi-player-time">{fmt(current)} / {fmt(duration)}</span>
+    </div>
+  )
+}
+
+function callStillOpen(status: string) {
+  const s = status.toLowerCase()
+  return s === 'in_queue' || s === 'queued' || s === 'ringing' || s === 'in_progress' || s === 'connected'
+}
+
+function visibleConversations(issue: BatteryIssue): BatteryCall[] {
+  if (issue.conversations?.length) return issue.conversations
+  if (issue.conversation_id || issue.bot_summary || (issue.transcript || []).length) {
+    return [{
+      id: 0,
+      sequence: 1,
+      label: 'Conversation 1',
+      conversation_id: issue.conversation_id || '',
+      call_status: issue.call_status || '',
+      call_result: issue.call_result || issue.call_status || '',
+      disconnect_reason: '',
+      siptrunk_id: issue.siptrunk_id || '',
+      agent_id: issue.agent_id || '',
+      bot_summary: issue.bot_summary || '',
+      recording_url: issue.recording_url || '',
+      transcript: issue.transcript || [],
+      duration: '',
+      connected_at: '',
+      ended_at: '',
+      callback_queued_at: '',
+      created_at: issue.created_at,
+      updated_at: issue.updated_at,
+    }]
+  }
+  return []
+}
+
+export function BatteryIssueDetail() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { can, user, isAdmin } = useAuth()
+  const toast = useToast()
+  const [issue, setIssue] = useState<BatteryIssue | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [calling, setCalling] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [comments, setComments] = useState('')
+  const [closing, setClosing] = useState(false)
+
+  const load = (silent = false) => {
+    if (!id) return Promise.resolve()
+    if (!silent) setLoading(true)
+    return batteryIssuesApi.get(id)
+      .then((row) => { setIssue(row); setError('') })
+      .catch((e: Error) => { setError(e.message); setIssue(null) })
+      .finally(() => { if (!silent) setLoading(false) })
+  }
+
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  useEffect(() => {
+    const open = (issue?.conversations || []).some((c) => callStillOpen(c.call_status))
+      || (issue?.conversation_id && callStillOpen(issue.call_status || '') && !(issue.conversations || []).length)
+    if (!issue || !open) return
+    const timer = window.setInterval(() => {
+      void batteryIssuesApi.syncCall(issue.id)
+        .then((res) => { if (res.payload) setIssue(res.payload) })
+        .catch(() => undefined)
+    }, 8000)
+    return () => window.clearInterval(timer)
+  }, [issue?.id, issue?.conversation_id, issue?.call_status, issue?.conversations])
+
+  const startCall = async () => {
+    if (!issue) return
+    setCalling(true)
+    try {
+      const res = await batteryIssuesApi.startCall(issue.id)
+      if (res.payload) setIssue(res.payload)
+      toast.success(res.messages?.[0] || 'Call queued')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to start call')
+    } finally {
+      setCalling(false)
+    }
+  }
+
+  const syncCall = async () => {
+    if (!issue) return
+    setSyncing(true)
+    try {
+      const res = await batteryIssuesApi.syncCall(issue.id)
+      if (res.payload) setIssue(res.payload)
+      toast.success(res.messages?.[0] || 'Conversation refreshed')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to refresh conversation')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const remove = async () => {
+    if (!issue) return
+    if (!window.confirm('Delete this battery degradation issue?')) return
+    try {
+      await batteryIssuesApi.remove(issue.id)
+      toast.success('Issue deleted')
+      navigate('/battery-issues')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed')
+    }
+  }
+
+  const closeIssue = async () => {
+    if (!issue) return
+    const text = comments.trim()
+    if (!text) {
+      toast.error('Comments are required to close this issue')
+      return
+    }
+    setClosing(true)
+    try {
+      const res = await batteryIssuesApi.close(issue.id, text)
+      if (res.payload) setIssue(res.payload)
+      setComments('')
+      toast.success(res.messages?.[0] || 'Issue closed')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not close this issue')
+    } finally {
+      setClosing(false)
+    }
+  }
+
+  if (loading) {
+    return <AppLayout title="Battery Degradation Issue"><p>Loading…</p></AppLayout>
+  }
+  if (error || !issue) {
+    return (
+      <AppLayout title="Battery Degradation Issue" backTo="/battery-issues">
+        <div className="callout callout-danger"><p>{error || 'Issue not found'}</p></div>
+      </AppLayout>
+    )
+  }
+
+  return (
+    <AppLayout title={issue.name} subtitle="Battery Degradation Issue" backTo="/battery-issues" backLabel="Issues">
+      <div className="bdi-layout">
+        <div className="bdi-main">
+          <section className="bdi-card">
+            <div className="bdi-identity">
+              <div className="bdi-avatar">{initials(issue.name)}</div>
+              <div className="bdi-identity-copy">
+                <span className="bdi-kicker">Name</span>
+                <h2>{issue.name}</h2>
+              </div>
+              <span className={statusClass(issue.status)}>{statusLabel(issue.status)}</span>
+            </div>
+            {can('battery_issues.edit') ? (
+              <div className="bdi-call-bar">
+                <button
+                  type="button"
+                  className="btn btn-theme btn-sm"
+                  disabled={calling || !issue.phone}
+                  onClick={() => { void startCall() }}
+                >
+                  <i className="fas fa-phone" /> {calling ? 'Starting…' : (issue.call_count || issue.conversation_id) ? 'Call again' : 'Start voice call'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-default btn-sm"
+                  disabled={syncing || !(issue.call_count || issue.conversation_id)}
+                  onClick={() => { void syncCall() }}
+                >
+                  <i className="fas fa-sync" /> {syncing ? 'Refreshing…' : 'Refresh conversations'}
+                </button>
+                {issue.call_count ? <span className="bdi-call-chip">{issue.call_count} conversation{issue.call_count === 1 ? '' : 's'}</span> : null}
+                <span className={callResultClass(issue.call_result || (issue.call_count ? issue.call_status : 'yet_to_call'))}>
+                  {callResultLabel(issue.call_result || (issue.call_count ? issue.call_status : 'yet_to_call'))}
+                </span>
+              </div>
+            ) : (issue.call_count || issue.call_status || issue.call_result) ? (
+              <div className="bdi-call-bar">
+                {issue.call_count ? <span className="bdi-call-chip">{issue.call_count} conversation{issue.call_count === 1 ? '' : 's'}</span> : null}
+                <span className={callResultClass(issue.call_result || 'yet_to_call')}>
+                  {callResultLabel(issue.call_result || 'yet_to_call')}
+                </span>
+              </div>
+            ) : null}
+            <div className="bdi-meta">
+              <div>
+                <span>Company</span>
+                <strong>{issue.company || '—'}</strong>
+              </div>
+              <div>
+                <span>Created</span>
+                <strong>{formatAppDateTime(issue.created_at)}</strong>
+              </div>
+              <div>
+                <span>Phone</span>
+                <strong>{issue.phone || '—'}</strong>
+              </div>
+              <div>
+                <span>Email</span>
+                <strong>{issue.email || '—'}</strong>
+              </div>
+              <div>
+                <span>Assigned technician</span>
+                <strong>{issue.assigned_name || (issue.call_result === 'rejected' ? 'Not assigned (call rejected)' : '—')}</strong>
+              </div>
+            </div>
+            {issue.message ? (
+              <div className="bdi-message">
+                <span>Message</span>
+                <p>{issue.message}</p>
+              </div>
+            ) : null}
+          </section>
+
+          {visibleConversations(issue).length === 0 ? (
+            <section className="bdi-card">
+              <h3>Conversations</h3>
+              <p className="bdi-muted">No voice conversations yet. Start a call to create Conversation 1.</p>
+            </section>
+          ) : (
+            [...visibleConversations(issue)].reverse().map((call) => {
+              const result = call.call_result || call.call_status || 'queued'
+              const retryWaiting = (result === 'ignored' || result === 'rejected') && call.sequence === 1 && !call.callback_queued_at
+                && visibleConversations(issue).every((c) => c.sequence === 1)
+              return (
+              <section key={call.id || call.sequence} className="bdi-card">
+                <div className="bdi-convo-head">
+                  <h3>{call.label}</h3>
+                  <span className={callResultClass(result)}>{callResultLabel(result)}</span>
+                  {call.duration ? <span className="bdi-call-chip">{call.duration}</span> : null}
+                </div>
+                {retryWaiting ? (
+                  <p className="bdi-callback-note">
+                    {result === 'rejected' ? 'Call was rejected.' : 'Call was ignored / not answered.'} A callback will be placed 30 minutes after this first call.
+                  </p>
+                ) : null}
+                {call.conversation_id ? (
+                  <p className="bdi-step-source">Ello id {call.conversation_id}</p>
+                ) : null}
+                <div className="bdi-recording-label">Bot Summary</div>
+                <p className="bdi-summary">{call.bot_summary || 'No bot summary yet.'}</p>
+                <div className="bdi-recording-label">Recording</div>
+                <RecordingPlayer recordingUrl={call.recording_url} />
+                <div className="bdi-recording-label">Conversation transcript</div>
+                <div className="bdi-chat">
+                  {(call.transcript || []).length === 0 ? (
+                    <p className="bdi-muted">No transcript captured yet.</p>
+                  ) : (
+                    call.transcript.map((line, i) => (
+                      <div key={`${call.sequence}-${line.speaker}-${i}`} className={`bdi-bubble bdi-bubble--${line.speaker}`}>
+                        {line.speaker === 'bot' ? <span className="bdi-chat-mark">E</span> : null}
+                        <p>{line.text}</p>
+                        {line.speaker === 'user' ? <span className="bdi-chat-user"><i className="fas fa-user" /></span> : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+              )
+            })
+          )}
+        </div>
+
+        <aside className="bdi-side">
+          <section className="bdi-card">
+            <div className="bdi-side-head">
+              <h3>Status Tracker</h3>
+              {can('battery_issues.edit') ? (
+                <Link to={`/battery-issues/${issue.id}/edit`} className="btn btn-default btn-sm">Edit</Link>
+              ) : null}
+            </div>
+            <ol className="bdi-tracker">
+              {(issue.tracker || []).map((step) => (
+                <li key={step.key} className={`bdi-step bdi-step--${trackerTone(step.status)}`}>
+                  <span className="bdi-step-dot">
+                    {step.status === 'completed' ? <i className="fas fa-check" /> : <i className="fas fa-circle" />}
+                  </span>
+                  <div className="bdi-step-body">
+                    <div className="bdi-step-top">
+                      <strong>{step.label}</strong>
+                      <em className={`bdi-step-badge bdi-step-badge--${trackerTone(step.status)}`}>{trackerBadge(step.status)}</em>
+                    </div>
+                    {step.source ? <p className="bdi-step-source">{step.source}{step.at ? ` · ${formatAppDateTime(step.at)}` : ''}</p> : null}
+                    {step.call_status || step.duration ? (
+                      <div className="bdi-step-call">
+                        {step.call_status ? <span>Call status <strong>{step.call_status}</strong></span> : null}
+                        {step.duration ? <span>Call duration <strong>{step.duration}</strong></span> : null}
+                      </div>
+                    ) : null}
+                    {step.key === 'assign' && step.assignee ? (
+                      <p className="bdi-step-source">Assigned to <strong>{step.assignee}</strong></p>
+                    ) : step.assignee ? (
+                      <p className="bdi-step-source">{step.assignee}</p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+            {issue.status === 'closed' && issue.close_comments ? (
+              <div className="bdi-close-box">
+                <div className="bdi-recording-label">Close comments</div>
+                <p className="bdi-summary">{issue.close_comments}</p>
+                {issue.closed_by_name || issue.closed_at ? (
+                  <p className="bdi-step-source">
+                    Closed{issue.closed_by_name ? ` by ${issue.closed_by_name}` : ''}
+                    {issue.closed_at ? ` · ${formatAppDateTime(issue.closed_at)}` : ''}
+                  </p>
+                ) : null}
+              </div>
+            ) : issue.assigned_to && issue.status !== 'closed' && can('battery_issues.edit') && (isAdmin || user?.id === issue.assigned_to) ? (
+              <div className="bdi-close-box">
+                <label className="bdi-recording-label" htmlFor="bdi-close-comments">Comments <span className="text-danger">*</span></label>
+                <textarea
+                  id="bdi-close-comments"
+                  className="form-control"
+                  rows={4}
+                  value={comments}
+                  onChange={(e) => setComments(e.target.value)}
+                  placeholder="Describe the work done before closing this issue"
+                  required
+                />
+                <button
+                  type="button"
+                  className="btn btn-theme btn-sm"
+                  disabled={closing || !comments.trim()}
+                  onClick={() => { void closeIssue() }}
+                >
+                  <i className="fas fa-check" /> {closing ? 'Closing…' : 'Close issue'}
+                </button>
+              </div>
+            ) : issue.assigned_name && issue.status !== 'closed' ? (
+              <p className="bdi-callback-note">Assigned to {issue.assigned_name}. Comments are required before this issue can be closed.</p>
+            ) : null}
+            {can('battery_issues.delete') ? (
+              <button type="button" className="btn btn-danger btn-sm bdi-delete" onClick={() => { void remove() }}>
+                Delete issue
+              </button>
+            ) : null}
+          </section>
+        </aside>
+      </div>
+    </AppLayout>
+  )
+}
+
+type FormState = {
+  name: string
+  phone: string
+  email: string
+  company: string
+  message: string
+  bot_summary: string
+  recording_url: string
+  status: string
+  transcript: BatteryTranscriptLine[]
+}
+
+const emptyForm: FormState = {
+  name: '',
+  phone: '',
+  email: '',
+  company: '',
+  message: '',
+  bot_summary: '',
+  recording_url: '',
+  status: 'in_progress',
+  transcript: [{ speaker: 'bot', text: '' }],
+}
+
+export function BatteryIssueForm() {
+  const { id } = useParams()
+  const isEdit = Boolean(id)
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [form, setForm] = useState<FormState>(emptyForm)
+  const [file, setFile] = useState<File | null>(null)
+  const [loading, setLoading] = useState(isEdit)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!isEdit || !id) return
+    batteryIssuesApi.get(id)
+      .then((row) => {
+        setForm({
+          name: row.name || '',
+          phone: row.phone || '',
+          email: row.email || '',
+          company: row.company || '',
+          message: row.message || '',
+          bot_summary: row.bot_summary || '',
+          recording_url: row.recording_url || '',
+          status: row.status || 'in_progress',
+          transcript: row.transcript?.length ? row.transcript : [{ speaker: 'bot', text: '' }],
+        })
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [id, isEdit])
+
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const submit = async () => {
+    if (!form.name.trim()) {
+      setError('Name is required')
+      return
+    }
+    setSaving(true)
+    setError('')
+    const body = {
+      ...form,
+      transcript: form.transcript.filter((l) => l.text.trim()),
+    }
+    try {
+      const res = isEdit && id
+        ? await batteryIssuesApi.update(id, body)
+        : await batteryIssuesApi.create(body)
+      const saved = res.payload
+      if (file && saved?.id) {
+        await batteryIssuesApi.uploadRecording(saved.id, file)
+      }
+      toast.success(isEdit ? 'Issue updated' : 'Issue created')
+      navigate(saved?.id ? `/battery-issues/${saved.id}` : '/battery-issues')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const transcript = useMemo(() => form.transcript, [form.transcript])
+
+  if (loading) {
+    return <AppLayout title="Battery Degradation Issue"><p>Loading…</p></AppLayout>
+  }
+
+  return (
+    <AppLayout title={isEdit ? 'Update issue' : 'Create issue'} backTo="/battery-issues">
+      {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
+      <PageForm
+        cancelTo={isEdit && id ? `/battery-issues/${id}` : '/battery-issues'}
+        submitLabel={saving ? 'Saving…' : 'Save'}
+        submitDisabled={saving}
+        onSubmit={() => { void submit() }}
+      >
+        <Field label="Name" required>
+          <input className="form-control" value={form.name} onChange={(e) => set('name', e.target.value)} required />
+        </Field>
+        <Field label="Phone">
+          <input className="form-control" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+        </Field>
+        <Field label="Email">
+          <input className="form-control" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
+        </Field>
+        <Field label="Company">
+          <input className="form-control" value={form.company} onChange={(e) => set('company', e.target.value)} />
+        </Field>
+        <Field label="Status">
+          {form.status === 'closed' ? (
+            <input className="form-control" value="Closed" disabled />
+          ) : (
+            <select className="form-control" value={form.status} onChange={(e) => set('status', e.target.value)}>
+              {STATUS_OPTIONS.filter((s) => s.value !== 'closed').map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          )}
+        </Field>
+        <Field label="Message" full>
+          <textarea className="form-control" rows={3} value={form.message} onChange={(e) => set('message', e.target.value)} />
+        </Field>
+        <Field label="Bot Summary" full>
+          <textarea className="form-control" rows={5} value={form.bot_summary} onChange={(e) => set('bot_summary', e.target.value)} />
+        </Field>
+        <Field label="Recording URL">
+          <input className="form-control" value={form.recording_url} onChange={(e) => set('recording_url', e.target.value)} placeholder="https://… or upload a file" />
+        </Field>
+        <Field label="Upload recording">
+          <input type="file" accept="audio/*,video/*" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        </Field>
+        <Field label="Conversation transcript" full>
+          <div className="bdi-transcript-editor">
+            {transcript.map((line, i) => (
+              <div key={i} className="bdi-transcript-row">
+                <select
+                  className="form-control"
+                  value={line.speaker}
+                  onChange={(e) => {
+                    const next = [...form.transcript]
+                    next[i] = { ...next[i], speaker: e.target.value as 'bot' | 'user' }
+                    set('transcript', next)
+                  }}
+                >
+                  <option value="bot">Bot</option>
+                  <option value="user">User</option>
+                </select>
+                <input
+                  className="form-control"
+                  value={line.text}
+                  placeholder="Message"
+                  onChange={(e) => {
+                    const next = [...form.transcript]
+                    next[i] = { ...next[i], text: e.target.value }
+                    set('transcript', next)
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-default btn-sm"
+                  onClick={() => set('transcript', form.transcript.filter((_, idx) => idx !== i))}
+                >
+                  <i className="fas fa-times" />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn btn-default btn-sm"
+              onClick={() => set('transcript', [...form.transcript, { speaker: form.transcript.length % 2 ? 'user' : 'bot', text: '' }])}
+            >
+              <i className="fas fa-plus" /> Add line
+            </button>
+          </div>
+        </Field>
+      </PageForm>
+    </AppLayout>
+  )
+}

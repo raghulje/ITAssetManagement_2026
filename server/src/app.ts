@@ -28,6 +28,7 @@ import samlRouter from './routes/saml.js'
 import { groupsRouter } from './routes/groups.js'
 import { geoRouter } from './routes/geo.js'
 import { spacesRouter } from './routes/spaces.js'
+import { batteryIssuesRouter } from './routes/batteryIssues.js'
 import { storageRoot } from './services/uploads.js'
 import { moduleGate, requirePerm } from './services/permissions.js'
 
@@ -63,6 +64,7 @@ export function createApp() {
           'https://maps.gstatic.com',
         ],
         'connect-src': ["'self'", 'http:', 'https:'],
+        'media-src': ["'self'", 'blob:', 'data:', 'https:'],
         'worker-src': ["'self'", 'blob:'],
         'frame-src': ["'self'", 'https://www.google.com', 'https://maps.google.com'],
       },
@@ -177,6 +179,7 @@ export function createApp() {
     return requirePerm('settings.edit')(req, res, next)
   })
   api.use('/spaces', spacesRouter)
+  api.use('/battery-issues', moduleGate('battery_issues'), batteryIssuesRouter)
   api.use(filesRouter)
 
   app.use('/api/v1', api)

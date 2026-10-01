@@ -3404,6 +3404,18 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   transform: translateY(-3px);
   box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06), 0 14px 28px rgba(15, 23, 42, 0.1);
 }
+.module-insight-tile.is-active .small-box {
+  outline: 2px solid rgba(15, 23, 42, 0.2);
+  transform: translateY(-2px);
+}
+.module-insight-tile.small-box-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
 .small-box-static {
   display: block;
   text-decoration: none;
@@ -6310,5 +6322,331 @@ button.space-nav-card {
     width: 100%;
     min-height: 44px;
   }
+}
+
+/* Battery Degradation Issue — lead-style intake detail */
+.bdi-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+.bdi-main,
+.bdi-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.bdi-card {
+  background: #fff;
+  border: 1px solid #e8eef5;
+  border-radius: 18px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px -22px rgba(15, 23, 42, 0.28);
+}
+.bdi-card h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.bdi-convo-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.bdi-convo-head h3 { margin: 0; flex: 1; }
+.bdi-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.bdi-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8f7f4;
+  color: var(--main-theme-color);
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.bdi-identity-copy { flex: 1; min-width: 0; }
+.bdi-kicker {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.bdi-identity-copy h2 {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+.bdi-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.bdi-pill--progress { background: #e0f2fe; color: #0369a1; }
+.bdi-pill--ok { background: #dcfce7; color: #15803d; }
+.bdi-pill--muted { background: #f1f5f9; color: #475569; }
+.bdi-pill--warn { background: #fef3c7; color: #92400e; }
+.bdi-pill--danger { background: #fee2e2; color: #b91c1c; }
+.bdi-name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.bdi-call-ico {
+  width: 16px;
+  flex: 0 0 16px;
+  text-align: center;
+  font-size: 13px;
+}
+.bdi-call-ico--ok { color: #15803d; }
+.bdi-call-ico--danger { color: #b91c1c; }
+.bdi-call-ico--warn { color: #d97706; }
+.bdi-call-ico--progress { color: #0369a1; }
+.bdi-call-ico--muted { color: #94a3b8; }
+.bdi-callback-note {
+  margin: 8px 0 10px;
+  font-size: 13px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.bdi-close-box {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bdi-close-box .btn {
+  align-self: flex-start;
+}
+.bdi-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid #f1f5f9;
+  border-bottom: 1px solid #f1f5f9;
+}
+.bdi-meta span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+.bdi-meta strong {
+  font-size: 13px;
+  font-weight: 650;
+  color: #0f172a;
+  word-break: break-word;
+}
+.bdi-call-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0 4px;
+}
+.bdi-call-chip {
+  font-size: 12px;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.bdi-call-chip strong {
+  color: #0f172a;
+  font-weight: 600;
+  margin-left: 4px;
+  word-break: break-all;
+}
+.bdi-message span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+.bdi-message p,
+.bdi-summary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #334155;
+}
+.bdi-recording-label {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+.bdi-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bdi-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #dbe7f3;
+  border-radius: 999px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.bdi-play:disabled { opacity: 0.5; cursor: not-allowed; }
+.bdi-player input[type="range"] { flex: 1; min-width: 0; }
+.bdi-player-time { font-size: 12px; color: #64748b; font-variant-numeric: tabular-nums; }
+.bdi-muted { margin: 0; color: #94a3b8; font-size: 13px; }
+.bdi-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.bdi-bubble {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 92%;
+}
+.bdi-bubble p {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.bdi-bubble--bot { align-self: flex-start; }
+.bdi-bubble--bot p { background: #e8f7f4; color: #134e4a; border-bottom-left-radius: 6px; }
+.bdi-bubble--user { align-self: flex-end; flex-direction: row; margin-left: auto; }
+.bdi-bubble--user p { background: #f1f5f9; color: #0f172a; border-bottom-right-radius: 6px; }
+.bdi-chat-mark,
+.bdi-chat-user {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 800;
+}
+.bdi-chat-mark { background: #0F9D8A; color: #fff; }
+.bdi-chat-user { background: #0f172a; color: #fff; }
+.bdi-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.bdi-side-head h3 { margin: 0; }
+.bdi-tracker {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bdi-step {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0 14px;
+  position: relative;
+}
+.bdi-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 28px;
+  bottom: 0;
+  width: 2px;
+  background: #e2e8f0;
+}
+.bdi-step-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 10px;
+  background: #e2e8f0;
+  color: #64748b;
+  z-index: 1;
+}
+.bdi-step--completed .bdi-step-dot { background: #16a34a; color: #fff; }
+.bdi-step--progress .bdi-step-dot { background: #f59e0b; color: #fff; font-size: 6px; }
+.bdi-step--skipped .bdi-step-dot,
+.bdi-step--idle .bdi-step-dot { font-size: 6px; }
+.bdi-step-body { flex: 1; min-width: 0; }
+.bdi-step-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bdi-step-top strong { font-size: 13.5px; }
+.bdi-step-badge {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.bdi-step-badge--completed { background: #dcfce7; color: #15803d; }
+.bdi-step-badge--progress { background: #dbeafe; color: #1d4ed8; }
+.bdi-step-badge--skipped { background: #e5e7eb; color: #374151; }
+.bdi-step-badge--idle { background: #111827; color: #fff; }
+.bdi-step-source { margin: 4px 0 0; font-size: 12px; color: #94a3b8; }
+.bdi-step-call {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #64748b;
+}
+.bdi-step-call strong { display: block; color: #0f172a; font-size: 13px; }
+.bdi-delete { margin-top: 8px; }
+.bdi-transcript-editor { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.bdi-transcript-row { display: flex; gap: 8px; align-items: center; }
+.bdi-transcript-row select { max-width: 110px; }
+@media (max-width: 991px) {
+  .bdi-layout { grid-template-columns: 1fr; }
+  .bdi-meta { grid-template-columns: 1fr 1fr; }
+  .bdi-player { flex-wrap: wrap; }
+  .bdi-player input[type="range"] { width: 100%; flex: 1 1 100%; }
 }
 
