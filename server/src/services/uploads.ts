@@ -22,6 +22,7 @@ const dirs = [
   'private_uploads/eula-pdfs',
   'private_uploads/audits',
   'private_uploads/maintenances',
+  'private_uploads/battery_issues',
 ]
 
 for (const d of dirs) {

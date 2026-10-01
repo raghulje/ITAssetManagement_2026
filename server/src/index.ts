@@ -4,6 +4,8 @@ import { seed } from './db/seed.js'
 import { startHrmsAutoSync } from './services/employeeHrmsSync.js'
 import { startEolAlertScheduler } from './services/eolAlerts.js'
 import { startLicenseAlertScheduler } from './services/licenseAlerts.js'
+import { startIgnoredCallScheduler } from './services/batteryIgnoredCallback.js'
+import { assignEligibleIssues } from './services/batteryTechnicianAssign.js'
 
 dotenv.config()
 
@@ -38,4 +40,10 @@ app.listen(port, host, () => {
   startHrmsAutoSync()
   startEolAlertScheduler()
   startLicenseAlertScheduler()
+  startIgnoredCallScheduler()
+  void assignEligibleIssues()
+    .then((r) => {
+      console.log(`Battery technician assignment backfill: ${r.assigned} assigned, ${r.skipped} skipped`)
+    })
+    .catch((e) => console.warn('Battery technician assignment backfill failed:', e instanceof Error ? e.message : e))
 })

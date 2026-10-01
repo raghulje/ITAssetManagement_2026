@@ -5,6 +5,8 @@ export type InsightCard = {
   value: number | string
   hint?: string
   to?: string
+  onClick?: () => void
+  active?: boolean
   tone?: 'default' | 'teal' | 'amber' | 'rose' | 'slate'
   icon?: string
   color?: string
@@ -58,7 +60,7 @@ export function ModuleInsights({
           const byTone = TONE_STYLE[c.tone || 'default']
           const color = c.color || byLabel?.color || byTone.color
           const icon = c.icon || byLabel?.icon || byTone.icon
-          const footer = c.to ? undefined : (c.hint || 'Overview')
+          const footer = c.to || c.onClick ? (c.hint || (c.active ? 'Showing this filter' : 'View')) : (c.hint || 'Overview')
           const box = (
             <div className={`dashboard small-box ${color}`} style={{ animationDelay: `${40 + i * 40}ms` }}>
               <div className="inner">
@@ -67,14 +69,22 @@ export function ModuleInsights({
               </div>
               <div className="icon" aria-hidden="true"><i className={icon} /></div>
               <span className="small-box-footer">
-                {footer || <>View all <i className="fas fa-arrow-right" /></>}
+                {c.to && !c.onClick ? <>View all <i className="fas fa-arrow-right" /></> : footer}
               </span>
             </div>
           )
+          const tileClass = `module-insight-tile${c.active ? ' is-active' : ''}`
+          if (c.onClick) {
+            return (
+              <button key={c.label} type="button" className={`${tileClass} small-box-link small-box-button`} onClick={c.onClick}>
+                {box}
+              </button>
+            )
+          }
           return c.to ? (
-            <Link key={c.label} to={c.to} className="module-insight-tile small-box-link">{box}</Link>
+            <Link key={c.label} to={c.to} className={`${tileClass} small-box-link`}>{box}</Link>
           ) : (
-            <div key={c.label} className="module-insight-tile small-box-static">{box}</div>
+            <div key={c.label} className={`${tileClass} small-box-static`}>{box}</div>
           )
         })}
       </div>

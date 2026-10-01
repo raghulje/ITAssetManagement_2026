@@ -50,11 +50,15 @@ import {
 import RolesPermissions from './pages/settings/RolesPermissions'
 import SpaceManagement from './pages/spaces/SpaceManagement'
 import NotificationsSettings from './pages/settings/NotificationsSettings'
+import BatterySettings from './pages/settings/BatterySettings'
 import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset'
 import SsoCallback from './pages/SsoCallback'
 import PublicAsset from './pages/assets/PublicAsset'
 import LabelsModule from './pages/labels/LabelsModule'
 import LogoutPage from './pages/Logout'
+import {
+  BatteryIssuesList, BatteryIssueDetail, BatteryIssueForm,
+} from './pages/battery/BatteryIssues'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
@@ -151,6 +155,10 @@ export default function App() {
                 <Route path="/employees/create" element={<EmployeeForm />} />
                 <Route path="/employees/:id" element={<EmployeeDetail />} />
                 <Route path="/employees/:id/edit" element={<EmployeeForm />} />
+                <Route path="/battery-issues" element={<BatteryIssuesList />} />
+                <Route path="/battery-issues/create" element={<BatteryIssueForm />} />
+                <Route path="/battery-issues/:id/edit" element={<BatteryIssueForm />} />
+                <Route path="/battery-issues/:id" element={<BatteryIssueDetail />} />
                 <Route path="/models" element={<ModelsList />} />
                 <Route path="/models/create" element={<ModelForm />} />
                 <Route path="/models/:id" element={<ModelDetail />} />
@@ -208,6 +216,7 @@ export default function App() {
                 <Route path="/import" element={<ImportPage />} />
                 <Route path="/requestable" element={<RequestableItems />} />
                 <Route path="/settings" element={<RequireAdmin><SettingsGeneral /></RequireAdmin>} />
+                <Route path="/settings/battery" element={<RequireAdmin><BatterySettings /></RequireAdmin>} />
                 <Route path="/settings/roles" element={<RequireAdmin><RolesPermissions /></RequireAdmin>} />
                 <Route path="/settings/notifications" element={<RequireAdmin><NotificationsSettings /></RequireAdmin>} />
                 <Route path="*" element={<Navigate to="/" replace />} />

@@ -375,6 +375,7 @@ export function AccountApi() {
 export function AdminHub() {
   const links = [
     { to: '/settings', label: 'General Settings', icon: 'fas fa-cog' },
+    { to: '/settings/battery', label: 'Battery Degradation', icon: 'fas fa-battery-half' },
     { to: '/settings/roles', label: 'Roles & permissions', icon: 'fas fa-user-shield-alt' },
     { to: '/settings/notifications', label: 'Notifications / emails', icon: 'fas fa-envelope' },
     { to: '/companies', label: 'Companies', icon: 'fas fa-building' },
@@ -650,6 +651,40 @@ export function SettingsGeneral() {
         >
           {schemaMigrateBusy ? 'Migrating…' : 'Run pending DB migrations'}
         </button>
+        <button
+          type="button"
+          className="btn btn-theme"
+          style={{ marginLeft: 8 }}
+          disabled={schemaMigrateBusy || !canEdit}
+          onClick={() => {
+            if (!window.confirm(
+              'Run Battery Degradation setup on this server?\n\nThis creates the module tables if they are missing and imports the RIL Asset Couriered List as new issues with no call history. Existing matching contacts are skipped.',
+            )) return
+            setSchemaMigrateBusy(true)
+            setError('')
+            setOkMsg('')
+            api<{ messages?: string[] }>('/settings/run-battery-migration', { method: 'POST' })
+              .then((res) => {
+                const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'Battery Degradation setup complete'
+                setOkMsg(msg)
+                toast.success(msg)
+                return api<{ pending: string[]; applied: string[] }>('/settings/migrations')
+              })
+              .then((s) => {
+                if (s) setMigStatus({ pending: s.pending || [], applied: s.applied || [] })
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setSchemaMigrateBusy(false))
+          }}
+        >
+          {schemaMigrateBusy ? 'Running…' : 'Run Battery Degradation migration'}
+        </button>
+        <p className="help-block" style={{ marginTop: 12, marginBottom: 0 }}>
+          Agent id and notify email: <a href="/settings/battery">Settings → Battery Degradation</a>.
+        </p>
       </Box>
 
       <Box title="Seed office floors & Admin inventory" type="primary">
