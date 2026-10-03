@@ -68,6 +68,11 @@ export type BatteryIssue = {
   closed_at: string
   closed_by: number | null
   closed_by_name: string
+  preferred_language: string
+  battery_issue_confirmed: string
+  other_issue_reported: string
+  other_issue_description: string
+  webhook_sent_at: string
   conversation_id: string
   call_status: string
   call_result: string
@@ -86,6 +91,11 @@ export type BatteryCallStats = {
   rejected: number
   ignored: number
   calling: number
+  battery_yes: number
+  battery_no: number
+  other_only: number
+  no_issues: number
+  both_issues: number
 }
 
 export type BatteryCallQueue = {

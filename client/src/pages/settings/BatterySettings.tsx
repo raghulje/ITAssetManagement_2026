@@ -5,7 +5,7 @@ import { api } from '../../api/client'
 import { useToast } from '../../components/Toast'
 import { useAuth } from '../../api/AuthContext'
 
-type BatteryCfg = { agent_id: string; notify_email: string }
+type BatteryCfg = { agent_id: string; notify_email: string; webhook_url: string }
 
 export default function BatterySettings() {
   const toast = useToast()
@@ -18,6 +18,7 @@ export default function BatterySettings() {
   const [okMsg, setOkMsg] = useState('')
   const [agentId, setAgentId] = useState('')
   const [notifyEmail, setNotifyEmail] = useState('')
+  const [webhookUrl, setWebhookUrl] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -25,6 +26,7 @@ export default function BatterySettings() {
       .then((s) => {
         setAgentId(String(s.agent_id || ''))
         setNotifyEmail(String(s.notify_email || ''))
+        setWebhookUrl(String(s.webhook_url || ''))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -40,11 +42,12 @@ export default function BatterySettings() {
     try {
       const res = await api<{ messages?: string[]; payload?: BatteryCfg }>('/settings/battery', {
         method: 'PUT',
-        json: { agent_id: agentId.trim(), notify_email: notifyEmail.trim() },
+        json: { agent_id: agentId.trim(), notify_email: notifyEmail.trim(), webhook_url: webhookUrl.trim() },
       })
       if (res.payload) {
         setAgentId(res.payload.agent_id || '')
         setNotifyEmail(res.payload.notify_email || '')
+        setWebhookUrl(res.payload.webhook_url || '')
       }
       const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'Battery Degradation settings saved'
       setOkMsg(msg)
@@ -113,6 +116,19 @@ export default function BatterySettings() {
             />
             <span className="help-block">
               Receives new issue submissions and completed-call alerts. Separate multiple addresses with commas.
+            </span>
+          </Field>
+          <Field label="Issue webhook URL">
+            <input
+              className="form-control"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              placeholder="https://development-refexgroup.kissflow.com/integration/…"
+              disabled={!canEdit}
+            />
+            <span className="help-block">
+              Kissflow IT Service Request webhook. Posted when the employee says yes to battery drain or any other IT issue.
+              The default development URL is used if you leave this blank.
             </span>
           </Field>
           <div className="form-actions">

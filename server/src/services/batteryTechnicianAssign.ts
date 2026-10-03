@@ -1,10 +1,15 @@
 import { all, get, run, now } from '../db/index.js'
 import {
-  classifyBatteryDrainResponse,
+  classifyCallSurvey,
+  emptySurvey,
+  hasReportedIssue,
+  isBothNo,
   isNoIssueComments,
   NO_ISSUE_COMMENTS,
   type BatteryIssueAnswer,
+  type BatterySurvey,
 } from './batteryIssueResponse.js'
+import { sendBatteryIssueWebhook } from './batteryWebhook.js'
 
 export const BATTERY_RR_EXCLUDE_EMAIL = 'srivaths.varadharajan@refex.co.in'
 
@@ -130,10 +135,10 @@ export async function issueHasAttendedCall(issueId: number): Promise<boolean> {
   return Number(row?.c || 0) > 0
 }
 
-export async function classifyIssueBatteryAnswer(
+export async function classifyIssueSurvey(
   issueId: number,
   extraMeta?: Record<string, unknown> | null,
-): Promise<BatteryIssueAnswer> {
+): Promise<BatterySurvey> {
   const calls = await all<{ transcript: unknown; bot_summary: string | null; call_result: string | null }>(
     `SELECT transcript, bot_summary, call_result
      FROM battery_degradation_calls
@@ -141,16 +146,56 @@ export async function classifyIssueBatteryAnswer(
      ORDER BY sequence DESC, id DESC`,
     [issueId],
   )
+  let survey = emptySurvey()
   for (const call of calls) {
-    const answer = classifyBatteryDrainResponse(
-      parseJson(call.transcript, []),
-      extraMeta,
-      call.bot_summary,
-    )
+    const next = classifyCallSurvey(parseJson(call.transcript, []), extraMeta, call.bot_summary)
     extraMeta = null
-    if (answer !== 'unknown') return answer
+    if (survey.battery === 'unknown' && next.battery !== 'unknown') survey = { ...survey, battery: next.battery }
+    if (survey.other === 'unknown' && next.other !== 'unknown') {
+      survey = { ...survey, other: next.other, other_description: next.other_description, asked_other: next.asked_other }
+    }
+    if (!survey.preferred_language && next.preferred_language) survey = { ...survey, preferred_language: next.preferred_language }
+    survey.asked_other = survey.asked_other || next.asked_other
+    if (hasReportedIssue(survey) || isBothNo(survey)) break
   }
-  return extraMeta ? classifyBatteryDrainResponse([], extraMeta, '') : 'unknown'
+  if (survey.battery === 'unknown' && extraMeta) {
+    survey = classifyCallSurvey([], extraMeta, '')
+  }
+  return survey
+}
+
+export async function persistIssueSurvey(
+  issueId: number,
+  extraMeta?: Record<string, unknown> | null,
+): Promise<BatterySurvey> {
+  const survey = await classifyIssueSurvey(issueId, extraMeta)
+  try {
+    await run(
+      `UPDATE battery_degradation_issues
+       SET preferred_language = ?, battery_issue_confirmed = ?, other_issue_reported = ?,
+           other_issue_description = ?, updated_at = ?
+       WHERE id = ? AND deleted_at IS NULL`,
+      [
+        survey.preferred_language || null,
+        survey.battery !== 'unknown' ? survey.battery : null,
+        survey.other !== 'unknown' ? survey.other : null,
+        survey.other_description || null,
+        now(),
+        issueId,
+      ],
+    )
+  } catch (e) {
+    console.warn('[battery-survey] persist failed', issueId, e instanceof Error ? e.message : e)
+  }
+  return survey
+}
+
+export async function classifyIssueBatteryAnswer(
+  issueId: number,
+  extraMeta?: Record<string, unknown> | null,
+): Promise<BatteryIssueAnswer> {
+  const survey = await classifyIssueSurvey(issueId, extraMeta)
+  return survey.battery
 }
 
 function persistNoIssueOnTracker(trackerRaw: unknown, at: string) {
@@ -202,15 +247,19 @@ export async function applyAttendedCallOutcome(
     [issueId],
   )
   if (!issue) return 'skipped'
-  if (isNoIssueClose(issue)) return 'skipped'
-  if (String(issue.status || '') === 'closed') return 'skipped'
   if (!(await issueHasAttendedCall(issueId))) return 'skipped'
-  const answer = await classifyIssueBatteryAnswer(issueId, extraMeta)
-  if (answer === 'no') {
+  const survey = await persistIssueSurvey(issueId, extraMeta)
+  if (isNoIssueClose(issue) || String(issue.status || '') === 'closed') {
+    if (hasReportedIssue(survey)) void sendBatteryIssueWebhook(issueId, survey)
+    return 'skipped'
+  }
+  if (isBothNo(survey)) {
     const closed = await closeIssueAsNoIssues(issueId)
     return closed ? 'closed_no_issue' : 'skipped'
   }
+  if (!hasReportedIssue(survey)) return 'skipped'
   const tech = await assignNextTechnician(issueId)
+  void sendBatteryIssueWebhook(issueId, survey)
   return tech ? 'assigned' : 'skipped'
 }
 
@@ -223,7 +272,8 @@ export async function assignNextTechnician(issueId: number): Promise<BatteryTech
     )
     if (!issue) return null
     if (isNoIssueClose(issue) || String(issue.status || '') === 'closed') return null
-    if (await classifyIssueBatteryAnswer(issueId) === 'no') return null
+    const survey = await classifyIssueSurvey(issueId)
+    if (isBothNo(survey) || !hasReportedIssue(survey)) return null
     const existingId = Number(issue.assigned_to || 0)
     if (existingId) {
       const name = await userDisplayName(existingId)

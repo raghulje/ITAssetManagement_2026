@@ -37,6 +37,13 @@ function isNoIssueClose(issue: { status?: unknown; close_comments?: unknown }) {
   return String(issue.status || '') === 'closed' && /^no issues$/i.test(String(issue.close_comments || '').trim())
 }
 
+function yesNoLabel(value: unknown) {
+  const v = String(value || '').toLowerCase()
+  if (v === 'yes') return 'Yes'
+  if (v === 'no') return 'No'
+  return '—'
+}
+
 function callResultLabel(result: string) {
   switch (String(result || '').toLowerCase()) {
     case 'yet_to_call': return 'Yet to call'
@@ -92,6 +99,7 @@ export function BatteryIssuesList() {
   const toast = useToast()
   const [search, setSearch] = useState('')
   const [callFilter, setCallFilter] = useState('')
+  const [reportFilter, setReportFilter] = useState('')
   const [page, setPage] = useState(0)
   const [rows, setRows] = useState<BatteryIssue[]>([])
   const [total, setTotal] = useState(0)
@@ -113,6 +121,7 @@ export function BatteryIssuesList() {
       .list({
         search: search || undefined,
         call_result: callFilter || undefined,
+        report: reportFilter || undefined,
         limit: pageSize,
         offset: page * pageSize,
       })
@@ -133,7 +142,7 @@ export function BatteryIssuesList() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, page, callFilter])
+  }, [search, page, callFilter, reportFilter])
 
   useEffect(() => {
     if (!queue?.running) return
@@ -164,6 +173,13 @@ export function BatteryIssuesList() {
 
   const setFilter = (value: string) => {
     setCallFilter((prev) => (prev === value ? '' : value))
+    setReportFilter('')
+    setPage(0)
+  }
+
+  const setReport = (value: string) => {
+    setReportFilter((prev) => (prev === value ? '' : value))
+    setCallFilter('')
     setPage(0)
   }
 
@@ -187,6 +203,24 @@ export function BatteryIssuesList() {
           hint: c.filter && callFilter === c.filter ? 'Showing this filter' : c.hint,
           active: Boolean(c.filter) && callFilter === c.filter,
           onClick: () => setFilter(c.filter),
+        }))}
+      />
+      <ModuleInsights
+        title="Issue report"
+        cards={[
+          { filter: 'battery_yes', label: 'Battery yes', value: stats?.battery_yes ?? '—', icon: 'fas fa-battery-quarter', color: 'bg-maroon', hint: 'Said yes to battery drain' },
+          { filter: 'battery_no', label: 'Battery no', value: stats?.battery_no ?? '—', icon: 'fas fa-battery-full', color: 'bg-olive', hint: 'Said no to battery drain' },
+          { filter: 'other_only', label: 'Other issue only', value: stats?.other_only ?? '—', icon: 'fas fa-laptop', color: 'bg-orange', hint: 'No battery, other IT issue' },
+          { filter: 'no_issues', label: 'No issues', value: stats?.no_issues ?? '—', icon: 'fas fa-check-circle', color: 'bg-teal', hint: 'No battery and no other issue' },
+          { filter: 'both', label: 'Both issues', value: stats?.both_issues ?? '—', icon: 'fas fa-layer-group', color: 'bg-navy', hint: 'Battery and another issue' },
+        ].map((c) => ({
+          label: c.label,
+          value: c.value,
+          icon: c.icon,
+          color: c.color,
+          hint: reportFilter === c.filter ? 'Showing this filter' : c.hint,
+          active: reportFilter === c.filter,
+          onClick: () => setReport(c.filter),
         }))}
       />
       {queue?.running || queue?.message ? (
@@ -227,7 +261,7 @@ export function BatteryIssuesList() {
           onSearch={(v) => { setSearch(v); setPage(0) }}
           rows={rows as unknown as Record<string, unknown>[]}
           exportName="battery-degradation-issues"
-          storageKey="battery_issues_columns_v3"
+          storageKey="battery_issues_columns_v4"
           onRefresh={load}
           page={page}
           pageSize={pageSize}
@@ -255,6 +289,18 @@ export function BatteryIssuesList() {
             { key: 'phone', label: 'Phone' },
             { key: 'email', label: 'Email' },
             { key: 'company', label: 'Company' },
+            {
+              key: 'battery_issue_confirmed',
+              label: 'Battery',
+              exportValue: (r) => yesNoLabel(r.battery_issue_confirmed),
+              render: (r) => yesNoLabel(r.battery_issue_confirmed),
+            },
+            {
+              key: 'other_issue_reported',
+              label: 'Other issue',
+              exportValue: (r) => yesNoLabel(r.other_issue_reported),
+              render: (r) => yesNoLabel(r.other_issue_reported),
+            },
             {
               key: 'assigned_name',
               label: 'Assigned',
@@ -577,7 +623,25 @@ export function BatteryIssueDetail() {
                       : '—')
                 }</strong>
               </div>
+              <div>
+                <span>Language</span>
+                <strong>{issue.preferred_language || '—'}</strong>
+              </div>
+              <div>
+                <span>Battery drain</span>
+                <strong>{yesNoLabel(issue.battery_issue_confirmed)}</strong>
+              </div>
+              <div>
+                <span>Other IT issue</span>
+                <strong>{yesNoLabel(issue.other_issue_reported)}</strong>
+              </div>
             </div>
+            {issue.other_issue_description ? (
+              <div className="bdi-message">
+                <span>Other issue reported</span>
+                <p>{issue.other_issue_description}</p>
+              </div>
+            ) : null}
             {issue.message ? (
               <div className="bdi-message">
                 <span>Message</span>
