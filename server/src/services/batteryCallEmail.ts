@@ -1,10 +1,11 @@
 import { mailConfigured, sendMail } from './mail.js'
 import { batteryNotifyEmails } from './batteryConfig.js'
+import { appSignedInUrl, publicAppBase } from './appLinks.js'
 
 export type CallEmailTranscriptLine = { speaker: 'bot' | 'user'; text: string }
 
 function appBase() {
-  return (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3053').replace(/\/$/, '')
+  return publicAppBase()
 }
 
 function escapeHtml(s: string) {
@@ -81,7 +82,7 @@ export type BatteryCallEndedMail = {
 }
 
 export function batteryCallEndedEmail(input: BatteryCallEndedMail) {
-  const viewUrl = `${appBase()}/battery-issues/${input.issueId}`
+  const viewUrl = appSignedInUrl(`/battery-issues/${input.issueId}`)
   const when = formatIst(input.at) || formatIst(new Date().toISOString())
   const metaLine = `Ello.AI · ${when}`
   const convo = `Conversation ${input.sequence}`

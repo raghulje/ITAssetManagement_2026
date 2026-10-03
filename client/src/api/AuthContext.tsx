@@ -53,12 +53,26 @@ function isTruthy(v: unknown) {
   return v === '1' || v === 1 || v === true || v === 'true'
 }
 
+function takeTokenFromUrl() {
+  if (typeof window === 'undefined') return
+  try {
+    const url = new URL(window.location.href)
+    const token = url.searchParams.get('token')
+    if (!token) return
+    localStorage.setItem('refex_token', token)
+    url.searchParams.delete('token')
+    const next = `${url.pathname}${url.search}${url.hash}`
+    window.history.replaceState({}, '', next)
+  } catch { /* ignore */ }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeDomain, setActiveDomainState] = useState<DomainCode>(() => readStoredDomain() || 'it')
 
   useEffect(() => {
+    takeTokenFromUrl()
     const t = localStorage.getItem('refex_token')
     if (!t) {
       setLoading(false)

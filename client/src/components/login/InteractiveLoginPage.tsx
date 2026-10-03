@@ -8,9 +8,11 @@ import './login-suite.css'
 
 type Props = {
   onSubmit: (creds: { email: string; password: string }) => Promise<void>
+  ssoHref?: string
+  ssoLabel?: string
 }
 
-export default function InteractiveLoginPage({ onSubmit: onSubmitProp }: Props) {
+export default function InteractiveLoginPage({ onSubmit: onSubmitProp, ssoHref, ssoLabel }: Props) {
   const reduce = useReducedMotion()
 
   const [email, setEmail] = useState('')
@@ -190,6 +192,11 @@ export default function InteractiveLoginPage({ onSubmit: onSubmitProp }: Props) 
                   </>
                 )}
               </button>
+              {ssoHref ? (
+                <a className="em-sso-btn" href={ssoHref}>
+                  {ssoLabel || 'Continue with RefexOne'}
+                </a>
+              ) : null}
             </form>
           </motion.div>
         </section>

@@ -93,5 +93,12 @@ export async function runBatteryDegradationSetup() {
     console.warn('[battery-setup] ensureDefaultRoles', e instanceof Error ? e.message : e)
   }
   const seed = await seedRilBatteryIssues()
-  return { migrations, seed }
+  let typeBackfill = 0
+  try {
+    const { backfillOtherIssueTypes } = await import('./batteryTechnicianAssign.js')
+    typeBackfill = await backfillOtherIssueTypes()
+  } catch (e) {
+    console.warn('[battery-setup] other issue type backfill', e instanceof Error ? e.message : e)
+  }
+  return { migrations, seed, typeBackfill }
 }

@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './api/AuthContext'
 import { ToastProvider } from './components/Toast'
 import type { ReactNode } from 'react'
@@ -59,11 +59,16 @@ import LogoutPage from './pages/Logout'
 import {
   BatteryIssuesList, BatteryIssueDetail, BatteryIssueForm,
 } from './pages/battery/BatteryIssues'
+import { rememberLoginNext } from './utils/loginNext'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
+  const location = useLocation()
   if (loading) return <div className="suite-page"><p style={{ padding: 40, textAlign: 'center' }}>Loading…</p></div>
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) {
+    const next = rememberLoginNext(`${location.pathname}${location.search}`)
+    return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />
+  }
   return children
 }
 

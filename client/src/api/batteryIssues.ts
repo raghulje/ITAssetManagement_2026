@@ -73,6 +73,7 @@ export type BatteryIssue = {
   battery_issue_confirmed: string
   other_issue_reported: string
   other_issue_description: string
+  other_issue_types: Array<{ key: string; label: string }>
   webhook_sent_at: string
   conversation_id: string
   call_status: string
@@ -97,6 +98,7 @@ export type BatteryCallStats = {
   other_only: number
   no_issues: number
   both_issues: number
+  other_type_counts: Array<{ key: string; label: string; icon: string; count: number }>
 }
 
 export type BatteryCallQueue = {

@@ -6,6 +6,7 @@ import {
   isBothNo,
   isNoIssueComments,
   NO_ISSUE_COMMENTS,
+  typesForOtherIssue,
   type BatteryIssueAnswer,
   type BatterySurvey,
 } from './batteryIssueResponse.js'
@@ -153,7 +154,18 @@ export async function classifyIssueSurvey(
     extraMeta = null
     if (survey.battery === 'unknown' && next.battery !== 'unknown') survey = { ...survey, battery: next.battery }
     if (survey.other === 'unknown' && next.other !== 'unknown') {
-      survey = { ...survey, other: next.other, other_description: next.other_description, asked_other: next.asked_other }
+      survey = {
+        ...survey,
+        other: next.other,
+        other_description: next.other_description,
+        other_types: next.other_types,
+        asked_other: next.asked_other,
+      }
+    } else {
+      if (!survey.other_description && next.other_description) survey.other_description = next.other_description
+      if (next.other_types?.length) {
+        survey.other_types = [...new Set([...(survey.other_types || []), ...next.other_types])]
+      }
     }
     if (!survey.preferred_language && next.preferred_language) survey = { ...survey, preferred_language: next.preferred_language }
     survey.asked_other = survey.asked_other || next.asked_other
@@ -161,6 +173,11 @@ export async function classifyIssueSurvey(
   }
   if (survey.battery === 'unknown' && extraMeta) {
     survey = classifyCallSurvey([], extraMeta, '')
+  }
+  if (survey.other === 'yes') {
+    survey = { ...survey, other_types: typesForOtherIssue(survey) }
+  } else {
+    survey = { ...survey, other_types: [] }
   }
   return survey
 }
@@ -170,25 +187,73 @@ export async function persistIssueSurvey(
   extraMeta?: Record<string, unknown> | null,
 ): Promise<BatterySurvey> {
   const survey = await classifyIssueSurvey(issueId, extraMeta)
+  const values = [
+    survey.preferred_language || null,
+    survey.battery !== 'unknown' ? survey.battery : null,
+    survey.other !== 'unknown' ? survey.other : null,
+    survey.other_description || null,
+    now(),
+    issueId,
+  ]
   try {
     await run(
       `UPDATE battery_degradation_issues
        SET preferred_language = ?, battery_issue_confirmed = ?, other_issue_reported = ?,
-           other_issue_description = ?, updated_at = ?
+           other_issue_description = ?, other_issue_types = ?, updated_at = ?
        WHERE id = ? AND deleted_at IS NULL`,
       [
-        survey.preferred_language || null,
-        survey.battery !== 'unknown' ? survey.battery : null,
-        survey.other !== 'unknown' ? survey.other : null,
-        survey.other_description || null,
-        now(),
-        issueId,
+        values[0], values[1], values[2], values[3],
+        JSON.stringify(survey.other_types || []),
+        values[4], values[5],
       ],
     )
   } catch (e) {
-    console.warn('[battery-survey] persist failed', issueId, e instanceof Error ? e.message : e)
+    try {
+      await run(
+        `UPDATE battery_degradation_issues
+         SET preferred_language = ?, battery_issue_confirmed = ?, other_issue_reported = ?,
+             other_issue_description = ?, updated_at = ?
+         WHERE id = ? AND deleted_at IS NULL`,
+        values,
+      )
+    } catch (inner) {
+      console.warn('[battery-survey] persist failed', issueId, inner instanceof Error ? inner.message : e)
+    }
   }
   return survey
+}
+
+export async function backfillOtherIssueTypes(): Promise<number> {
+  let rows: Array<{ id: number; other_issue_description: string | null; other_issue_types: unknown }> = []
+  try {
+    rows = await all(
+      `SELECT id, other_issue_description, other_issue_types
+       FROM battery_degradation_issues
+       WHERE deleted_at IS NULL AND other_issue_reported = 'yes'`,
+    )
+  } catch {
+    return 0
+  }
+  let updated = 0
+  for (const row of rows) {
+    let existing: string[] = []
+    if (Array.isArray(row.other_issue_types)) existing = row.other_issue_types.map((v) => String(v))
+    else if (typeof row.other_issue_types === 'string' && row.other_issue_types.trim()) {
+      try { existing = JSON.parse(row.other_issue_types) as string[] } catch { existing = [] }
+    }
+    if (existing.length) continue
+    const types = typesForOtherIssue({
+      other: 'yes',
+      other_description: row.other_issue_description || '',
+      other_types: [],
+    })
+    await run(
+      `UPDATE battery_degradation_issues SET other_issue_types = ?, updated_at = ? WHERE id = ?`,
+      [JSON.stringify(types), now(), row.id],
+    )
+    updated += 1
+  }
+  return updated
 }
 
 export async function classifyIssueBatteryAnswer(

@@ -19,6 +19,8 @@ import {
   isBothNo,
   isNoIssueComments,
   NO_ISSUE_COMMENTS,
+  OTHER_ISSUE_TYPES,
+  otherIssueTypeLabel,
 } from '../services/batteryIssueResponse.js'
 import { applyAttendedCallOutcome, isNoIssueClose, userDisplayName } from '../services/batteryTechnicianAssign.js'
 import { isTruthyPerm } from '../services/permissions.js'
@@ -130,6 +132,10 @@ function transform(row: Record<string, unknown>, conversations: IssueCall[] = []
     battery_issue_confirmed: row.battery_issue_confirmed ? String(row.battery_issue_confirmed) : '',
     other_issue_reported: row.other_issue_reported ? String(row.other_issue_reported) : '',
     other_issue_description: row.other_issue_description ? String(row.other_issue_description) : '',
+    other_issue_types: parseJson<string[]>(row.other_issue_types, [])
+      .map((key) => String(key || '').trim())
+      .filter(Boolean)
+      .map((key) => ({ key, label: otherIssueTypeLabel(key) })),
     webhook_sent_at: row.webhook_sent_at ? String(row.webhook_sent_at) : '',
     conversation_id: latest?.conversation_id || (row.ello_conversation_id ? String(row.ello_conversation_id) : ''),
     call_status: latest?.call_status || (row.ello_call_status ? String(row.ello_call_status) : ''),
@@ -418,6 +424,7 @@ batteryIssuesRouter.get('/', async (req, res) => {
   const offset = Number(req.query.offset || 0)
   const callResult = String(req.query.call_result || '').trim()
   const report = String(req.query.report || '').trim()
+  const otherType = String(req.query.other_type || '').trim()
   const where = ['deleted_at IS NULL']
   const params: unknown[] = []
   if (status) {
@@ -435,6 +442,10 @@ batteryIssuesRouter.get('/', async (req, res) => {
   } else if (report === 'both') {
     where.push(`battery_issue_confirmed = 'yes' AND other_issue_reported = 'yes'`)
   }
+  if (otherType) {
+    where.push(`other_issue_reported = 'yes' AND CAST(other_issue_types AS CHAR) LIKE ?`)
+    params.push(`%${otherType}%`)
+  }
   if (callResult === 'yet_to_call') {
     where.push(`NOT EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id)`)
   } else if (callResult === 'called') {
@@ -446,9 +457,9 @@ batteryIssuesRouter.get('/', async (req, res) => {
     params.push(callResult)
   }
   if (search) {
-    where.push('(name LIKE ? OR email LIKE ? OR phone LIKE ? OR company LIKE ?)')
+    where.push('(name LIKE ? OR email LIKE ? OR phone LIKE ? OR company LIKE ? OR IFNULL(other_issue_description, \'\') LIKE ?)')
     const like = `%${search}%`
-    params.push(like, like, like, like)
+    params.push(like, like, like, like, like)
   }
   const sql = `SELECT * FROM battery_degradation_issues WHERE ${where.join(' AND ')} ORDER BY id DESC`
   let totalRow: { c: number } | undefined
@@ -460,8 +471,8 @@ batteryIssuesRouter.get('/', async (req, res) => {
     )
     rows = await all<Record<string, unknown>>(`${sql} ${limitSql(limit, offset)}`, params)
   } catch (e) {
-    if (!report) throw e
-    const fallbackWhere = where.filter((w) => !w.includes('battery_issue_confirmed') && !w.includes('other_issue_reported'))
+    if (!report && !otherType) throw e
+    const fallbackWhere = where.filter((w) => !w.includes('battery_issue_confirmed') && !w.includes('other_issue_reported') && !w.includes('other_issue_types'))
     totalRow = await get<{ c: number }>(
       `SELECT COUNT(*) as c FROM battery_degradation_issues WHERE ${fallbackWhere.join(' AND ')}`,
       params,
@@ -549,8 +560,36 @@ batteryIssuesRouter.get('/stats', async (_req, res) => {
     other_only: Number(row?.other_only || 0),
     no_issues: Number(row?.no_issues || 0),
     both_issues: Number(row?.both_issues || zeros.both_issues),
+    other_type_counts: await loadOtherTypeCounts(),
   })
 })
+
+async function loadOtherTypeCounts() {
+  const counts = Object.fromEntries(OTHER_ISSUE_TYPES.map((item) => [item.key, 0])) as Record<string, number>
+  try {
+    const rows = await all<{ other_issue_types: unknown }>(
+      `SELECT other_issue_types FROM battery_degradation_issues
+       WHERE deleted_at IS NULL AND other_issue_reported = 'yes'`,
+    )
+    for (const row of rows) {
+      const keys = parseJson<string[]>(row.other_issue_types, [])
+      const unique = [...new Set(keys.map((key) => String(key || '').trim()).filter(Boolean))]
+      if (!unique.length) counts.other += 1
+      for (const key of unique) {
+        if (counts[key] == null) counts.other += 1
+        else counts[key] += 1
+      }
+    }
+  } catch {
+    return OTHER_ISSUE_TYPES.map((item) => ({ key: item.key, label: item.label, icon: item.icon, count: 0 }))
+  }
+  return OTHER_ISSUE_TYPES.map((item) => ({
+    key: item.key,
+    label: item.label,
+    icon: item.icon,
+    count: counts[item.key] || 0,
+  }))
+}
 
 batteryIssuesRouter.get('/call-queue', async (_req, res) => {
   const { getCallQueueStatus } = await import('../services/batteryCallQueue.js')
@@ -816,8 +855,8 @@ batteryIssuesRouter.post('/', async (req, res) => {
       const { mailConfigured, sendMail } = await import('../services/mail.js')
       const to = (await batteryNotifyEmails()).join(', ')
       if (!to || !mailConfigured()) return
-      const base = (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '')
-      const view = `${base}/battery-issues/${result.insertId}`
+      const { appSignedInUrl } = await import('../services/appLinks.js')
+      const view = appSignedInUrl(`/battery-issues/${result.insertId}`)
       await sendMail({
         to,
         subject: `Battery degradation issue submitted — ${name}`,
