@@ -963,6 +963,7 @@ settingsRouter.put('/battery', async (req, res) => {
   const saved = await saveBatteryAdminConfig({
     agent_id: b.agent_id !== undefined ? String(b.agent_id) : undefined,
     notify_email: b.notify_email !== undefined ? String(b.notify_email) : undefined,
+    webhook_url: b.webhook_url !== undefined ? String(b.webhook_url) : undefined,
   })
   await logAction({
     userId: req.user?.id,

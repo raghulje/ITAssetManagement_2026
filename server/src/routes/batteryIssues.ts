@@ -14,7 +14,12 @@ import {
 } from '../services/ello.js'
 import { sendBatteryCallEndedEmail } from '../services/batteryCallEmail.js'
 import { classifyCallResult, callResultLabel } from '../services/batteryCallStatus.js'
-import { classifyBatteryDrainResponse, isNoIssueComments, NO_ISSUE_COMMENTS } from '../services/batteryIssueResponse.js'
+import {
+  classifyCallSurvey,
+  isBothNo,
+  isNoIssueComments,
+  NO_ISSUE_COMMENTS,
+} from '../services/batteryIssueResponse.js'
 import { applyAttendedCallOutcome, isNoIssueClose, userDisplayName } from '../services/batteryTechnicianAssign.js'
 import { isTruthyPerm } from '../services/permissions.js'
 
@@ -114,6 +119,11 @@ function transform(row: Record<string, unknown>, conversations: IssueCall[] = []
     closed_at: row.closed_at ? String(row.closed_at) : '',
     closed_by: row.closed_by ? Number(row.closed_by) : null,
     closed_by_name: String(row.closed_by_name || ''),
+    preferred_language: row.preferred_language ? String(row.preferred_language) : '',
+    battery_issue_confirmed: row.battery_issue_confirmed ? String(row.battery_issue_confirmed) : '',
+    other_issue_reported: row.other_issue_reported ? String(row.other_issue_reported) : '',
+    other_issue_description: row.other_issue_description ? String(row.other_issue_description) : '',
+    webhook_sent_at: row.webhook_sent_at ? String(row.webhook_sent_at) : '',
     conversation_id: latest?.conversation_id || (row.ello_conversation_id ? String(row.ello_conversation_id) : ''),
     call_status: latest?.call_status || (row.ello_call_status ? String(row.ello_call_status) : ''),
     call_result: latest?.call_result || String(row.call_result || '') || (count ? 'queued' : 'yet_to_call'),
@@ -278,7 +288,7 @@ function voiceTrackerFromCalls(issue: Record<string, unknown>, conversations: Is
 function conversationsSayNoIssue(conversations: IssueCall[]) {
   for (const call of [...conversations].reverse()) {
     if (call.call_result !== 'completed') continue
-    if (classifyBatteryDrainResponse(call.transcript, null, call.bot_summary) === 'no') return true
+    if (isBothNo(classifyCallSurvey(call.transcript, null, call.bot_summary))) return true
   }
   return false
 }
@@ -290,8 +300,11 @@ function workflowFlags(issue: Record<string, unknown>, conversations: IssueCall[
     conversations.some((c) => c.call_result === 'rejected')
     || (!conversations.length && String(issue.call_result || '') === 'rejected')
   )
+  const storedBothNo = String(issue.battery_issue_confirmed || '') === 'no'
+    && String(issue.other_issue_reported || '') === 'no'
   const noIssue = isNoIssueClose(issue)
     || isNoIssueComments(issue.close_comments)
+    || storedBothNo
     || (!Number(issue.assigned_to || 0) && conversationsSayNoIssue(conversations))
   return { attended, rejectedWithoutAttend, noIssue }
 }
@@ -397,11 +410,23 @@ batteryIssuesRouter.get('/', async (req, res) => {
   const limit = Number(req.query.limit || 50)
   const offset = Number(req.query.offset || 0)
   const callResult = String(req.query.call_result || '').trim()
+  const report = String(req.query.report || '').trim()
   const where = ['deleted_at IS NULL']
   const params: unknown[] = []
   if (status) {
     where.push('status = ?')
     params.push(status)
+  }
+  if (report === 'battery_yes') {
+    where.push(`battery_issue_confirmed = 'yes'`)
+  } else if (report === 'battery_no') {
+    where.push(`battery_issue_confirmed = 'no'`)
+  } else if (report === 'other_only') {
+    where.push(`IFNULL(battery_issue_confirmed, '') != 'yes' AND other_issue_reported = 'yes'`)
+  } else if (report === 'no_issues') {
+    where.push(`battery_issue_confirmed = 'no' AND other_issue_reported = 'no'`)
+  } else if (report === 'both') {
+    where.push(`battery_issue_confirmed = 'yes' AND other_issue_reported = 'yes'`)
   }
   if (callResult === 'yet_to_call') {
     where.push(`NOT EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id)`)
@@ -419,11 +444,26 @@ batteryIssuesRouter.get('/', async (req, res) => {
     params.push(like, like, like, like)
   }
   const sql = `SELECT * FROM battery_degradation_issues WHERE ${where.join(' AND ')} ORDER BY id DESC`
-  const totalRow = await get<{ c: number }>(
-    `SELECT COUNT(*) as c FROM battery_degradation_issues WHERE ${where.join(' AND ')}`,
-    params,
-  )
-  const rows = await all<Record<string, unknown>>(`${sql} ${limitSql(limit, offset)}`, params)
+  let totalRow: { c: number } | undefined
+  let rows: Record<string, unknown>[] = []
+  try {
+    totalRow = await get<{ c: number }>(
+      `SELECT COUNT(*) as c FROM battery_degradation_issues WHERE ${where.join(' AND ')}`,
+      params,
+    )
+    rows = await all<Record<string, unknown>>(`${sql} ${limitSql(limit, offset)}`, params)
+  } catch (e) {
+    if (!report) throw e
+    const fallbackWhere = where.filter((w) => !w.includes('battery_issue_confirmed') && !w.includes('other_issue_reported'))
+    totalRow = await get<{ c: number }>(
+      `SELECT COUNT(*) as c FROM battery_degradation_issues WHERE ${fallbackWhere.join(' AND ')}`,
+      params,
+    )
+    rows = await all<Record<string, unknown>>(
+      `SELECT * FROM battery_degradation_issues WHERE ${fallbackWhere.join(' AND ')} ORDER BY id DESC ${limitSql(limit, offset)}`,
+      params,
+    )
+  }
   await hydrateAssignees(rows)
   const ids = rows.map((r) => Number(r.id))
   const counts = await callCounts(ids)
@@ -436,7 +476,14 @@ batteryIssuesRouter.get('/', async (req, res) => {
 })
 
 batteryIssuesRouter.get('/stats', async (_req, res) => {
-  const row = await get<Record<string, number>>(`
+  const zeros = {
+    total: 0, with_phone: 0, yet_to_call: 0, called: 0, attended: 0,
+    rejected: 0, ignored: 0, calling: 0, battery_yes: 0, battery_no: 0,
+    other_only: 0, no_issues: 0, both_issues: 0,
+  }
+  let row: Record<string, number> | undefined
+  try {
+  row = await get<Record<string, number>>(`
     SELECT
       COUNT(*) AS total,
       SUM(CASE WHEN phone IS NOT NULL AND TRIM(phone) != '' AND phone != '-' THEN 1 ELSE 0 END) AS with_phone,
@@ -451,10 +498,36 @@ batteryIssuesRouter.get('/stats', async (_req, res) => {
       ) THEN 1 ELSE 0 END) AS attended,
       SUM(CASE WHEN call_result = 'rejected' THEN 1 ELSE 0 END) AS rejected,
       SUM(CASE WHEN call_result = 'ignored' THEN 1 ELSE 0 END) AS ignored,
-      SUM(CASE WHEN call_result IN ('queued', 'in_progress') THEN 1 ELSE 0 END) AS calling
+      SUM(CASE WHEN call_result IN ('queued', 'in_progress') THEN 1 ELSE 0 END) AS calling,
+      SUM(CASE WHEN battery_issue_confirmed = 'yes' THEN 1 ELSE 0 END) AS battery_yes,
+      SUM(CASE WHEN battery_issue_confirmed = 'no' THEN 1 ELSE 0 END) AS battery_no,
+      SUM(CASE WHEN IFNULL(battery_issue_confirmed, '') != 'yes' AND other_issue_reported = 'yes' THEN 1 ELSE 0 END) AS other_only,
+      SUM(CASE WHEN battery_issue_confirmed = 'no' AND other_issue_reported = 'no' THEN 1 ELSE 0 END) AS no_issues,
+      SUM(CASE WHEN battery_issue_confirmed = 'yes' AND other_issue_reported = 'yes' THEN 1 ELSE 0 END) AS both_issues
     FROM battery_degradation_issues
     WHERE deleted_at IS NULL
   `)
+  } catch {
+    row = await get<Record<string, number>>(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN phone IS NOT NULL AND TRIM(phone) != '' AND phone != '-' THEN 1 ELSE 0 END) AS with_phone,
+        SUM(CASE WHEN NOT EXISTS (
+          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id
+        ) THEN 1 ELSE 0 END) AS yet_to_call,
+        SUM(CASE WHEN EXISTS (
+          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id
+        ) THEN 1 ELSE 0 END) AS called,
+        SUM(CASE WHEN EXISTS (
+          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed'
+        ) THEN 1 ELSE 0 END) AS attended,
+        SUM(CASE WHEN call_result = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+        SUM(CASE WHEN call_result = 'ignored' THEN 1 ELSE 0 END) AS ignored,
+        SUM(CASE WHEN call_result IN ('queued', 'in_progress') THEN 1 ELSE 0 END) AS calling
+      FROM battery_degradation_issues
+      WHERE deleted_at IS NULL
+    `)
+  }
   return okItem(res, {
     total: Number(row?.total || 0),
     with_phone: Number(row?.with_phone || 0),
@@ -464,6 +537,11 @@ batteryIssuesRouter.get('/stats', async (_req, res) => {
     rejected: Number(row?.rejected || 0),
     ignored: Number(row?.ignored || 0),
     calling: Number(row?.calling || 0),
+    battery_yes: Number(row?.battery_yes || 0),
+    battery_no: Number(row?.battery_no || 0),
+    other_only: Number(row?.other_only || 0),
+    no_issues: Number(row?.no_issues || 0),
+    both_issues: Number(row?.both_issues || zeros.both_issues),
   })
 })
 

@@ -5,11 +5,15 @@ const FALLBACK_AGENT_ID = '6abe1d312713e05e957c8eb4'
 export type BatteryAdminConfig = {
   agent_id: string
   notify_email: string
+  webhook_url: string
 }
+
+const FALLBACK_WEBHOOK_URL = 'https://development-refexgroup.kissflow.com/integration/2/AcCMptp3yqcn/webhook/J1VLVRMG2wXYcRkvDBHLxx0L5fNELbNtFYhPNtUg7kMbhvZSFxJL44ZEjn0htxhGqNCWqOntb7ZcbAz4MNWtQ'
 
 const DEFAULTS: BatteryAdminConfig = {
   agent_id: FALLBACK_AGENT_ID,
   notify_email: '',
+  webhook_url: FALLBACK_WEBHOOK_URL,
 }
 
 let cache: { at: number; value: BatteryAdminConfig } | null = null
@@ -28,9 +32,11 @@ function parseConfig(raw: unknown): BatteryAdminConfig {
   }
   const agentId = String(obj.agent_id ?? obj.agentId ?? '').trim()
   const notify = String(obj.notify_email ?? obj.notifyEmail ?? '').trim()
+  const webhook = String(obj.webhook_url ?? obj.webhookUrl ?? '').trim()
   return {
     agent_id: agentId || String(process.env.ELLO_AGENT_ID || '').trim() || DEFAULTS.agent_id,
     notify_email: notify,
+    webhook_url: webhook || DEFAULTS.webhook_url,
   }
 }
 
@@ -57,6 +63,9 @@ export async function saveBatteryAdminConfig(partial: Partial<BatteryAdminConfig
     notify_email: partial.notify_email !== undefined
       ? String(partial.notify_email || '').trim()
       : current.notify_email,
+    webhook_url: partial.webhook_url !== undefined
+      ? String(partial.webhook_url || '').trim()
+      : current.webhook_url,
   }
   await run(`UPDATE settings SET battery_config = ?, updated_at = ? WHERE id = 1`, [
     JSON.stringify(next),
