@@ -33,6 +33,10 @@ function statusClass(status: string) {
   return 'bdi-pill bdi-pill--progress'
 }
 
+function isNoIssueClose(issue: { status?: unknown; close_comments?: unknown }) {
+  return String(issue.status || '') === 'closed' && /^no issues$/i.test(String(issue.close_comments || '').trim())
+}
+
 function callResultLabel(result: string) {
   switch (String(result || '').toLowerCase()) {
     case 'yet_to_call': return 'Yet to call'
@@ -254,8 +258,10 @@ export function BatteryIssuesList() {
             {
               key: 'assigned_name',
               label: 'Assigned',
-              exportValue: (r) => String(r.assigned_name || ''),
-              render: (r) => String(r.assigned_name || '') || <span className="cell-muted">—</span>,
+              exportValue: (r) => String(r.assigned_name || (isNoIssueClose(r) ? 'No Issues' : '')),
+              render: (r) => String(r.assigned_name || '') || (
+                <span className="cell-muted">{isNoIssueClose(r) ? 'No Issues' : '—'}</span>
+              ),
             },
             {
               key: 'call_result',
@@ -562,7 +568,14 @@ export function BatteryIssueDetail() {
               </div>
               <div>
                 <span>Assigned technician</span>
-                <strong>{issue.assigned_name || (issue.call_result === 'rejected' ? 'Not assigned (call rejected)' : '—')}</strong>
+                <strong>{
+                  issue.assigned_name
+                  || (isNoIssueClose(issue)
+                    ? 'Not assigned (no issue)'
+                    : issue.call_result === 'rejected'
+                      ? 'Not assigned (call rejected)'
+                      : '—')
+                }</strong>
               </div>
             </div>
             {issue.message ? (
