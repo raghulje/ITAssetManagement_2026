@@ -168,10 +168,14 @@ function walkMeta(raw: unknown, into: Record<string, unknown>, depth = 0) {
 function classifyToken(value: string): BatteryIssueAnswer {
   const t = norm(value)
   if (!t) return 'unknown'
+  if (botForwardsBatteryIssue(t)) return 'yes'
   if (/^(no|false|n|no issue|no issues|not confirmed|not_confirmed)$/.test(t)) return 'no'
   if (/^(yes|true|y|confirmed)$/.test(t)) return 'yes'
-  if (/\bno issue\b/.test(t) || t === 'complaint skipped') return 'no'
+  if (t === 'complaint skipped') return 'no'
   if (/\bcomplaint forwarded\b/.test(t) || /\bhelpdesk followup\b/.test(t)) return 'yes'
+  // Do not treat "thank you for confirming" / mixed summaries as no — a later
+  // "I'll forward the battery issue" is the real outcome.
+  if (/\bno issue\b/.test(t) && !/\bbattery\b/.test(t)) return 'no'
   return 'unknown'
 }
 
@@ -182,7 +186,7 @@ function isUnsure(text: string) {
 function isNoAnswer(text: string) {
   const t = norm(text)
   if (!t || isUnsure(t)) return false
-  if (/^(no|nope|nah|no thanks|no thank you|not really|not at all|nothing|none|negative|nahi|nahin|nahee|illa|ille|illai|kadu|ledu|leda|alla|venta|nai|naa)$/.test(t)) return true
+  if (/^(no|nope|nah|no thanks|no thank you|not really|not at all|nothing|none|negative|nahi|nahin|nahee|nahi ji|nahin ji|illa|ille|illai|kadu|ledu|leda|alla|venta|nai|naa|नहीं|ना)$/.test(t)) return true
   if (/^(no (issue|issues|problem|problems|drain|battery issue|battery drain)|all good|im fine|i am fine|its fine|it is fine|doing fine)$/.test(t)) return true
   if (/\bno (battery )?(drain|issue|problem)s?\b/.test(t)) return true
   if (/\bnot (experiencing|having|facing|seeing) (any )?(battery|issue|problem|drain|other)/.test(t)) return true
@@ -193,15 +197,20 @@ function isNoAnswer(text: string) {
 function isYesAnswer(text: string) {
   const t = norm(text)
   if (!t || isUnsure(t) || isNoAnswer(t)) return false
-  if (/^(yes|yeah|yep|yup|yea|correct|right|i am|i do|there is|there is one|haan|ha|ho|aama|aam|avunu|haudu|hoi)$/.test(t)) return true
-  if (/^(हाँ|हां|ஆம்|అవును|ಹೌದು|ഉണ്ട്|হ্যাঁ|होय|હા)$/.test(t)) return true
+  if (/^(yes|yeah|yep|yup|yea|correct|right|i am|i do|there is|there is one|haan|ha|haanji|haan ji|ho|aama|aam|avunu|haudu|hoi|bilkul)$/.test(t)) return true
+  if (/^(हाँ|हां|जी हाँ|जी हां|ஆம்|అవును|ಹೌದು|ഉണ്ട്|হ্যাঁ|होय|હા)$/.test(t)) return true
   if (/\b(draining|drains|dies fast|dies quickly|charge[sd]? (a lot|more|frequently)|battery (issue|problem|drain))\b/.test(t)) return true
   return false
 }
 
 function isLanguageQuestion(text: string) {
   const t = norm(text)
-  return /\bwhich language\b/.test(t) || /\bprefer to speak\b/.test(t) || /\bpreferred language\b/.test(t)
+  return /\bwhich language\b/.test(t)
+    || /\bprefer to speak\b/.test(t)
+    || /\bpreferred language\b/.test(t)
+    || /\bkaunsi (bhasha|language)\b/.test(t)
+    || /\bkis bhasha\b/.test(t)
+    || /किस भाषा/.test(t)
 }
 
 function isBatteryQuestion(text: string) {
@@ -211,6 +220,9 @@ function isBatteryQuestion(text: string) {
     || /\bdraining quickly\b/.test(t)
     || /\bdraining faster than usual\b/.test(t)
     || /\bcharge it more frequently\b/.test(t)
+    || /\bbattery jaldi\b/.test(t)
+    || /\bbattery (jaldi )?(khatam|drain)\b/.test(t)
+    || /बैटरी/.test(t)
 }
 
 function isOtherIssueQuestion(text: string) {
@@ -219,6 +231,34 @@ function isOtherIssueQuestion(text: string) {
     || /\bother (laptop |it[- ]related )?(issue|issues|problem|problems)\b/.test(t)
     || /\bit helpdesk team to look into\b/.test(t)
     || /\bother it\b/.test(t)
+    || /\bkoi aur (issue|issues|problem|problems|samasya)\b/.test(t)
+    || /\bkisi aur (issue|laptop|it)\b/.test(t)
+    || /कोई और/.test(t)
+    || /किसी और (समस्या|इश्यू|issue)/.test(t)
+}
+
+function isContactDetailsQuestion(text: string) {
+  const t = norm(text)
+  return /\b(company name and email|email for our records|share your (company|email))\b/.test(t)
+}
+
+function botForwardsBatteryIssue(text: string) {
+  const t = norm(text)
+  return /\bforward(ing)? the battery (drain )?issue\b/.test(t)
+    || /\bbattery (drain )?issue (has been |will be )?(forwarded|raised|logged|assigned)\b/.test(t)
+    || (/\braise (a |the )?complaint\b/.test(t) && /\bbattery\b/.test(t))
+    || /\bbattery issue (ko )?(forward|bhej)\b/.test(t)
+    || /बैटरी (ड्रेन )?इश्यू/.test(t) && /(forward|भेज|शिकायत)/.test(t)
+}
+
+function isUserSpeaker(value: string) {
+  return /^(user|human|customer|contact|callee|employee|caller)$/.test(String(value || '').toLowerCase().trim())
+}
+
+function preferAnswer(primary: BatteryIssueAnswer, fallback: BatteryIssueAnswer): BatteryIssueAnswer {
+  if (primary === 'yes' || fallback === 'yes') return 'yes'
+  if (primary !== 'unknown') return primary
+  return fallback
 }
 
 function detectLanguage(text: string) {
@@ -309,7 +349,7 @@ function surveyFromTranscript(linesIn: Array<{ speaker?: string; text?: string }
   const survey = emptySurvey()
   const lines = (linesIn || [])
     .map((line) => ({
-      speaker: String(line.speaker || '').toLowerCase() === 'user' ? 'user' : 'bot',
+      speaker: isUserSpeaker(String(line.speaker || '')) ? 'user' : 'bot',
       text: String(line.text || ''),
     }))
     .filter((line) => line.text.trim())
@@ -317,11 +357,13 @@ function surveyFromTranscript(linesIn: Array<{ speaker?: string; text?: string }
   let langIdx = -1
   let batteryIdx = -1
   let otherIdx = -1
+  let contactIdx = -1
   for (let i = 0; i < lines.length; i += 1) {
     if (lines[i].speaker === 'user') continue
     if (isLanguageQuestion(lines[i].text)) langIdx = i
     if (isBatteryQuestion(lines[i].text)) batteryIdx = i
     if (isOtherIssueQuestion(lines[i].text)) otherIdx = i
+    if (isContactDetailsQuestion(lines[i].text) && contactIdx < 0) contactIdx = i
   }
   survey.asked_other = otherIdx >= 0
 
@@ -339,12 +381,13 @@ function surveyFromTranscript(linesIn: Array<{ speaker?: string; text?: string }
   }
 
   if (batteryIdx >= 0) {
-    const end = otherIdx > batteryIdx ? otherIdx : lines.length
+    const end = otherIdx > batteryIdx ? otherIdx : (contactIdx > batteryIdx ? contactIdx : lines.length)
     survey.battery = firstAnswer(userTurnsAfter(lines, batteryIdx, end))
   }
 
   if (otherIdx >= 0) {
-    const other = otherFromTurns(userTurnsAfter(lines, otherIdx, lines.length))
+    const end = contactIdx > otherIdx ? contactIdx : lines.length
+    const other = otherFromTurns(userTurnsAfter(lines, otherIdx, end))
     survey.other = other.answer
     survey.other_description = other.description
   } else if (langIdx >= 0 && batteryIdx < 0) {
@@ -366,15 +409,27 @@ function surveyFromTranscript(linesIn: Array<{ speaker?: string; text?: string }
   return survey
 }
 
-function mergeSurvey(primary: BatterySurvey, fallback: BatterySurvey): BatterySurvey {
+function mergeSurvey(transcript: BatterySurvey, meta: BatterySurvey): BatterySurvey {
   return {
-    preferred_language: primary.preferred_language || fallback.preferred_language,
-    battery: primary.battery !== 'unknown' ? primary.battery : fallback.battery,
-    other: primary.other !== 'unknown' ? primary.other : fallback.other,
-    other_description: primary.other_description || fallback.other_description,
-    other_types: uniqueTypes([...(primary.other_types || []), ...(fallback.other_types || [])]),
-    asked_other: primary.asked_other || fallback.asked_other,
+    preferred_language: transcript.preferred_language || meta.preferred_language,
+    battery: preferAnswer(transcript.battery, meta.battery),
+    other: preferAnswer(transcript.other, meta.other),
+    other_description: transcript.other_description || meta.other_description,
+    other_types: uniqueTypes([...(transcript.other_types || []), ...(meta.other_types || [])]),
+    asked_other: transcript.asked_other || meta.asked_other,
   }
+}
+
+function applyBotConfirmations(
+  linesIn: Array<{ speaker?: string; text?: string }>,
+  survey: BatterySurvey,
+): BatterySurvey {
+  const forwarded = (linesIn || []).some((line) => {
+    if (isUserSpeaker(String(line.speaker || ''))) return false
+    return botForwardsBatteryIssue(String(line.text || ''))
+  })
+  if (forwarded) return { ...survey, battery: 'yes' }
+  return survey
 }
 
 /** Old one-question prompt never asked about other issues. */
@@ -392,11 +447,15 @@ export function classifyCallSurvey(
 ): BatterySurvey {
   const fromMeta = surveyFromMetadata(metadata)
   const fromTranscript = surveyFromTranscript(transcript || [])
-  let survey = mergeSurvey(fromMeta, fromTranscript)
-  if (survey.battery === 'unknown' && summary) {
+  let survey = mergeSurvey(fromTranscript, fromMeta)
+  survey = applyBotConfirmations(transcript || [], survey)
+  if (summary) {
     const blob = norm(summary)
-    if (/\bbattery issue confirmed (yes|true)\b/.test(blob)) survey = { ...survey, battery: 'yes' }
-    if (/\bbattery issue confirmed (no|false)\b/.test(blob)) survey = { ...survey, battery: 'no' }
+    if (botForwardsBatteryIssue(blob) || /\bbattery issue confirmed (yes|true)\b/.test(blob)) {
+      survey = { ...survey, battery: 'yes' }
+    } else if (survey.battery === 'unknown' && /\bbattery issue confirmed (no|false)\b/.test(blob)) {
+      survey = { ...survey, battery: 'no' }
+    }
   }
   survey = applyLegacyOther(survey)
   if (survey.other === 'yes') {

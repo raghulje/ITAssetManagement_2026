@@ -101,6 +101,8 @@ export type BatteryCallStats = {
   other_type_counts: Array<{ key: string; label: string; icon: string; count: number }>
 }
 
+export type BatteryCallQueueLimit = 15 | 30 | 50 | 'all'
+
 export type BatteryCallQueue = {
   running: boolean
   total: number
@@ -111,6 +113,7 @@ export type BatteryCallQueue = {
   started_at: string | null
   finished_at: string | null
   message: string
+  limit?: BatteryCallQueueLimit | null
 }
 
 export const batteryIssuesApi = {
@@ -118,9 +121,10 @@ export const batteryIssuesApi = {
     api<ApiList<BatteryIssue>>(`/battery-issues${qs(params)}`),
   stats: () => api<BatteryCallStats>('/battery-issues/stats'),
   queueStatus: () => api<BatteryCallQueue>('/battery-issues/call-queue'),
-  startQueue: () =>
+  startQueue: (limit: BatteryCallQueueLimit = 'all') =>
     api<{ status: string; messages: string[]; payload: BatteryCallQueue }>('/battery-issues/call-queue', {
       method: 'POST',
+      json: { limit },
     }),
   get: (id: number | string) => api<BatteryIssue>(`/battery-issues/${id}`),
   create: (body: unknown) =>

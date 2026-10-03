@@ -907,7 +907,8 @@ settingsRouter.get('/saml', async (_req, res) => {
     portal_fields: samlPortalFields(),
     env_hint: {
       SAML_ENABLED: 'true',
-      SAML_IDP_ENTRY_POINT: 'SSO URL from RefexOne IdP metadata',
+      SAML_IDP_ENTRY_POINT: 'https://refexone.com/api/saml/<app-id> (launcher adds /sso)',
+      REFEXONE_SAML_APP_ID: 'optional if the app id is already in SAML_IDP_ENTRY_POINT',
       SAML_IDP_CERT: 'X.509 cert from RefexOne IdP metadata (PEM or base64)',
       SAML_IDP_SLO_URL: 'optional IdP logout URL',
       SAML_AUTO_PROVISION: 'false (set true to auto-create App Users on first SSO)',

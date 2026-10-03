@@ -152,14 +152,18 @@ export async function classifyIssueSurvey(
   for (const call of calls) {
     const next = classifyCallSurvey(parseJson(call.transcript, []), extraMeta, call.bot_summary)
     extraMeta = null
-    if (survey.battery === 'unknown' && next.battery !== 'unknown') survey = { ...survey, battery: next.battery }
-    if (survey.other === 'unknown' && next.other !== 'unknown') {
-      survey = {
-        ...survey,
-        other: next.other,
-        other_description: next.other_description,
-        other_types: next.other_types,
-        asked_other: next.asked_other,
+    if (next.battery === 'yes' || survey.battery === 'unknown') {
+      if (next.battery !== 'unknown') survey = { ...survey, battery: next.battery }
+    }
+    if (next.other === 'yes' || survey.other === 'unknown') {
+      if (next.other !== 'unknown') {
+        survey = {
+          ...survey,
+          other: next.other,
+          other_description: next.other_description || survey.other_description,
+          other_types: next.other_types?.length ? next.other_types : survey.other_types,
+          asked_other: next.asked_other || survey.asked_other,
+        }
       }
     } else {
       if (!survey.other_description && next.other_description) survey.other_description = next.other_description
@@ -169,7 +173,7 @@ export async function classifyIssueSurvey(
     }
     if (!survey.preferred_language && next.preferred_language) survey = { ...survey, preferred_language: next.preferred_language }
     survey.asked_other = survey.asked_other || next.asked_other
-    if (hasReportedIssue(survey) || isBothNo(survey)) break
+    if (hasReportedIssue(survey)) break
   }
   if (survey.battery === 'unknown' && extraMeta) {
     survey = classifyCallSurvey([], extraMeta, '')
@@ -304,29 +308,79 @@ export async function closeIssueAsNoIssues(issueId: number): Promise<boolean> {
   return true
 }
 
+function isAutoNoIssueClose(issue: Record<string, unknown> | null | undefined) {
+  if (!issue) return false
+  if (!isNoIssueComments(issue.close_comments)) return false
+  if (String(issue.status || '') !== 'closed') return false
+  return !Number(issue.assigned_to || 0)
+}
+
+function clearNoIssueOnTracker(trackerRaw: unknown) {
+  const tracker = parseTracker(trackerRaw)
+  const patches: Array<Record<string, unknown>> = [
+    { key: 'assign', label: 'Assign technician', status: 'not_started', source: 'UserTask', assignee: undefined },
+    { key: 'summary', label: 'Enter issue summary', status: 'not_started', source: 'Ello.AI' },
+    { key: 'completed', label: 'Completed', status: 'not_started', source: 'Battery Degradation Issue' },
+  ]
+  for (const step of patches) {
+    const idx = tracker.findIndex((s) => String(s.key) === step.key)
+    if (idx >= 0) tracker[idx] = { ...tracker[idx], ...step }
+    else tracker.push(step)
+  }
+  return tracker
+}
+
+/** Reopen tickets auto-closed as No Issues when the survey actually reported a problem. */
+export async function reopenWrongNoIssueClose(issueId: number): Promise<boolean> {
+  const issue = await get<Record<string, unknown>>(
+    `SELECT id, status, assigned_to, close_comments, tracker FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
+    [issueId],
+  )
+  if (!isAutoNoIssueClose(issue)) return false
+  const ts = now()
+  const tracker = clearNoIssueOnTracker(issue?.tracker)
+  const result = await run(
+    `UPDATE battery_degradation_issues
+     SET status = 'open', close_comments = NULL, closed_at = NULL, closed_by = NULL,
+         assigned_to = NULL, assigned_at = NULL, tracker = ?, updated_at = ?
+     WHERE id = ? AND deleted_at IS NULL AND status = 'closed' AND close_comments = ?
+       AND (assigned_to IS NULL OR assigned_to = 0)`,
+    [JSON.stringify(tracker), ts, issueId, NO_ISSUE_COMMENTS],
+  )
+  if (!result.affectedRows) return false
+  console.log(`[battery-assign] issue ${issueId} reopened — survey reported an issue`)
+  return true
+}
+
 export async function applyAttendedCallOutcome(
   issueId: number,
   extraMeta?: Record<string, unknown> | null,
 ): Promise<'closed_no_issue' | 'assigned' | 'skipped'> {
   const issue = await get<Record<string, unknown>>(
-    `SELECT id, status, close_comments FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, status, assigned_to, close_comments FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
     [issueId],
   )
   if (!issue) return 'skipped'
   if (!(await issueHasAttendedCall(issueId))) return 'skipped'
   const survey = await persistIssueSurvey(issueId, extraMeta)
+  if (hasReportedIssue(survey)) {
+    if (isAutoNoIssueClose(issue)) {
+      await reopenWrongNoIssueClose(issueId)
+    } else if (String(issue.status || '') === 'closed') {
+      return 'skipped'
+    }
+    const tech = await assignNextTechnician(issueId)
+    // void sendBatteryIssueWebhook(issueId, survey)
+    return tech ? 'assigned' : 'skipped'
+  }
   if (isNoIssueClose(issue) || String(issue.status || '') === 'closed') {
-    // if (hasReportedIssue(survey)) void sendBatteryIssueWebhook(issueId, survey)
     return 'skipped'
   }
   if (isBothNo(survey)) {
     const closed = await closeIssueAsNoIssues(issueId)
     return closed ? 'closed_no_issue' : 'skipped'
   }
-  if (!hasReportedIssue(survey)) return 'skipped'
-  const tech = await assignNextTechnician(issueId)
-  // void sendBatteryIssueWebhook(issueId, survey)
-  return tech ? 'assigned' : 'skipped'
+  return 'skipped'
 }
 
 /** Assign the next IT Asset Manager when the contact attended and confirmed a battery issue. */
@@ -370,7 +424,14 @@ export async function assignEligibleIssues(): Promise<{ assigned: number; skippe
     SELECT i.id
     FROM battery_degradation_issues i
     WHERE i.deleted_at IS NULL
-      AND IFNULL(i.status, '') != 'closed'
+      AND (
+        IFNULL(i.status, '') != 'closed'
+        OR (
+          i.status = 'closed'
+          AND i.close_comments = 'No Issues'
+          AND IFNULL(i.assigned_to, 0) = 0
+        )
+      )
       AND EXISTS (
         SELECT 1 FROM battery_degradation_calls c
         WHERE c.issue_id = i.id AND c.call_result = 'completed'

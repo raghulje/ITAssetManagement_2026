@@ -313,12 +313,16 @@ function workflowFlags(issue: Record<string, unknown>, conversations: IssueCall[
     conversations.some((c) => c.call_result === 'rejected')
     || (!conversations.length && String(issue.call_result || '') === 'rejected')
   )
+  const storedHasIssue = String(issue.battery_issue_confirmed || '') === 'yes'
+    || String(issue.other_issue_reported || '') === 'yes'
   const storedBothNo = String(issue.battery_issue_confirmed || '') === 'no'
     && String(issue.other_issue_reported || '') === 'no'
-  const noIssue = isNoIssueClose(issue)
+  const noIssue = !storedHasIssue && (
+    isNoIssueClose(issue)
     || isNoIssueComments(issue.close_comments)
     || storedBothNo
     || (!Number(issue.assigned_to || 0) && conversationsSayNoIssue(conversations))
+  )
   return { attended, rejectedWithoutAttend, noIssue }
 }
 
@@ -599,7 +603,10 @@ batteryIssuesRouter.get('/call-queue', async (_req, res) => {
 batteryIssuesRouter.post('/call-queue', async (req, res) => {
   try {
     const { startPendingCallQueue } = await import('../services/batteryCallQueue.js')
-    const status = await startPendingCallQueue({ userId: req.user?.id ?? null })
+    const status = await startPendingCallQueue({
+      userId: req.user?.id ?? null,
+      limit: (req.body as { limit?: unknown } | undefined)?.limit,
+    })
     return okMessage(res, status.message || 'Call queue started', status)
   } catch (e) {
     return fail(res, e instanceof Error ? e.message : 'Failed to start call queue', 409)

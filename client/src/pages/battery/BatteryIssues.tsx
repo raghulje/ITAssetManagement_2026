@@ -10,11 +10,19 @@ import {
   batteryIssuesApi,
   type BatteryCall,
   type BatteryCallQueue,
+  type BatteryCallQueueLimit,
   type BatteryCallStats,
   type BatteryIssue,
   type BatteryTrackerStep,
   type BatteryTranscriptLine,
 } from '../../api/batteryIssues'
+
+const CALL_PENDING_OPTIONS: Array<{ limit: BatteryCallQueueLimit; label: string; hint: string }> = [
+  { limit: 15, label: 'Call first 15', hint: 'Oldest 15 yet-to-call contacts' },
+  { limit: 30, label: 'Call first 30', hint: 'Oldest 30 yet-to-call contacts' },
+  { limit: 50, label: 'Call first 50', hint: 'Oldest 50 yet-to-call contacts' },
+  { limit: 'all', label: 'Call all', hint: 'Every pending contact with a phone number' },
+]
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Open' },
@@ -120,6 +128,8 @@ export function BatteryIssuesList() {
   const [stats, setStats] = useState<BatteryCallStats | null>(null)
   const [queue, setQueue] = useState<BatteryCallQueue | null>(null)
   const [startingQueue, setStartingQueue] = useState(false)
+  const [callMenuOpen, setCallMenuOpen] = useState(false)
+  const callMenuRef = useRef<HTMLDivElement | null>(null)
   const pageSize = 15
 
   const loadStats = () => {
@@ -169,11 +179,32 @@ export function BatteryIssuesList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queue?.running])
 
-  const startQueue = async () => {
-    if (!window.confirm('Call every pending contact that has a phone number, one after another? Each person is dialed once now. Ignored or rejected numbers are retried after 30 minutes, up to 3 calls in total.')) return
+  useEffect(() => {
+    if (!callMenuOpen) return
+    const onDoc = (ev: MouseEvent) => {
+      if (!callMenuRef.current?.contains(ev.target as Node)) setCallMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [callMenuOpen])
+
+  const startQueue = async (limit: BatteryCallQueueLimit) => {
+    const pending = Number(stats?.yet_to_call || 0)
+    const count = limit === 'all' ? pending : Math.min(limit, pending)
+    if (!count) {
+      toast.error('No pending contacts with a phone number')
+      return
+    }
+    const who = limit === 'all'
+      ? `all ${count} pending contact${count === 1 ? '' : 's'}`
+      : `the first ${count} pending contact${count === 1 ? '' : 's'}`
+    if (!window.confirm(
+      `Call ${who}, one after another?\n\nIgnored or rejected numbers in this batch are retried after 30 minutes, up to 3 calls. Other pending contacts stay until you start another batch.`,
+    )) return
+    setCallMenuOpen(false)
     setStartingQueue(true)
     try {
-      const res = await batteryIssuesApi.startQueue()
+      const res = await batteryIssuesApi.startQueue(limit)
       if (res.payload) setQueue(res.payload)
       toast.success(res.messages?.[0] || 'Call queue started')
       load()
@@ -275,14 +306,32 @@ export function BatteryIssuesList() {
         tools={
           <>
             {can('battery_issues.edit') ? (
-              <button
-                type="button"
-                className="btn btn-theme btn-sm"
-                disabled={startingQueue || queue?.running || !stats?.yet_to_call}
-                onClick={() => { void startQueue() }}
-              >
-                <i className="fas fa-phone-volume" /> {startingQueue || queue?.running ? 'Calling…' : 'Call pending contacts'}
-              </button>
+              <div className={`dropdown ${callMenuOpen ? 'open' : ''}`} ref={callMenuRef}>
+                <button
+                  type="button"
+                  className="btn btn-theme btn-sm"
+                  disabled={startingQueue || queue?.running || !stats?.yet_to_call}
+                  onClick={() => setCallMenuOpen((open) => !open)}
+                >
+                  <i className="fas fa-phone-volume" /> {startingQueue || queue?.running ? 'Calling…' : 'Call pending'}
+                  {' '}<i className="fas fa-caret-down" />
+                </button>
+                <div className="dropdown-menu">
+                  {CALL_PENDING_OPTIONS.map((opt) => (
+                    <button
+                      key={String(opt.limit)}
+                      type="button"
+                      disabled={startingQueue || queue?.running || !stats?.yet_to_call}
+                      onClick={() => { void startQueue(opt.limit) }}
+                    >
+                      {opt.label}
+                      <span className="text-muted" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>
+                        {opt.hint}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ) : null}
             {can('battery_issues.create') ? (
               <Link to="/battery-issues/create" className="btn btn-default btn-sm">

@@ -29,7 +29,14 @@ export type ElloCreateCallResult = {
   siptrunk_id: string
 }
 
-export type ElloTranscriptLine = { role: string; content: string }
+export type ElloTranscriptLine = {
+  role?: string
+  speaker?: string
+  type?: string
+  content?: string
+  text?: string
+  message?: string
+}
 
 export type ElloConversation = {
   id?: string
@@ -175,11 +182,15 @@ export async function elloGetTranscripts(conversationId: string): Promise<ElloTr
   return lines
 }
 
+function elloUserRole(value: string) {
+  return /^(user|human|customer|contact|callee|employee|caller)$/.test(String(value || '').toLowerCase().trim())
+}
+
 export function mapElloTranscript(lines: ElloTranscriptLine[]): Array<{ speaker: 'bot' | 'user'; text: string }> {
   return lines
     .map((line) => ({
-      speaker: String(line.role || '').toLowerCase() === 'user' ? 'user' as const : 'bot' as const,
-      text: String(line.content || '').trim(),
+      speaker: elloUserRole(String(line.role || line.speaker || line.type || '')) ? 'user' as const : 'bot' as const,
+      text: String(line.content || line.text || line.message || '').trim(),
     }))
     .filter((line) => line.text)
 }

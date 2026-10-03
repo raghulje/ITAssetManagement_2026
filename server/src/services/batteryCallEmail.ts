@@ -1,11 +1,11 @@
 import { mailConfigured, sendMail } from './mail.js'
 import { batteryNotifyEmails } from './batteryConfig.js'
-import { appSignedInUrl, publicAppBase } from './appLinks.js'
+import { appSignedInUrl, refexOneHomeUrl } from './appLinks.js'
 
 export type CallEmailTranscriptLine = { speaker: 'bot' | 'user'; text: string }
 
 function appBase() {
-  return publicAppBase()
+  return refexOneHomeUrl()
 }
 
 function escapeHtml(s: string) {
@@ -135,7 +135,9 @@ export function batteryCallEndedEmail(input: BatteryCallEndedMail) {
           <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;line-height:1.5;">
             You received this because a battery degradation voice call completed for this contact.
           </p>
-          <p style="margin:8px 0 0;color:#94a3b8;font-size:11px;">${escapeHtml(appBase())}</p>
+          <p style="margin:8px 0 0;color:#94a3b8;font-size:11px;">
+            <a href="${escapeHtml(appBase())}" style="color:#94a3b8;text-decoration:underline;">${escapeHtml(appBase())}</a>
+          </p>
         </td></tr>
       </table>
     </td></tr>

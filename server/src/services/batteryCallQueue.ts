@@ -1,6 +1,10 @@
 import { all, now } from '../db/index.js'
 import { startOutboundCall } from '../routes/batteryIssues.js'
 
+export const CALL_QUEUE_LIMITS = [15, 30, 50] as const
+
+export type CallQueueLimit = typeof CALL_QUEUE_LIMITS[number] | 'all'
+
 export type CallQueueStatus = {
   running: boolean
   total: number
@@ -11,6 +15,7 @@ export type CallQueueStatus = {
   started_at: string | null
   finished_at: string | null
   message: string
+  limit: CallQueueLimit | null
 }
 
 const idle: CallQueueStatus = {
@@ -23,6 +28,14 @@ const idle: CallQueueStatus = {
   started_at: null,
   finished_at: null,
   message: '',
+  limit: null,
+}
+
+export function parseCallQueueLimit(raw: unknown): CallQueueLimit {
+  if (raw == null || raw === '' || raw === 'all') return 'all'
+  const n = Number(raw)
+  if ((CALL_QUEUE_LIMITS as readonly number[]).includes(n)) return n as CallQueueLimit
+  throw new Error('Choose first 15, 30, 50, or call all')
 }
 
 let state: CallQueueStatus = { ...idle }
@@ -36,10 +49,15 @@ export function getCallQueueStatus(): CallQueueStatus {
   return { ...state }
 }
 
-export async function startPendingCallQueue(opts?: { userId?: number | null; gapMs?: number }) {
+export async function startPendingCallQueue(opts?: {
+  userId?: number | null
+  gapMs?: number
+  limit?: unknown
+}) {
   if (state.running) {
     throw new Error('A call queue is already running')
   }
+  const limit = parseCallQueueLimit(opts?.limit)
   const pending = await all<{ id: number; name: string; phone: string }>(`
     SELECT i.id, i.name, i.phone
     FROM battery_degradation_issues i
@@ -49,13 +67,17 @@ export async function startPendingCallQueue(opts?: { userId?: number | null; gap
         SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = i.id
       )
     ORDER BY i.id ASC
-  `)
+    ${limit === 'all' ? '' : 'LIMIT ?'}
+  `, limit === 'all' ? [] : [limit])
   if (!pending.length) {
     state = { ...idle, message: 'No pending contacts with a phone number' }
     return getCallQueueStatus()
   }
 
   const ts = now()
+  const batchLabel = limit === 'all'
+    ? `all ${pending.length} pending contact${pending.length === 1 ? '' : 's'}`
+    : `the first ${pending.length} pending contact${pending.length === 1 ? '' : 's'}`
   state = {
     running: true,
     total: pending.length,
@@ -65,7 +87,8 @@ export async function startPendingCallQueue(opts?: { userId?: number | null; gap
     current_name: '',
     started_at: ts,
     finished_at: null,
-    message: `Calling ${pending.length} pending contact${pending.length === 1 ? '' : 's'}`,
+    message: `Calling ${batchLabel}. Ignored or rejected in this batch retry after 30 minutes, up to 3 calls.`,
+    limit,
   }
 
   const gap = Math.max(3000, Number(opts?.gapMs || 6000))
