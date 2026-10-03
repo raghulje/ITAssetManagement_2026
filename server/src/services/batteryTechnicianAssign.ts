@@ -1,4 +1,10 @@
 import { all, get, run, now } from '../db/index.js'
+import {
+  classifyBatteryDrainResponse,
+  isNoIssueComments,
+  NO_ISSUE_COMMENTS,
+  type BatteryIssueAnswer,
+} from './batteryIssueResponse.js'
 
 export const BATTERY_RR_EXCLUDE_EMAIL = 'srivaths.varadharajan@refex.co.in'
 
@@ -101,6 +107,21 @@ function persistAssignOnTracker(trackerRaw: unknown, tech: BatteryTechnician, at
   return tracker
 }
 
+function parseJson<T>(raw: unknown, fallback: T): T {
+  if (raw == null || raw === '') return fallback
+  if (typeof raw === 'object') return raw as T
+  try {
+    return JSON.parse(String(raw)) as T
+  } catch {
+    return fallback
+  }
+}
+
+export function isNoIssueClose(issue: Record<string, unknown> | null | undefined) {
+  if (!issue) return false
+  return String(issue.status || '') === 'closed' && isNoIssueComments(issue.close_comments)
+}
+
 export async function issueHasAttendedCall(issueId: number): Promise<boolean> {
   const row = await get<{ c: number }>(
     `SELECT COUNT(*) AS c FROM battery_degradation_calls WHERE issue_id = ? AND call_result = 'completed'`,
@@ -109,20 +130,105 @@ export async function issueHasAttendedCall(issueId: number): Promise<boolean> {
   return Number(row?.c || 0) > 0
 }
 
-/** Assign the next IT Asset Manager when the contact attended a call. Rejected-only issues stay unassigned. */
+export async function classifyIssueBatteryAnswer(
+  issueId: number,
+  extraMeta?: Record<string, unknown> | null,
+): Promise<BatteryIssueAnswer> {
+  const calls = await all<{ transcript: unknown; bot_summary: string | null; call_result: string | null }>(
+    `SELECT transcript, bot_summary, call_result
+     FROM battery_degradation_calls
+     WHERE issue_id = ? AND call_result = 'completed'
+     ORDER BY sequence DESC, id DESC`,
+    [issueId],
+  )
+  for (const call of calls) {
+    const answer = classifyBatteryDrainResponse(
+      parseJson(call.transcript, []),
+      extraMeta,
+      call.bot_summary,
+    )
+    extraMeta = null
+    if (answer !== 'unknown') return answer
+  }
+  return extraMeta ? classifyBatteryDrainResponse([], extraMeta, '') : 'unknown'
+}
+
+function persistNoIssueOnTracker(trackerRaw: unknown, at: string) {
+  const tracker = parseTracker(trackerRaw)
+  const patches: Array<Record<string, unknown>> = [
+    { key: 'assign', label: 'Assign technician', status: 'skipped', source: 'No issue confirmed', assignee: undefined, at },
+    { key: 'summary', label: 'Enter issue summary', status: 'skipped', source: NO_ISSUE_COMMENTS, at },
+    { key: 'completed', label: 'Completed', status: 'completed', source: NO_ISSUE_COMMENTS, at },
+  ]
+  for (const step of patches) {
+    const idx = tracker.findIndex((s) => String(s.key) === step.key)
+    if (idx >= 0) tracker[idx] = { ...tracker[idx], ...step }
+    else tracker.push(step)
+  }
+  return tracker
+}
+
+/** Employee said no battery issue — skip assignment and close with comments "No Issues". */
+export async function closeIssueAsNoIssues(issueId: number): Promise<boolean> {
+  const issue = await get<Record<string, unknown>>(
+    `SELECT id, status, assigned_to, close_comments, tracker FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
+    [issueId],
+  )
+  if (!issue) return false
+  if (String(issue.status || '') === 'closed' && !isNoIssueComments(issue.close_comments) && Number(issue.assigned_to || 0)) {
+    return false
+  }
+  if (isNoIssueClose(issue)) return false
+  const ts = now()
+  const tracker = persistNoIssueOnTracker(issue.tracker, ts)
+  await run(
+    `UPDATE battery_degradation_issues
+     SET assigned_to = NULL, assigned_at = NULL,
+         close_comments = ?, closed_at = ?, closed_by = NULL,
+         status = 'closed', tracker = ?, updated_at = ?
+     WHERE id = ? AND deleted_at IS NULL`,
+    [NO_ISSUE_COMMENTS, ts, JSON.stringify(tracker), ts, issueId],
+  )
+  console.log(`[battery-assign] issue ${issueId} closed as ${NO_ISSUE_COMMENTS} (no technician)`)
+  return true
+}
+
+export async function applyAttendedCallOutcome(
+  issueId: number,
+  extraMeta?: Record<string, unknown> | null,
+): Promise<'closed_no_issue' | 'assigned' | 'skipped'> {
+  const issue = await get<Record<string, unknown>>(
+    `SELECT id, status, close_comments FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
+    [issueId],
+  )
+  if (!issue) return 'skipped'
+  if (isNoIssueClose(issue)) return 'skipped'
+  if (String(issue.status || '') === 'closed') return 'skipped'
+  if (!(await issueHasAttendedCall(issueId))) return 'skipped'
+  const answer = await classifyIssueBatteryAnswer(issueId, extraMeta)
+  if (answer === 'no') {
+    const closed = await closeIssueAsNoIssues(issueId)
+    return closed ? 'closed_no_issue' : 'skipped'
+  }
+  const tech = await assignNextTechnician(issueId)
+  return tech ? 'assigned' : 'skipped'
+}
+
+/** Assign the next IT Asset Manager when the contact attended and confirmed a battery issue. */
 export async function assignNextTechnician(issueId: number): Promise<BatteryTechnician | null> {
   return withRrLock(async () => {
     const issue = await get<Record<string, unknown>>(
-      `SELECT id, assigned_to, tracker, status FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
+      `SELECT id, assigned_to, tracker, status, close_comments FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
       [issueId],
     )
     if (!issue) return null
+    if (isNoIssueClose(issue) || String(issue.status || '') === 'closed') return null
+    if (await classifyIssueBatteryAnswer(issueId) === 'no') return null
     const existingId = Number(issue.assigned_to || 0)
     if (existingId) {
       const name = await userDisplayName(existingId)
       return { id: existingId, name, email: '' }
     }
-    if (String(issue.status || '') === 'closed') return null
     if (!(await issueHasAttendedCall(issueId))) return null
     const tech = await nextTechnician()
     if (!tech) {
@@ -143,12 +249,11 @@ export async function assignNextTechnician(issueId: number): Promise<BatteryTech
   })
 }
 
-export async function assignEligibleIssues(): Promise<{ assigned: number; skipped: number }> {
+export async function assignEligibleIssues(): Promise<{ assigned: number; skipped: number; closedNoIssue: number }> {
   const rows = await all<{ id: number }>(`
     SELECT i.id
     FROM battery_degradation_issues i
     WHERE i.deleted_at IS NULL
-      AND i.assigned_to IS NULL
       AND IFNULL(i.status, '') != 'closed'
       AND EXISTS (
         SELECT 1 FROM battery_degradation_calls c
@@ -158,15 +263,17 @@ export async function assignEligibleIssues(): Promise<{ assigned: number; skippe
   `)
   let assigned = 0
   let skipped = 0
+  let closedNoIssue = 0
   for (const row of rows) {
     try {
-      const tech = await assignNextTechnician(Number(row.id))
-      if (tech) assigned += 1
+      const result = await applyAttendedCallOutcome(Number(row.id))
+      if (result === 'assigned') assigned += 1
+      else if (result === 'closed_no_issue') closedNoIssue += 1
       else skipped += 1
     } catch (e) {
       skipped += 1
       console.warn('[battery-assign] backfill failed', row.id, e instanceof Error ? e.message : e)
     }
   }
-  return { assigned, skipped }
+  return { assigned, skipped, closedNoIssue }
 }

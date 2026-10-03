@@ -60,7 +60,7 @@ export async function elloConfig(): Promise<ElloConfig> {
   const storedAgent = await resolvedBatteryAgentId()
   const agentId = storedAgent || String(process.env.ELLO_AGENT_ID || ELLO_BATTERY_AGENT_ID).trim() || ELLO_BATTERY_AGENT_ID
   const fromNumber = String(process.env.ELLO_FROM_NUMBER || '9790738549').replace(/\D/g, '')
-  const greeting = String(process.env.ELLO_GREETING || 'Hello! Am I speaking to {user_name}?').trim()
+  const greeting = String(process.env.ELLO_GREETING || 'Hi, this is Refex One AI from the IT Helpdesk team.').trim()
   if (!apiKey) throw new Error('ELLO_API_KEY must be set in server .env')
   if (!agentId) throw new Error('ELLO_AGENT_ID is missing — set it in Settings → Battery Degradation')
   return { baseUrl, apiKey, agentId, fromNumber, greeting }

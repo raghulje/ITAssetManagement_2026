@@ -14,7 +14,8 @@ import {
 } from '../services/ello.js'
 import { sendBatteryCallEndedEmail } from '../services/batteryCallEmail.js'
 import { classifyCallResult, callResultLabel } from '../services/batteryCallStatus.js'
-import { assignNextTechnician, userDisplayName } from '../services/batteryTechnicianAssign.js'
+import { classifyBatteryDrainResponse, isNoIssueComments, NO_ISSUE_COMMENTS } from '../services/batteryIssueResponse.js'
+import { applyAttendedCallOutcome, isNoIssueClose, userDisplayName } from '../services/batteryTechnicianAssign.js'
 import { isTruthyPerm } from '../services/permissions.js'
 
 export const batteryIssuesRouter = Router()
@@ -274,6 +275,14 @@ function voiceTrackerFromCalls(issue: Record<string, unknown>, conversations: Is
   return tracker
 }
 
+function conversationsSayNoIssue(conversations: IssueCall[]) {
+  for (const call of [...conversations].reverse()) {
+    if (call.call_result !== 'completed') continue
+    if (classifyBatteryDrainResponse(call.transcript, null, call.bot_summary) === 'no') return true
+  }
+  return false
+}
+
 function workflowFlags(issue: Record<string, unknown>, conversations: IssueCall[]) {
   const attended = conversations.some((c) => c.call_result === 'completed')
     || (!conversations.length && String(issue.call_result || '') === 'completed')
@@ -281,17 +290,31 @@ function workflowFlags(issue: Record<string, unknown>, conversations: IssueCall[
     conversations.some((c) => c.call_result === 'rejected')
     || (!conversations.length && String(issue.call_result || '') === 'rejected')
   )
-  return { attended, rejectedWithoutAttend }
+  const noIssue = isNoIssueClose(issue)
+    || isNoIssueComments(issue.close_comments)
+    || (!Number(issue.assigned_to || 0) && conversationsSayNoIssue(conversations))
+  return { attended, rejectedWithoutAttend, noIssue }
 }
 
 function applyWorkflowTracker(issue: Record<string, unknown>, conversations: IssueCall[]): TrackerStep[] {
   let tracker = voiceTrackerFromCalls(issue, conversations)
-  const { attended, rejectedWithoutAttend } = workflowFlags(issue, conversations)
+  const { attended, rejectedWithoutAttend, noIssue } = workflowFlags(issue, conversations)
   const assignedName = String(issue.assigned_name || '').trim()
   const assignedTo = Number(issue.assigned_to || 0)
   const closed = String(issue.status || '') === 'closed' || Boolean(issue.closed_at)
 
-  if (assignedTo || assignedName) {
+  if (noIssue) {
+    tracker = patchTracker(tracker, 'assign', {
+      status: 'skipped',
+      label: 'Assign technician',
+      source: 'No issue confirmed',
+      assignee: undefined,
+    })
+    tracker = patchTracker(tracker, 'summary', {
+      status: 'skipped',
+      source: NO_ISSUE_COMMENTS,
+    })
+  } else if (assignedTo || assignedName) {
     tracker = patchTracker(tracker, 'assign', {
       status: 'completed',
       label: 'Assign technician',
@@ -317,7 +340,7 @@ function applyWorkflowTracker(issue: Record<string, unknown>, conversations: Iss
   if (closed) {
     tracker = patchTracker(tracker, 'completed', {
       status: 'completed',
-      source: String(issue.closed_by_name || 'Battery Degradation Issue'),
+      source: noIssue ? NO_ISSUE_COMMENTS : String(issue.closed_by_name || 'Battery Degradation Issue'),
       at: issue.closed_at ? String(issue.closed_at) : undefined,
     })
   } else {
@@ -364,8 +387,8 @@ async function persistWorkflow(issueId: number) {
   return loadIssuePayload(issueId)
 }
 
-async function maybeAssignTechnician(issueId: number) {
-  return assignNextTechnician(issueId)
+async function maybeAssignTechnician(issueId: number, extraMeta?: Record<string, unknown> | null) {
+  return applyAttendedCallOutcome(issueId, extraMeta)
 }
 
 batteryIssuesRouter.get('/', async (req, res) => {
@@ -562,6 +585,7 @@ batteryIssuesRouter.post('/:id/sync-call', async (req, res) => {
   )
   if (!calls.length) return fail(res, 'No Ello.AI conversation on this issue yet')
   try {
+    let latestMeta: Record<string, unknown> | null = null
     for (const call of calls) {
       const conversationId = String(call.ello_conversation_id || '').trim()
       if (!conversationId) continue
@@ -579,6 +603,7 @@ batteryIssuesRouter.post('/:id/sync-call', async (req, res) => {
       } catch {
         // transcripts often arrive after the call ends
       }
+      if (conv?.metadata && typeof conv.metadata === 'object') latestMeta = conv.metadata
       const applied = conv ? applyConversationToCall(call, conv, transcript.length) : null
       const ts = applied?.ts || now()
       const nextStatus = String(applied?.ello_call_status ?? call.ello_call_status ?? '')
@@ -637,7 +662,7 @@ batteryIssuesRouter.post('/:id/sync-call', async (req, res) => {
     }
     const conversations = await loadCalls(id)
     const latest = conversations[conversations.length - 1]
-    await maybeAssignTechnician(id)
+    await maybeAssignTechnician(id, latestMeta)
     const assignedRow = await loadIssue(id)
     if (assignedRow) await hydrateAssignees([assignedRow])
     const tracker = applyWorkflowTracker(assignedRow || row, conversations)
