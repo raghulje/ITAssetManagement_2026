@@ -452,6 +452,7 @@ export function BatteryIssueDetail() {
   const [calling, setCalling] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [comments, setComments] = useState('')
+  const [proofFiles, setProofFiles] = useState<File[]>([])
   const [closing, setClosing] = useState(false)
 
   const load = (silent = false) => {
@@ -527,11 +528,16 @@ export function BatteryIssueDetail() {
       toast.error('Comments are required to close this issue')
       return
     }
+    if (!proofFiles.length) {
+      toast.error('Attach at least one proof file to close this issue')
+      return
+    }
     setClosing(true)
     try {
-      const res = await batteryIssuesApi.close(issue.id, text)
+      const res = await batteryIssuesApi.close(issue.id, text, proofFiles)
       if (res.payload) setIssue(res.payload)
       setComments('')
+      setProofFiles([])
       toast.success(res.messages?.[0] || 'Issue closed')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not close this issue')
@@ -741,10 +747,35 @@ export function BatteryIssueDetail() {
                 </li>
               ))}
             </ol>
-            {issue.status === 'closed' && issue.close_comments ? (
+            {issue.status === 'closed' && (issue.close_comments || (issue.close_attachments || []).length) ? (
               <div className="bdi-close-box">
-                <div className="bdi-recording-label">Close comments</div>
-                <p className="bdi-summary">{issue.close_comments}</p>
+                {issue.close_comments ? (
+                  <>
+                    <div className="bdi-recording-label">Close comments</div>
+                    <p className="bdi-summary">{issue.close_comments}</p>
+                  </>
+                ) : null}
+                {(issue.close_attachments || []).length ? (
+                  <div className="bdi-proofs">
+                    <div className="bdi-recording-label">Close proof</div>
+                    <ul>
+                      {issue.close_attachments.map((file) => (
+                        <li key={`${file.index}-${file.original_name}`}>
+                          <button
+                            type="button"
+                            className="btn btn-default btn-sm"
+                            onClick={() => {
+                              void batteryIssuesApi.openCloseProof(issue.id, file.index, file.original_name)
+                                .catch((e: Error) => toast.error(e.message))
+                            }}
+                          >
+                            <i className="fas fa-paperclip" /> {file.original_name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 {issue.closed_by_name || issue.closed_at ? (
                   <p className="bdi-step-source">
                     Closed{issue.closed_by_name ? ` by ${issue.closed_by_name}` : ''}
@@ -764,17 +795,34 @@ export function BatteryIssueDetail() {
                   placeholder="Describe the work done before closing this issue"
                   required
                 />
+                <label className="bdi-recording-label" htmlFor="bdi-close-proof">Proof attachment <span className="text-danger">*</span></label>
+                <input
+                  id="bdi-close-proof"
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                  onChange={(e) => setProofFiles(Array.from(e.target.files || []).slice(0, 8))}
+                />
+                {proofFiles.length ? (
+                  <ul className="bdi-proof-pending">
+                    {proofFiles.map((file) => (
+                      <li key={`${file.name}-${file.size}`}>{file.name}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="bdi-muted">Attach photo or file proof of the work before closing.</p>
+                )}
                 <button
                   type="button"
                   className="btn btn-theme btn-sm"
-                  disabled={closing || !comments.trim()}
+                  disabled={closing || !comments.trim() || !proofFiles.length}
                   onClick={() => { void closeIssue() }}
                 >
                   <i className="fas fa-check" /> {closing ? 'Closing…' : 'Close issue'}
                 </button>
               </div>
             ) : issue.assigned_name && issue.status !== 'closed' ? (
-              <p className="bdi-callback-note">Assigned to {issue.assigned_name}. Comments are required before this issue can be closed.</p>
+              <p className="bdi-callback-note">Assigned to {issue.assigned_name}. Comments and a proof attachment are required before this issue can be closed.</p>
             ) : null}
             {can('battery_issues.delete') ? (
               <button type="button" className="btn btn-danger btn-sm bdi-delete" onClick={() => { void remove() }}>

@@ -9,7 +9,8 @@ import {
   type BatteryIssueAnswer,
   type BatterySurvey,
 } from './batteryIssueResponse.js'
-import { sendBatteryIssueWebhook } from './batteryWebhook.js'
+// Kissflow webhook is kept in batteryWebhook.ts but not sent for now.
+// import { sendBatteryIssueWebhook } from './batteryWebhook.js'
 
 export const BATTERY_RR_EXCLUDE_EMAIL = 'srivaths.varadharajan@refex.co.in'
 
@@ -250,7 +251,7 @@ export async function applyAttendedCallOutcome(
   if (!(await issueHasAttendedCall(issueId))) return 'skipped'
   const survey = await persistIssueSurvey(issueId, extraMeta)
   if (isNoIssueClose(issue) || String(issue.status || '') === 'closed') {
-    if (hasReportedIssue(survey)) void sendBatteryIssueWebhook(issueId, survey)
+    // if (hasReportedIssue(survey)) void sendBatteryIssueWebhook(issueId, survey)
     return 'skipped'
   }
   if (isBothNo(survey)) {
@@ -259,7 +260,7 @@ export async function applyAttendedCallOutcome(
   }
   if (!hasReportedIssue(survey)) return 'skipped'
   const tech = await assignNextTechnician(issueId)
-  void sendBatteryIssueWebhook(issueId, survey)
+  // void sendBatteryIssueWebhook(issueId, survey)
   return tech ? 'assigned' : 'skipped'
 }
 

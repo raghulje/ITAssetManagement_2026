@@ -115,7 +115,14 @@ export function buildKissflowPayload(input: {
   }
 }
 
+/** Kissflow posting is paused for now. Keep this file; set true to send again. */
+const KISSFLOW_WEBHOOK_ENABLED = false
+
 export async function sendBatteryIssueWebhook(issueId: number, survey: BatterySurvey): Promise<boolean> {
+  if (!KISSFLOW_WEBHOOK_ENABLED) {
+    console.log(`[battery-webhook] skipped (disabled) issue ${issueId}`)
+    return false
+  }
   if (!hasReportedIssue(survey)) return false
   const cfg = await getBatteryAdminConfig()
   const url = String(cfg.webhook_url || '').trim()

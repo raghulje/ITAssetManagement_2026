@@ -4,7 +4,7 @@ import path from 'node:path'
 import { all, get, run, now, limitSql } from '../db/index.js'
 import { fail, okItem, okList, okMessage } from '../utils/response.js'
 import { logAction } from '../services/actionLog.js'
-import { makeUploader, storageRoot, absolutePath } from '../services/uploads.js'
+import { makeUploader, makeMultiUploader, storageRoot, absolutePath } from '../services/uploads.js'
 import {
   elloCreateCall,
   elloGetConversation,
@@ -116,6 +116,13 @@ function transform(row: Record<string, unknown>, conversations: IssueCall[] = []
     assigned_name: String(row.assigned_name || ''),
     assigned_at: row.assigned_at ? String(row.assigned_at) : '',
     close_comments: row.close_comments ? String(row.close_comments) : '',
+    close_attachments: parseJson<Array<{ original_name?: string; mime?: string; path?: string }>>(row.close_attachments, [])
+      .map((file, index) => ({
+        index,
+        original_name: String(file.original_name || 'attachment'),
+        mime: String(file.mime || ''),
+        url: `/api/v1/battery-issues/${id}/close-proof/${index}`,
+      })),
     closed_at: row.closed_at ? String(row.closed_at) : '',
     closed_by: row.closed_by ? Number(row.closed_by) : null,
     closed_by_name: String(row.closed_by_name || ''),
@@ -866,37 +873,69 @@ batteryIssuesRouter.put('/:id', async (req, res) => {
   return okMessage(res, 'Issue updated', await loadIssuePayload(id))
 })
 
-batteryIssuesRouter.post('/:id/close', async (req, res) => {
+batteryIssuesRouter.post('/:id/close', (req, res) => {
+  const upload = makeMultiUploader('private_uploads/battery_close_proofs', 'files', 8)
+  upload(req, res, async (err) => {
+    if (err) return fail(res, err.message)
+    try {
+      const id = Number(req.params.id)
+      const comments = String(req.body?.comments ?? req.body?.close_comments ?? '').trim()
+      if (!comments) return fail(res, 'Comments are required to close this issue')
+      const files = Array.isArray(req.files) ? req.files : []
+      if (!files.length) return fail(res, 'At least one proof attachment is required to close this issue')
+      const row = await loadIssue(id)
+      if (!row) return fail(res, 'Issue not found', 404)
+      if (String(row.status || '') === 'closed') return fail(res, 'Issue is already closed', 409)
+      const assignedTo = Number(row.assigned_to || 0)
+      if (!assignedTo) return fail(res, 'This issue is not assigned to a technician', 422)
+      const uid = req.user?.id ?? 0
+      const privileged = isTruthyPerm(req.user?.permissions?.superuser) || isTruthyPerm(req.user?.permissions?.admin)
+      if (!privileged && uid !== assignedTo) {
+        return fail(res, 'Only the assigned technician can close this issue', 403)
+      }
+      const attachments = files.map((file) => ({
+        path: path.relative(storageRoot, file.path).replace(/\\/g, '/'),
+        mime: file.mimetype,
+        original_name: file.originalname,
+        size: file.size,
+      }))
+      const ts = now()
+      await run(
+        `UPDATE battery_degradation_issues
+         SET close_comments = ?, close_attachments = ?, closed_at = ?, closed_by = ?, status = 'closed', updated_at = ?
+         WHERE id = ? AND deleted_at IS NULL`,
+        [comments, JSON.stringify(attachments), ts, uid || null, ts, id],
+      )
+      const closerName = await userDisplayName(uid)
+      await persistWorkflow(id)
+      await logAction({
+        userId: uid || null,
+        actionType: 'update',
+        itemType: 'battery_issue',
+        itemId: id,
+        note: `Closed battery degradation issue${closerName ? ` by ${closerName}` : ''} with ${attachments.length} proof file(s)`,
+      })
+      return okMessage(res, 'Issue closed', await loadIssuePayload(id))
+    } catch (error) {
+      return fail(res, error instanceof Error ? error.message : 'Could not close this issue', 500)
+    }
+  })
+})
+
+batteryIssuesRouter.get('/:id/close-proof/:index', async (req, res) => {
   const id = Number(req.params.id)
-  const comments = String(req.body?.comments ?? req.body?.close_comments ?? '').trim()
-  if (!comments) return fail(res, 'Comments are required to close this issue')
+  const index = Number(req.params.index)
   const row = await loadIssue(id)
   if (!row) return fail(res, 'Issue not found', 404)
-  if (String(row.status || '') === 'closed') return fail(res, 'Issue is already closed', 409)
-  const assignedTo = Number(row.assigned_to || 0)
-  if (!assignedTo) return fail(res, 'This issue is not assigned to a technician', 422)
-  const uid = req.user?.id ?? 0
-  const privileged = isTruthyPerm(req.user?.permissions?.superuser) || isTruthyPerm(req.user?.permissions?.admin)
-  if (!privileged && uid !== assignedTo) {
-    return fail(res, 'Only the assigned technician can close this issue', 403)
-  }
-  const ts = now()
-  await run(
-    `UPDATE battery_degradation_issues
-     SET close_comments = ?, closed_at = ?, closed_by = ?, status = 'closed', updated_at = ?
-     WHERE id = ? AND deleted_at IS NULL`,
-    [comments, ts, uid || null, ts, id],
-  )
-  const closerName = await userDisplayName(uid)
-  await persistWorkflow(id)
-  await logAction({
-    userId: uid || null,
-    actionType: 'update',
-    itemType: 'battery_issue',
-    itemId: id,
-    note: `Closed battery degradation issue${closerName ? ` by ${closerName}` : ''}`,
-  })
-  return okMessage(res, 'Issue closed', await loadIssuePayload(id))
+  const files = parseJson<Array<{ path?: string; mime?: string; original_name?: string }>>(row.close_attachments, [])
+  const file = files[index]
+  if (!file?.path) return fail(res, 'Attachment not found', 404)
+  const abs = absolutePath(file.path)
+  if (!abs || !fs.existsSync(abs)) return fail(res, 'Attachment file missing', 404)
+  res.setHeader('Content-Type', file.mime || 'application/octet-stream')
+  const safeName = String(file.original_name || 'proof').replace(/[\r\n"]/g, '_')
+  res.setHeader('Content-Disposition', `inline; filename="${safeName}"`)
+  fs.createReadStream(abs).pipe(res)
 })
 
 batteryIssuesRouter.post('/:id/recording', async (req, res) => {
