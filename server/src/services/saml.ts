@@ -41,6 +41,7 @@ export function samlPortalFields() {
     'SLO URL': sp.slo_url,
     'Name ID Format': sp.name_id_format,
     'SP Metadata URL': sp.metadata_url,
+    'RefexOne portal SSO': refexOnePortalSsoUrl(sp.home_url) || '(set SAML_IDP_ENTRY_POINT to https://refexone.com/api/saml/<app-id>)',
   }
 }
 
@@ -58,6 +59,47 @@ export function idpConfigured() {
     String(process.env.SAML_IDP_ENTRY_POINT || '').trim()
     && String(process.env.SAML_IDP_CERT || '').trim(),
   )
+}
+
+export function refexOneWebBase() {
+  const raw = String(process.env.REFEXONE_WEB_URL || process.env.REFEXONE_API_URL || 'https://refexone.com').trim()
+  return raw.replace(/\/api\/?$/i, '').replace(/\/$/, '') || 'https://refexone.com'
+}
+
+/** App UUID from RefexOne portal (`/api/saml/{id}` or `/api/saml/{id}/sso`). */
+export function refexOneSamlAppId() {
+  const explicit = String(process.env.REFEXONE_SAML_APP_ID || process.env.SAML_APP_ID || '').trim()
+  if (explicit) return explicit
+  const from = [
+    process.env.SAML_IDP_ENTRY_POINT,
+    process.env.SAML_IDP_ISSUER,
+  ].map((v) => String(v || '').trim()).find(Boolean) || ''
+  const match = from.match(/\/saml\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
+  return match?.[1] || ''
+}
+
+export function isRefexOnePortalIdp() {
+  const entry = String(process.env.SAML_IDP_ENTRY_POINT || '').trim()
+  if (!entry) return Boolean(refexOneSamlAppId())
+  try {
+    const url = new URL(entry)
+    return /refexone\.com$/i.test(url.hostname) && /\/api\/saml\/[^/]+/i.test(url.pathname)
+  } catch {
+    return /refexone\.com\/api\/saml\//i.test(entry)
+  }
+}
+
+/**
+ * RefexOne launcher (not a SAML IdP SSO URL):
+ * https://refexone.com/api/saml/{APP_ID}/sso?RelayState={absolute return URL}
+ */
+export function refexOnePortalSsoUrl(relayAbsolute: string) {
+  const appId = refexOneSamlAppId()
+  const dest = String(relayAbsolute || '').trim()
+  if (!appId || !dest) return ''
+  const url = new URL(`${refexOneWebBase()}/api/saml/${encodeURIComponent(appId)}/sso`)
+  url.searchParams.set('RelayState', dest)
+  return url.toString()
 }
 
 export function createSaml(): SAML {

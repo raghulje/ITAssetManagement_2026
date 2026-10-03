@@ -9,7 +9,9 @@ import { transformUser } from '../services/transformers.js'
 import {
   createSaml,
   idpConfigured,
+  isRefexOnePortalIdp,
   profileEmail,
+  refexOnePortalSsoUrl,
   samlEnabled,
   samlPortalFields,
   samlSpConfig,
@@ -100,10 +102,17 @@ router.get('/login', async (req, res) => {
     if (!idpConfigured()) {
       return htmlError(res, 'SAML IdP is not configured yet. Ask IT to set SAML_IDP_ENTRY_POINT and SAML_IDP_CERT.', 503)
     }
+    const requested = String(req.query.RelayState || req.query.returnTo || '')
+    const destPath = safeAppPath(requested, '')
+    const destAbs = destPath
+      ? `${publicAppBase()}${destPath}`
+      : resolveRelayDest(requested, samlSpConfig().home_url)
+    if (isRefexOnePortalIdp()) {
+      const portal = refexOnePortalSsoUrl(destAbs)
+      if (portal) return res.redirect(portal)
+    }
     const saml = createSaml()
-    const relay = safeAppPath(String(req.query.RelayState || req.query.returnTo || ''), '')
-      || String(req.query.RelayState || req.query.returnTo || '')
-    const url = await saml.getAuthorizeUrlAsync(relay, undefined, {})
+    const url = await saml.getAuthorizeUrlAsync(destPath || destAbs, undefined, {})
     return res.redirect(url)
   } catch (e) {
     console.error('[saml/login]', e)

@@ -1,8 +1,13 @@
-import { idpConfigured, samlEnabled } from './saml.js'
+import { refexOneWebBase } from './saml.js'
 
 export function publicAppBase() {
   return (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || 'https://asset.refexone.com')
     .replace(/\/$/, '')
+}
+
+/** RefexOne portal home — email View now / footer (not asset.refexone.com, not SAML). */
+export function refexOneHomeUrl() {
+  return refexOneWebBase()
 }
 
 /** Safe in-app path only (no open redirects). */
@@ -19,13 +24,7 @@ export function appPageUrl(path: string) {
   return `${publicAppBase()}${clean}`
 }
 
-/**
- * Email / portal CTA: go through RefexOne SAML when it is configured
- * so the user lands on the same record after SSO, not the home page.
- */
-export function appSignedInUrl(path: string) {
-  const clean = safeAppPath(path.startsWith('/') ? path : `/${path}`, '/')
-  const direct = `${publicAppBase()}${clean}`
-  if (!samlEnabled() || !idpConfigured()) return direct
-  return `${publicAppBase()}/api/v1/auth/saml/login?returnTo=${encodeURIComponent(clean)}`
+/** Email CTA: open the RefexOne portal, not this app and not a SAMLRequest URL. */
+export function appSignedInUrl(_path?: string) {
+  return refexOneHomeUrl()
 }
