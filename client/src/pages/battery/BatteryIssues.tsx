@@ -44,6 +44,17 @@ function yesNoLabel(value: unknown) {
   return '—'
 }
 
+function otherTypeLabels(issue: { battery_issue_confirmed?: unknown; other_issue_reported?: unknown; other_issue_types?: Array<{ label?: string; key?: string }> }) {
+  const types: string[] = []
+  if (String(issue.battery_issue_confirmed || '') === 'yes') types.push('Battery drain')
+  for (const item of issue.other_issue_types || []) {
+    const label = String(item.label || item.key || '').trim()
+    if (label && !types.includes(label)) types.push(label)
+  }
+  if (!types.length && String(issue.other_issue_reported || '') === 'yes') types.push('Other IT issue')
+  return types
+}
+
 function callResultLabel(result: string) {
   switch (String(result || '').toLowerCase()) {
     case 'yet_to_call': return 'Yet to call'
@@ -100,6 +111,7 @@ export function BatteryIssuesList() {
   const [search, setSearch] = useState('')
   const [callFilter, setCallFilter] = useState('')
   const [reportFilter, setReportFilter] = useState('')
+  const [otherTypeFilter, setOtherTypeFilter] = useState('')
   const [page, setPage] = useState(0)
   const [rows, setRows] = useState<BatteryIssue[]>([])
   const [total, setTotal] = useState(0)
@@ -122,6 +134,7 @@ export function BatteryIssuesList() {
         search: search || undefined,
         call_result: callFilter || undefined,
         report: reportFilter || undefined,
+        other_type: otherTypeFilter || undefined,
         limit: pageSize,
         offset: page * pageSize,
       })
@@ -142,7 +155,7 @@ export function BatteryIssuesList() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, page, callFilter, reportFilter])
+  }, [search, page, callFilter, reportFilter, otherTypeFilter])
 
   useEffect(() => {
     if (!queue?.running) return
@@ -174,12 +187,21 @@ export function BatteryIssuesList() {
   const setFilter = (value: string) => {
     setCallFilter((prev) => (prev === value ? '' : value))
     setReportFilter('')
+    setOtherTypeFilter('')
     setPage(0)
   }
 
   const setReport = (value: string) => {
     setReportFilter((prev) => (prev === value ? '' : value))
     setCallFilter('')
+    setOtherTypeFilter('')
+    setPage(0)
+  }
+
+  const setOtherType = (value: string) => {
+    setOtherTypeFilter((prev) => (prev === value ? '' : value))
+    setCallFilter('')
+    setReportFilter('')
     setPage(0)
   }
 
@@ -223,6 +245,20 @@ export function BatteryIssuesList() {
           onClick: () => setReport(c.filter),
         }))}
       />
+      {(stats?.other_type_counts || []).length ? (
+      <ModuleInsights
+        title="Other issue types"
+        cards={(stats?.other_type_counts || []).map((c) => ({
+          label: c.label,
+          value: c.count,
+          icon: c.icon,
+          color: otherTypeFilter === c.key ? 'bg-navy' : 'bg-olive',
+          hint: otherTypeFilter === c.key ? 'Showing this filter' : 'Reported on the voice call',
+          active: otherTypeFilter === c.key,
+          onClick: () => setOtherType(c.key),
+        }))}
+      />
+      ) : null}
       {queue?.running || queue?.message ? (
         <div className={`callout ${queue.running ? 'callout-info' : 'callout-success'}`}>
           <p>
@@ -261,7 +297,7 @@ export function BatteryIssuesList() {
           onSearch={(v) => { setSearch(v); setPage(0) }}
           rows={rows as unknown as Record<string, unknown>[]}
           exportName="battery-degradation-issues"
-          storageKey="battery_issues_columns_v4"
+          storageKey="battery_issues_columns_v5"
           onRefresh={load}
           page={page}
           pageSize={pageSize}
@@ -300,6 +336,15 @@ export function BatteryIssuesList() {
               label: 'Other issue',
               exportValue: (r) => yesNoLabel(r.other_issue_reported),
               render: (r) => yesNoLabel(r.other_issue_reported),
+            },
+            {
+              key: 'other_issue_types',
+              label: 'Issue type',
+              exportValue: (r) => otherTypeLabels(r as BatteryIssue).join(', '),
+              render: (r) => {
+                const labels = otherTypeLabels(r as BatteryIssue)
+                return labels.length ? labels.join(', ') : <span className="cell-muted">—</span>
+              },
             },
             {
               key: 'assigned_name',
@@ -640,6 +685,10 @@ export function BatteryIssueDetail() {
               <div>
                 <span>Other IT issue</span>
                 <strong>{yesNoLabel(issue.other_issue_reported)}</strong>
+              </div>
+              <div>
+                <span>Issue types</span>
+                <strong>{otherTypeLabels(issue).join(', ') || '—'}</strong>
               </div>
             </div>
             {issue.other_issue_description ? (

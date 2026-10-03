@@ -14,6 +14,26 @@ import {
   samlPortalFields,
   samlSpConfig,
 } from '../services/saml.js'
+import { publicAppBase, safeAppPath } from '../services/appLinks.js'
+
+function resolveRelayDest(relay: string, home: string) {
+  const fallback = `${home}login/sso/callback`
+  const raw = String(relay || '').trim()
+  if (!raw) return fallback
+  if (raw.startsWith('/') && !raw.startsWith('//')) {
+    const path = safeAppPath(raw, '')
+    return path ? `${home.replace(/\/$/, '')}${path}` : fallback
+  }
+  try {
+    const url = new URL(raw)
+    const allowed = new URL(publicAppBase())
+    if (url.origin !== allowed.origin) return fallback
+    const path = safeAppPath(`${url.pathname}${url.search}`, '')
+    return path ? `${allowed.origin}${path}` : fallback
+  } catch {
+    return fallback
+  }
+}
 
 const router = Router()
 
@@ -81,7 +101,8 @@ router.get('/login', async (req, res) => {
       return htmlError(res, 'SAML IdP is not configured yet. Ask IT to set SAML_IDP_ENTRY_POINT and SAML_IDP_CERT.', 503)
     }
     const saml = createSaml()
-    const relay = String(req.query.RelayState || req.query.returnTo || '')
+    const relay = safeAppPath(String(req.query.RelayState || req.query.returnTo || ''), '')
+      || String(req.query.RelayState || req.query.returnTo || '')
     const url = await saml.getAuthorizeUrlAsync(relay, undefined, {})
     return res.redirect(url)
   } catch (e) {
@@ -136,8 +157,7 @@ router.post('/acs', async (req, res) => {
     await transformUser(Number(user.id))
 
     const home = samlSpConfig().home_url
-    const relay = String(body.RelayState || '').trim()
-    const dest = relay.startsWith('/') ? `${home.replace(/\/$/, '')}${relay}` : `${home}login/sso/callback`
+    const dest = resolveRelayDest(String(body.RelayState || ''), home)
     const sep = dest.includes('?') ? '&' : '?'
     return res.redirect(`${dest}${sep}token=${encodeURIComponent(token)}`)
   } catch (e) {

@@ -2,13 +2,13 @@ import { get, run, now } from '../db/index.js'
 import { getBatteryAdminConfig } from './batteryConfig.js'
 import type { BatterySurvey } from './batteryIssueResponse.js'
 import { hasReportedIssue } from './batteryIssueResponse.js'
+import { appPageUrl } from './appLinks.js'
 
 export const KISSFLOW_PROCESS_ID = 'Live_IT_Service_Request_A00'
 export const KISSFLOW_SOURCE = 'Mobile'
 
 function viewUrl(issueId: number) {
-  const base = (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '')
-  return base ? `${base}/battery-issues/${issueId}` : `/battery-issues/${issueId}`
+  return appPageUrl(`/battery-issues/${issueId}`)
 }
 
 function subType(survey: BatterySurvey) {
@@ -71,6 +71,9 @@ function descriptionLines(input: {
     `Battery drain: ${input.survey.battery}`,
     `Other IT issue: ${input.survey.other}`,
   ]
+  if (input.survey.other_types?.length) {
+    lines.push(`Other issue types: ${input.survey.other_types.join(', ')}`)
+  }
   if (input.survey.other_description) lines.push(`Other issue details: ${input.survey.other_description}`)
   if (input.phone) lines.push(`Phone: ${input.phone}`)
   if (input.language) lines.push(`Preferred language: ${input.language}`)

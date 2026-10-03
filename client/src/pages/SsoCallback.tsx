@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../api/AuthContext'
 import { setToken } from '../api/client'
+import { consumeLoginNext } from '../utils/loginNext'
 
 /** Completes SAML SSO: IdP redirects here with ?token=JWT */
 export default function SsoCallback() {
@@ -18,7 +19,7 @@ export default function SsoCallback() {
     }
     setToken(token)
     refreshUser()
-      .then(() => navigate('/', { replace: true }))
+      .then(() => navigate(consumeLoginNext(params.get('next')), { replace: true }))
       .catch((e: Error) => {
         setToken(null)
         setError(e.message || 'SSO session failed')

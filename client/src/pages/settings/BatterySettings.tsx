@@ -136,6 +136,11 @@ export default function BatterySettings() {
             Kissflow webhook posting is paused. Issues stay in this system. The webhook code is kept and can be turned back on later.
             {webhookUrl ? ' A webhook URL is already saved on this server but is not being posted to.' : ''}
           </p>
+          <p className="help-block">
+            After the employee says yes to any other IT issue, the Ello prompt should ask what kind of issue it is
+            (Wi-Fi, email, laptop, printer, login, and so on) and let them describe it. This app stores those types
+            from the transcript for insights.
+          </p>
           <div className="form-actions">
             <button type="submit" className="btn btn-theme" disabled={busy || !canEdit}>
               {busy ? 'Saving…' : 'Save'}

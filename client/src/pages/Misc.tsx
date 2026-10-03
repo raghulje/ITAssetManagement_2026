@@ -1,5 +1,5 @@
-import { Link, useNavigate } from 'react-router-dom'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import AppLayout from '../layout/AppLayout'
 import { Box, Field } from '../components/ui'
 import { siteName } from '../data/mockData'
@@ -7,6 +7,8 @@ import { useAuth } from '../api/AuthContext'
 import { api, hardwareApi } from '../api/client'
 import InteractiveLoginPage from '../components/login/InteractiveLoginPage'
 import { useToast } from '../components/Toast'
+import { getApiBase } from '../api/baseUrl'
+import { consumeLoginNext, rememberLoginNext } from '../utils/loginNext'
 
 export { ImportPage } from './ImportPage'
 
@@ -415,17 +417,33 @@ export function RequestableItems() {
 export function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
+  const [params] = useSearchParams()
+  const requestedNext = params.get('next')
+  const next = useMemo(() => consumeLoginNext(requestedNext), [requestedNext])
+  const [ssoHref, setSsoHref] = useState('')
+  const [ssoLabel, setSsoLabel] = useState('Continue with RefexOne')
+
+  useEffect(() => {
+    rememberLoginNext(next)
+    fetch(`${getApiBase()}/auth/saml/status`)
+      .then((res) => res.json())
+      .then((data: { payload?: { enabled?: boolean; idp_configured?: boolean; label?: string; login_path?: string } }) => {
+        const s = data.payload || {}
+        if (!s.enabled || !s.idp_configured) return
+        const path = String(s.login_path || '/api/v1/auth/saml/login')
+        setSsoHref(`${path}?returnTo=${encodeURIComponent(next)}`)
+        if (s.label) setSsoLabel(String(s.label))
+      })
+      .catch(() => undefined)
+  }, [next])
 
   return (
     <InteractiveLoginPage
+      ssoHref={ssoHref}
+      ssoLabel={ssoLabel}
       onSubmit={async ({ email, password }) => {
         await login(email, password)
-        let next = '/'
-        try {
-          next = sessionStorage.getItem('refex_login_next') || '/'
-          sessionStorage.removeItem('refex_login_next')
-        } catch { /* ignore */ }
-        navigate(next.startsWith('/') ? next : '/')
+        navigate(next.startsWith('/') ? next : '/', { replace: true })
       }}
     />
   )

@@ -5,18 +5,117 @@
  */
 export type BatteryIssueAnswer = 'yes' | 'no' | 'unknown'
 
+export type OtherIssueTypeKey =
+  | 'network_wifi'
+  | 'vpn'
+  | 'email_outlook'
+  | 'teams_meetings'
+  | 'laptop_hardware'
+  | 'display'
+  | 'keyboard_mouse'
+  | 'charger_power'
+  | 'software_os'
+  | 'login_password'
+  | 'printer'
+  | 'audio'
+  | 'camera'
+  | 'storage'
+  | 'other'
+
+export const OTHER_ISSUE_TYPES: Array<{ key: OtherIssueTypeKey; label: string; icon: string }> = [
+  { key: 'network_wifi', label: 'Wi-Fi / Network', icon: 'fas fa-wifi' },
+  { key: 'vpn', label: 'VPN', icon: 'fas fa-shield-alt' },
+  { key: 'email_outlook', label: 'Email / Outlook', icon: 'fas fa-envelope' },
+  { key: 'teams_meetings', label: 'Teams / Meetings', icon: 'fas fa-video' },
+  { key: 'laptop_hardware', label: 'Laptop hardware', icon: 'fas fa-laptop' },
+  { key: 'display', label: 'Screen / Display', icon: 'fas fa-desktop' },
+  { key: 'keyboard_mouse', label: 'Keyboard / Mouse', icon: 'fas fa-keyboard' },
+  { key: 'charger_power', label: 'Charger / Power', icon: 'fas fa-plug' },
+  { key: 'software_os', label: 'Software / Windows', icon: 'fas fa-window-restore' },
+  { key: 'login_password', label: 'Login / Password', icon: 'fas fa-user-lock' },
+  { key: 'printer', label: 'Printer / Scanner', icon: 'fas fa-print' },
+  { key: 'audio', label: 'Audio', icon: 'fas fa-volume-up' },
+  { key: 'camera', label: 'Camera', icon: 'fas fa-camera' },
+  { key: 'storage', label: 'Storage / Disk', icon: 'fas fa-hdd' },
+  { key: 'other', label: 'Other IT issue', icon: 'fas fa-question-circle' },
+]
+
+const OTHER_TYPE_BY_KEY = new Map(OTHER_ISSUE_TYPES.map((item) => [item.key, item]))
+
+export function otherIssueTypeLabel(key: string) {
+  return OTHER_TYPE_BY_KEY.get(key as OtherIssueTypeKey)?.label || key
+}
+
+export function otherIssueTypeIcon(key: string) {
+  return OTHER_TYPE_BY_KEY.get(key as OtherIssueTypeKey)?.icon || 'fas fa-tag'
+}
+
 export type BatterySurvey = {
   preferred_language: string
   battery: BatteryIssueAnswer
   other: BatteryIssueAnswer
   other_description: string
+  other_types: OtherIssueTypeKey[]
   asked_other: boolean
 }
 
 export const NO_ISSUE_COMMENTS = 'No Issues'
 
 export function emptySurvey(): BatterySurvey {
-  return { preferred_language: '', battery: 'unknown', other: 'unknown', other_description: '', asked_other: false }
+  return {
+    preferred_language: '',
+    battery: 'unknown',
+    other: 'unknown',
+    other_description: '',
+    other_types: [],
+    asked_other: false,
+  }
+}
+
+function uniqueTypes(keys: string[]): OtherIssueTypeKey[] {
+  const known = new Set(OTHER_ISSUE_TYPES.map((item) => item.key))
+  const out: OtherIssueTypeKey[] = []
+  for (const raw of keys) {
+    const key = String(raw || '').trim() as OtherIssueTypeKey
+    if (!key || !known.has(key) || out.includes(key)) continue
+    out.push(key)
+  }
+  return out
+}
+
+/** Classify free-text other-issue answers into stored insight types. */
+export function classifyOtherIssueTypes(text: string): OtherIssueTypeKey[] {
+  const t = norm(text)
+  if (!t) return []
+  const found: OtherIssueTypeKey[] = []
+  const add = (key: OtherIssueTypeKey) => {
+    if (!found.includes(key)) found.push(key)
+  }
+  if (/\b(wi\s*fi|wifi|wireless|internet|network|lan|ethernet|connectivity|hotspot)\b/.test(t)) add('network_wifi')
+  if (/\b(vpn|globalprotect|anyconnect|pulse secure|forticlient)\b/.test(t)) add('vpn')
+  if (/\b(email|e mail|outlook|mailbox|inbox|owa)\b/.test(t)) add('email_outlook')
+  if (/\b(teams|zoom|meet(ing)?s?|webex)\b/.test(t)) add('teams_meetings')
+  if (/\b(screen|display|monitor|brightness|flicker|resolution)\b/.test(t)) add('display')
+  if (/\b(keyboard|mouse|trackpad|touchpad|keys?)\b/.test(t)) add('keyboard_mouse')
+  if (/\b(charger|adapter|charging|power cable|power cord|not charging)\b/.test(t)) add('charger_power')
+  if (/\b(password|passcode|login|log in|sign in|signin|locked out|mfa|otp|sso)\b/.test(t)) add('login_password')
+  if (/\b(printer|printing|printout|scanner|scan)\b/.test(t)) add('printer')
+  if (/\b(speaker|microphone|mic|headphone|headset|sound|audio)\b/.test(t)) add('audio')
+  if (/\b(camera|webcam|web cam)\b/.test(t)) add('camera')
+  if (/\b(storage|hard disk|hard drive|ssd|hdd|disk space|c drive)\b/.test(t)) add('storage')
+  if (/\b(windows|software|application|app hang|hanging|freeze|frozen|crash|blue screen|bsod|slow(ness)?|os)\b/.test(t)) {
+    add('software_os')
+  }
+  if (/\b(laptop|notebook|hardware|fan|overheat|hinge|motherboard|ram|port)\b/.test(t)) add('laptop_hardware')
+  return found
+}
+
+export function typesForOtherIssue(survey: Pick<BatterySurvey, 'other' | 'other_description' | 'other_types'>, extraText = '') {
+  if (survey.other !== 'yes') return []
+  const fromStored = uniqueTypes(survey.other_types || [])
+  const fromText = classifyOtherIssueTypes([survey.other_description, extraText].filter(Boolean).join(' '))
+  const merged = uniqueTypes([...fromStored, ...fromText])
+  return merged.length ? merged : (['other'] as OtherIssueTypeKey[])
 }
 
 export function isNoIssueComments(value: unknown) {
@@ -157,12 +256,20 @@ function firstAnswer(texts: string[]): BatteryIssueAnswer {
   return 'unknown'
 }
 
+function leftoverAfterYes(text: string) {
+  const cleaned = String(text || '').replace(/^(yes|yeah|yep|yup|yea|haan|ha|aama|avunu)\b[,.\s-]*/i, '').trim()
+  return cleaned && cleaned !== text.trim() ? cleaned : ''
+}
+
 function otherFromTurns(texts: string[]): { answer: BatteryIssueAnswer; description: string } {
   if (!texts.length) return { answer: 'unknown', description: '' }
   for (const text of texts) {
     if (isNoAnswer(text)) return { answer: 'no', description: '' }
     if (isYesAnswer(text)) {
-      const extra = texts.filter((t) => !isYesAnswer(t) && !isNoAnswer(t)).join(' ').trim()
+      const extra = [
+        leftoverAfterYes(text),
+        ...texts.filter((t) => t !== text && !isYesAnswer(t) && !isNoAnswer(t)),
+      ].filter(Boolean).join(' ').trim()
       return { answer: 'yes', description: extra }
     }
   }
@@ -185,7 +292,15 @@ function surveyFromMetadata(metadata?: Record<string, unknown> | null): BatteryS
   survey.battery = classifyToken(pickMeta(flat, ['battery_issue_confirmed', 'batteryIssueConfirmed']))
   survey.other = classifyToken(pickMeta(flat, ['other_issue_reported', 'otherIssueReported']))
   survey.other_description = pickMeta(flat, ['other_issue_description', 'otherIssueDescription'])
-  if (survey.other === 'unknown' && survey.other_description) survey.other = 'yes'
+  const typeRaw = pickMeta(flat, ['other_issue_types', 'otherIssueTypes', 'other_issue_type', 'otherIssueType', 'issue_type'])
+  if (typeRaw.startsWith('[')) {
+    try { survey.other_types = uniqueTypes(JSON.parse(typeRaw) as string[]) } catch { survey.other_types = classifyOtherIssueTypes(typeRaw) }
+  } else if (typeRaw) {
+    survey.other_types = uniqueTypes(typeRaw.split(/[,|/]+/)).length
+      ? uniqueTypes(typeRaw.split(/[,|/]+/))
+      : classifyOtherIssueTypes(typeRaw)
+  }
+  if (survey.other === 'unknown' && (survey.other_description || survey.other_types.length)) survey.other = 'yes'
   if (survey.other !== 'unknown' || survey.other_description) survey.asked_other = true
   return survey
 }
@@ -257,6 +372,7 @@ function mergeSurvey(primary: BatterySurvey, fallback: BatterySurvey): BatterySu
     battery: primary.battery !== 'unknown' ? primary.battery : fallback.battery,
     other: primary.other !== 'unknown' ? primary.other : fallback.other,
     other_description: primary.other_description || fallback.other_description,
+    other_types: uniqueTypes([...(primary.other_types || []), ...(fallback.other_types || [])]),
     asked_other: primary.asked_other || fallback.asked_other,
   }
 }
@@ -264,7 +380,7 @@ function mergeSurvey(primary: BatterySurvey, fallback: BatterySurvey): BatterySu
 /** Old one-question prompt never asked about other issues. */
 function applyLegacyOther(survey: BatterySurvey): BatterySurvey {
   if (!survey.asked_other && survey.other === 'unknown' && survey.battery === 'no') {
-    return { ...survey, other: 'no' }
+    return { ...survey, other: 'no', other_types: [] }
   }
   return survey
 }
@@ -282,7 +398,13 @@ export function classifyCallSurvey(
     if (/\bbattery issue confirmed (yes|true)\b/.test(blob)) survey = { ...survey, battery: 'yes' }
     if (/\bbattery issue confirmed (no|false)\b/.test(blob)) survey = { ...survey, battery: 'no' }
   }
-  return applyLegacyOther(survey)
+  survey = applyLegacyOther(survey)
+  if (survey.other === 'yes') {
+    survey = { ...survey, other_types: typesForOtherIssue(survey, summary || '') }
+  } else {
+    survey = { ...survey, other_types: [] }
+  }
+  return survey
 }
 
 /** Battery-only answer for older call sites. */
