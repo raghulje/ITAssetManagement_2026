@@ -135,6 +135,7 @@ function norm(value: string) {
     .toLowerCase()
     .replace(/['’]/g, '')
     .replace(/[_-]+/g, ' ')
+    .replace(/[\u0964\u0965\u09F7\u0AF0]/g, ' ')
     .replace(/[^\w\s\u0900-\u097F\u0980-\u09FF\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -186,7 +187,7 @@ function isUnsure(text: string) {
 function isNoAnswer(text: string) {
   const t = norm(text)
   if (!t || isUnsure(t)) return false
-  if (/^(no|nope|nah|no thanks|no thank you|not really|not at all|nothing|none|negative|nahi|nahin|nahee|nahi ji|nahin ji|illa|ille|illai|kadu|ledu|leda|alla|venta|nai|naa|नहीं|ना)$/.test(t)) return true
+  if (/^(no|nope|nah|no thanks|no thank you|not really|not at all|nothing|none|negative|nahi|nahin|nahee|nahi ji|nahin ji|illa|ille|illai|kadu|ledu|leda|alla|venta|nai|naa|नहीं|नही|ना|नहीं जी|नही जी)$/.test(t)) return true
   if (/^(no (issue|issues|problem|problems|drain|battery issue|battery drain)|all good|im fine|i am fine|its fine|it is fine|doing fine)$/.test(t)) return true
   if (/\bno (battery )?(drain|issue|problem)s?\b/.test(t)) return true
   if (/\bnot (experiencing|having|facing|seeing) (any )?(battery|issue|problem|drain|other)/.test(t)) return true
@@ -207,22 +208,12 @@ function isLanguageQuestion(text: string) {
   const t = norm(text)
   return /\bwhich language\b/.test(t)
     || /\bprefer to speak\b/.test(t)
+    || /\bprefer to continue\b/.test(t)
+    || /\bcontinue in\b/.test(t)
     || /\bpreferred language\b/.test(t)
     || /\bkaunsi (bhasha|language)\b/.test(t)
     || /\bkis bhasha\b/.test(t)
     || /किस भाषा/.test(t)
-}
-
-function isBatteryQuestion(text: string) {
-  const t = norm(text)
-  return /\bbattery drain\b/.test(t)
-    || /\bbattery draining\b/.test(t)
-    || /\bdraining quickly\b/.test(t)
-    || /\bdraining faster than usual\b/.test(t)
-    || /\bcharge it more frequently\b/.test(t)
-    || /\bbattery jaldi\b/.test(t)
-    || /\bbattery (jaldi )?(khatam|drain)\b/.test(t)
-    || /बैटरी/.test(t)
 }
 
 function isOtherIssueQuestion(text: string) {
@@ -234,7 +225,28 @@ function isOtherIssueQuestion(text: string) {
     || /\bkoi aur (issue|issues|problem|problems|samasya)\b/.test(t)
     || /\bkisi aur (issue|laptop|it)\b/.test(t)
     || /कोई और/.test(t)
-    || /किसी और (समस्या|इश्यू|issue)/.test(t)
+    || /कोई अन्य/.test(t)
+    || /अन्य समस्या/.test(t)
+    || /समस्या के अलावा/.test(t)
+    || /किसी और/.test(t)
+    || /IT से जुड़ी/.test(t)
+}
+
+function isBatteryQuestion(text: string) {
+  const t = norm(text)
+  if (isOtherIssueQuestion(text)) return false
+  if (/बैटरी की जानकारी/.test(t) && !/(खत्म|चार्ज|drain)/.test(t)) return false
+  return /\bbattery drain\b/.test(t)
+    || /\bbattery draining\b/.test(t)
+    || /\bdraining quickly\b/.test(t)
+    || /\bdraining faster than usual\b/.test(t)
+    || /\bcharge it more frequently\b/.test(t)
+    || /\bbattery jaldi\b/.test(t)
+    || /\bbattery (jaldi )?(khatam|drain)\b/.test(t)
+    || /जल्दी खत्म/.test(t)
+    || /बार बार चार्ज/.test(t)
+    || /सामान्य से जल्दी/.test(t)
+    || (/बैटरी/.test(t) && /(खत्म|चार्ज|drain|jaldi)/.test(t))
 }
 
 function isContactDetailsQuestion(text: string) {
@@ -420,15 +432,33 @@ function mergeSurvey(transcript: BatterySurvey, meta: BatterySurvey): BatterySur
   }
 }
 
+function botConfirmsNoIssues(text: string) {
+  const t = norm(text)
+  if (!t || botForwardsBatteryIssue(t)) return false
+  if (/\bno issues? with the battery\b/.test(t) && /\b(other|it related)\b/.test(t)) return true
+  if (/\bno further action\b/.test(t) && /\bbattery\b/.test(t)) return true
+  if (/कोई बात नहीं/.test(t) && /धन्यवाद/.test(t) && !/बाद में/.test(t)) return true
+  if (/देखने के लिए कोई/.test(t) && /नहीं/.test(t)) return true
+  return false
+}
+
 function applyBotConfirmations(
   linesIn: Array<{ speaker?: string; text?: string }>,
   survey: BatterySurvey,
 ): BatterySurvey {
-  const forwarded = (linesIn || []).some((line) => {
+  const lines = linesIn || []
+  const forwarded = lines.some((line) => {
     if (isUserSpeaker(String(line.speaker || ''))) return false
     return botForwardsBatteryIssue(String(line.text || ''))
   })
   if (forwarded) return { ...survey, battery: 'yes' }
+  const noIssues = lines.some((line) => {
+    if (isUserSpeaker(String(line.speaker || ''))) return false
+    return botConfirmsNoIssues(String(line.text || ''))
+  })
+  if (noIssues && survey.battery !== 'yes' && survey.other !== 'yes') {
+    return { ...survey, battery: survey.battery === 'unknown' ? 'no' : survey.battery, other: survey.other === 'unknown' ? 'no' : survey.other, asked_other: true }
+  }
   return survey
 }
 
@@ -453,6 +483,13 @@ export function classifyCallSurvey(
     const blob = norm(summary)
     if (botForwardsBatteryIssue(blob) || /\bbattery issue confirmed (yes|true)\b/.test(blob)) {
       survey = { ...survey, battery: 'yes' }
+    } else if (botConfirmsNoIssues(blob) && survey.battery !== 'yes' && survey.other !== 'yes') {
+      survey = {
+        ...survey,
+        battery: survey.battery === 'unknown' ? 'no' : survey.battery,
+        other: survey.other === 'unknown' ? 'no' : survey.other,
+        asked_other: true,
+      }
     } else if (survey.battery === 'unknown' && /\bbattery issue confirmed (no|false)\b/.test(blob)) {
       survey = { ...survey, battery: 'no' }
     }

@@ -130,7 +130,9 @@ export function BatteryIssuesList() {
   const [startingQueue, setStartingQueue] = useState(false)
   const [callMenuOpen, setCallMenuOpen] = useState(false)
   const callMenuRef = useRef<HTMLDivElement | null>(null)
+  const listRef = useRef<HTMLDivElement | null>(null)
   const pageSize = 15
+  const cardFilterOn = Boolean(callFilter || reportFilter || otherTypeFilter)
 
   const loadStats = () => {
     batteryIssuesApi.stats().then(setStats).catch(() => undefined)
@@ -215,11 +217,18 @@ export function BatteryIssuesList() {
     }
   }
 
+  const scrollToRecords = () => {
+    window.setTimeout(() => {
+      listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+  }
+
   const setFilter = (value: string) => {
     setCallFilter((prev) => (prev === value ? '' : value))
     setReportFilter('')
     setOtherTypeFilter('')
     setPage(0)
+    scrollToRecords()
   }
 
   const setReport = (value: string) => {
@@ -227,6 +236,7 @@ export function BatteryIssuesList() {
     setCallFilter('')
     setOtherTypeFilter('')
     setPage(0)
+    scrollToRecords()
   }
 
   const setOtherType = (value: string) => {
@@ -234,6 +244,7 @@ export function BatteryIssuesList() {
     setCallFilter('')
     setReportFilter('')
     setPage(0)
+    scrollToRecords()
   }
 
   return (
@@ -242,7 +253,7 @@ export function BatteryIssuesList() {
       <ModuleInsights
         title="Call insights"
         cards={[
-          { filter: '', label: 'Total users', value: stats?.total ?? '—', icon: 'fas fa-users', color: 'bg-navy', hint: 'All contacts' },
+          { filter: 'all', label: 'Total users', value: stats?.total ?? '—', icon: 'fas fa-users', color: 'bg-navy', hint: 'All contacts' },
           { filter: 'called', label: 'Called', value: stats?.called ?? '—', icon: 'fas fa-phone', color: 'bg-teal', hint: 'At least one attempt' },
           { filter: 'yet_to_call', label: 'Yet to call', value: stats?.yet_to_call ?? '—', icon: 'far fa-clock', color: 'bg-olive', hint: 'No call yet' },
           { filter: 'completed', label: 'Attended', value: stats?.attended ?? '—', icon: 'fas fa-user-check', color: 'bg-green', hint: 'Picked up' },
@@ -253,9 +264,11 @@ export function BatteryIssuesList() {
           value: c.value,
           icon: c.icon,
           color: c.color,
-          hint: c.filter && callFilter === c.filter ? 'Showing this filter' : c.hint,
-          active: Boolean(c.filter) && callFilter === c.filter,
-          onClick: () => setFilter(c.filter),
+          hint: (c.filter === 'all' ? !callFilter && !reportFilter && !otherTypeFilter : callFilter === c.filter)
+            ? 'Showing this filter'
+            : c.hint,
+          active: c.filter === 'all' ? !callFilter && !reportFilter && !otherTypeFilter : callFilter === c.filter,
+          onClick: () => setFilter(c.filter === 'all' ? '' : c.filter),
         }))}
       />
       <ModuleInsights
@@ -276,10 +289,10 @@ export function BatteryIssuesList() {
           onClick: () => setReport(c.filter),
         }))}
       />
-      {(stats?.other_type_counts || []).length ? (
+      {(stats?.other_type_counts || []).some((c) => Number(c.count) > 0) ? (
       <ModuleInsights
         title="Other issue types"
-        cards={(stats?.other_type_counts || []).map((c) => ({
+        cards={(stats?.other_type_counts || []).filter((c) => Number(c.count) > 0).map((c) => ({
           label: c.label,
           value: c.count,
           icon: c.icon,
@@ -300,6 +313,7 @@ export function BatteryIssuesList() {
           </p>
         </div>
       ) : null}
+      <div id="battery-issues-list" ref={listRef}>
       <Box
         title="Issues"
         type="primary"
@@ -347,6 +361,7 @@ export function BatteryIssuesList() {
           rows={rows as unknown as Record<string, unknown>[]}
           exportName="battery-degradation-issues"
           storageKey="battery_issues_columns_v5"
+          highlightRows={cardFilterOn}
           onRefresh={load}
           page={page}
           pageSize={pageSize}
@@ -440,6 +455,7 @@ export function BatteryIssuesList() {
           ]}
         />
       </Box>
+      </div>
     </AppLayout>
   )
 }

@@ -457,7 +457,7 @@ batteryIssuesRouter.get('/', async (req, res) => {
   } else if (callResult === 'completed' || callResult === 'attended') {
     where.push(`EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed')`)
   } else if (callResult) {
-    where.push('call_result = ?')
+    where.push(`EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = ?)`)
     params.push(callResult)
   }
   if (search) {
@@ -498,6 +498,12 @@ batteryIssuesRouter.get('/', async (req, res) => {
 })
 
 batteryIssuesRouter.get('/stats', async (_req, res) => {
+  try {
+    const { backfillMissingSurveys } = await import('../services/batteryTechnicianAssign.js')
+    await backfillMissingSurveys(150)
+  } catch (e) {
+    console.warn('[battery-stats] survey backfill', e instanceof Error ? e.message : e)
+  }
   const zeros = {
     total: 0, with_phone: 0, yet_to_call: 0, called: 0, attended: 0,
     rejected: 0, ignored: 0, calling: 0, battery_yes: 0, battery_no: 0,
@@ -518,8 +524,12 @@ batteryIssuesRouter.get('/stats', async (_req, res) => {
       SUM(CASE WHEN EXISTS (
         SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed'
       ) THEN 1 ELSE 0 END) AS attended,
-      SUM(CASE WHEN call_result = 'rejected' THEN 1 ELSE 0 END) AS rejected,
-      SUM(CASE WHEN call_result = 'ignored' THEN 1 ELSE 0 END) AS ignored,
+      SUM(CASE WHEN EXISTS (
+        SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'rejected'
+      ) THEN 1 ELSE 0 END) AS rejected,
+      SUM(CASE WHEN EXISTS (
+        SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'ignored'
+      ) THEN 1 ELSE 0 END) AS ignored,
       SUM(CASE WHEN call_result IN ('queued', 'in_progress') THEN 1 ELSE 0 END) AS calling,
       SUM(CASE WHEN battery_issue_confirmed = 'yes' THEN 1 ELSE 0 END) AS battery_yes,
       SUM(CASE WHEN battery_issue_confirmed = 'no' THEN 1 ELSE 0 END) AS battery_no,
@@ -543,8 +553,12 @@ batteryIssuesRouter.get('/stats', async (_req, res) => {
         SUM(CASE WHEN EXISTS (
           SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed'
         ) THEN 1 ELSE 0 END) AS attended,
-        SUM(CASE WHEN call_result = 'rejected' THEN 1 ELSE 0 END) AS rejected,
-        SUM(CASE WHEN call_result = 'ignored' THEN 1 ELSE 0 END) AS ignored,
+        SUM(CASE WHEN EXISTS (
+          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'rejected'
+        ) THEN 1 ELSE 0 END) AS rejected,
+        SUM(CASE WHEN EXISTS (
+          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'ignored'
+        ) THEN 1 ELSE 0 END) AS ignored,
         SUM(CASE WHEN call_result IN ('queued', 'in_progress') THEN 1 ELSE 0 END) AS calling
       FROM battery_degradation_issues
       WHERE deleted_at IS NULL
@@ -627,7 +641,14 @@ batteryIssuesRouter.get('/:id/recording', async (req, res) => {
 })
 
 batteryIssuesRouter.get('/:id', async (req, res) => {
-  const payload = await loadIssuePayload(Number(req.params.id))
+  const id = Number(req.params.id)
+  try {
+    await maybeAssignTechnician(id)
+    await persistWorkflow(id)
+  } catch (e) {
+    console.warn('[battery-issue] apply on get', id, e instanceof Error ? e.message : e)
+  }
+  const payload = await loadIssuePayload(id)
   if (!payload) return fail(res, 'Issue not found', 404)
   return okItem(res, payload)
 })
