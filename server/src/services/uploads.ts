@@ -23,6 +23,7 @@ const dirs = [
   'private_uploads/audits',
   'private_uploads/maintenances',
   'private_uploads/battery_issues',
+  'private_uploads/battery_close_proofs',
 ]
 
 for (const d of dirs) {
@@ -37,10 +38,10 @@ export function publicUrl(relPath: string) {
   return `/storage/${relPath.replace(/\\/g, '/')}`
 }
 
-export function makeUploader(subdir: string, field = 'file') {
+function diskStorage(subdir: string) {
   const dest = path.join(storageRoot, subdir)
   fs.mkdirSync(dest, { recursive: true })
-  const storage = multer.diskStorage({
+  return multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, dest),
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname) || ''
@@ -48,10 +49,20 @@ export function makeUploader(subdir: string, field = 'file') {
       cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName(base)}${ext}`)
     },
   })
+}
+
+export function makeUploader(subdir: string, field = 'file') {
   return multer({
-    storage,
+    storage: diskStorage(subdir),
     limits: { fileSize: 15 * 1024 * 1024 },
   }).single(field)
+}
+
+export function makeMultiUploader(subdir: string, field = 'files', maxCount = 8) {
+  return multer({
+    storage: diskStorage(subdir),
+    limits: { fileSize: 15 * 1024 * 1024 },
+  }).array(field, maxCount)
 }
 
 export async function recordUpload(opts: {

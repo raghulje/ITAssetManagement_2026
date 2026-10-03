@@ -65,6 +65,7 @@ export type BatteryIssue = {
   assigned_name: string
   assigned_at: string
   close_comments: string
+  close_attachments: Array<{ index: number; original_name: string; mime: string; url: string }>
   closed_at: string
   closed_by: number | null
   closed_by_name: string
@@ -140,11 +141,33 @@ export const batteryIssuesApi = {
     api<{ status: string; messages: string[]; payload: BatteryIssue }>(`/battery-issues/${id}/sync-call`, {
       method: 'POST',
     }),
-  close: (id: number | string, comments: string) =>
-    api<{ status: string; messages: string[]; payload: BatteryIssue }>(`/battery-issues/${id}/close`, {
+  close: (id: number | string, comments: string, files: File[]) => {
+    const form = new FormData()
+    form.append('comments', comments)
+    files.forEach((file) => form.append('files', file))
+    return api<{ status: string; messages: string[]; payload: BatteryIssue }>(`/battery-issues/${id}/close`, {
       method: 'POST',
-      json: { comments },
-    }),
+      body: form,
+    })
+  },
+  openCloseProof: async (id: number | string, index: number, filename: string) => {
+    const token = localStorage.getItem('refex_token')
+    const res = await fetch(`${getApiBase()}/battery-issues/${id}/close-proof/${index}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+    if (!res.ok) throw new Error('Could not open attachment')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || 'proof'
+    a.target = '_blank'
+    a.rel = 'noreferrer'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000)
+  },
   uploadRecording: async (id: number | string, file: File) => {
     const token = localStorage.getItem('refex_token')
     const form = new FormData()

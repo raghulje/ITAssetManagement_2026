@@ -42,7 +42,7 @@ export default function BatterySettings() {
     try {
       const res = await api<{ messages?: string[]; payload?: BatteryCfg }>('/settings/battery', {
         method: 'PUT',
-        json: { agent_id: agentId.trim(), notify_email: notifyEmail.trim(), webhook_url: webhookUrl.trim() },
+        json: { agent_id: agentId.trim(), notify_email: notifyEmail.trim() },
       })
       if (res.payload) {
         setAgentId(res.payload.agent_id || '')
@@ -118,6 +118,7 @@ export default function BatterySettings() {
               Receives new issue submissions and completed-call alerts. Separate multiple addresses with commas.
             </span>
           </Field>
+          {/* Kissflow webhook posting is paused. Keep the field/code here to turn back on later.
           <Field label="Issue webhook URL">
             <input
               className="form-control"
@@ -128,9 +129,13 @@ export default function BatterySettings() {
             />
             <span className="help-block">
               Kissflow IT Service Request webhook. Posted when the employee says yes to battery drain or any other IT issue.
-              The default development URL is used if you leave this blank.
             </span>
           </Field>
+          */}
+          <p className="help-block">
+            Kissflow webhook posting is paused. Issues stay in this system. The webhook code is kept and can be turned back on later.
+            {webhookUrl ? ' A webhook URL is already saved on this server but is not being posted to.' : ''}
+          </p>
           <div className="form-actions">
             <button type="submit" className="btn btn-theme" disabled={busy || !canEdit}>
               {busy ? 'Saving…' : 'Save'}

@@ -8,7 +8,9 @@ export type BatteryAdminConfig = {
   webhook_url: string
 }
 
-const FALLBACK_WEBHOOK_URL = 'https://development-refexgroup.kissflow.com/integration/2/AcCMptp3yqcn/webhook/J1VLVRMG2wXYcRkvDBHLxx0L5fNELbNtFYhPNtUg7kMbhvZSFxJL44ZEjn0htxhGqNCWqOntb7ZcbAz4MNWtQ'
+// Kissflow webhook paused. Keep the URL here to re-enable later:
+// const FALLBACK_WEBHOOK_URL = 'https://development-refexgroup.kissflow.com/integration/2/AcCMptp3yqcn/webhook/J1VLVRMG2wXYcRkvDBHLxx0L5fNELbNtFYhPNtUg7kMbhvZSFxJL44ZEjn0htxhGqNCWqOntb7ZcbAz4MNWtQ'
+const FALLBACK_WEBHOOK_URL = ''
 
 const DEFAULTS: BatteryAdminConfig = {
   agent_id: FALLBACK_AGENT_ID,
