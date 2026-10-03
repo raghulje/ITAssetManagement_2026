@@ -1,8 +1,11 @@
-import { all, get, run, now } from '../db/index.js'
+import { all, run, now } from '../db/index.js'
 import { classifyCallResult } from './batteryCallStatus.js'
 import { elloGetConversation } from './ello.js'
 import { startOutboundCall } from '../routes/batteryIssues.js'
 import { assignEligibleIssues } from './batteryTechnicianAssign.js'
+
+/** First attempt + two automatic retries for ignored / rejected calls. */
+export const BATTERY_MAX_CALL_ATTEMPTS = 3
 
 function callbackMinutes() {
   const n = Number(process.env.ELLO_IGNORE_CALLBACK_MINUTES ?? 30)
@@ -16,18 +19,23 @@ function minutesAgo(mins: number) {
 export async function runIgnoredCallCallbacks() {
   const cutoff = minutesAgo(callbackMinutes())
   const due = await all<Record<string, unknown>>(`
-    SELECT c.id, c.issue_id, c.ello_conversation_id, c.ello_call_status, c.call_result,
+    SELECT c.id, c.issue_id, c.sequence, c.ello_conversation_id, c.ello_call_status, c.call_result,
            c.connected_at, c.ended_at, c.duration, c.disconnect_reason
     FROM battery_degradation_calls c
     INNER JOIN battery_degradation_issues i ON i.id = c.issue_id AND i.deleted_at IS NULL
-    WHERE c.sequence = 1
+    INNER JOIN (
+      SELECT issue_id, MAX(sequence) AS seq
+      FROM battery_degradation_calls
+      GROUP BY issue_id
+    ) latest ON latest.issue_id = c.issue_id AND latest.seq = c.sequence
+    WHERE c.sequence < ?
       AND c.callback_queued_at IS NULL
       AND c.created_at <= ?
       AND NOT EXISTS (
-        SELECT 1 FROM battery_degradation_calls later
-        WHERE later.issue_id = c.issue_id AND later.sequence > 1
+        SELECT 1 FROM battery_degradation_calls done
+        WHERE done.issue_id = c.issue_id AND done.call_result = 'completed'
       )
-  `, [cutoff])
+  `, [BATTERY_MAX_CALL_ATTEMPTS, cutoff])
 
   let attempted = 0
   let queued = 0
@@ -35,6 +43,7 @@ export async function runIgnoredCallCallbacks() {
     attempted += 1
     const callId = Number(row.id)
     const issueId = Number(row.issue_id)
+    const sequence = Number(row.sequence || 1)
     let result = String(row.call_result || '')
     const conversationId = String(row.ello_conversation_id || '').trim()
     if (conversationId) {
@@ -74,9 +83,9 @@ export async function runIgnoredCallCallbacks() {
     )
     if (!claim.affectedRows) continue
     try {
-      await startOutboundCall(issueId)
+      const next = await startOutboundCall(issueId)
       queued += 1
-      console.log(`[battery-callback] queued Conversation 2 for issue ${issueId} after ${result} first call`)
+      console.log(`[battery-callback] queued Conversation ${next.sequence} for issue ${issueId} after ${result} attempt ${sequence}`)
     } catch (e) {
       await run(`UPDATE battery_degradation_calls SET callback_queued_at = NULL WHERE id = ?`, [callId])
       console.warn('[battery-callback] place call failed', issueId, e instanceof Error ? e.message : e)
@@ -90,7 +99,7 @@ let running = false
 
 export function startIgnoredCallScheduler() {
   const minutes = callbackMinutes()
-  console.log(`Ignored-call callback scheduler enabled (retry ${minutes} minutes after first ignored or rejected call)`)
+  console.log(`Ignored-call callback scheduler enabled (retry ${minutes} minutes after ignored or rejected calls, up to ${BATTERY_MAX_CALL_ATTEMPTS} attempts)`)
   const tick = async () => {
     if (running) return
     running = true
