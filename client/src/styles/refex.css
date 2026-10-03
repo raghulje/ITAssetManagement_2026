@@ -6404,6 +6404,24 @@ button.space-nav-card {
 .bdi-pill--muted { background: #f1f5f9; color: #475569; }
 .bdi-pill--warn { background: #fef3c7; color: #92400e; }
 .bdi-pill--danger { background: #fee2e2; color: #b91c1c; }
+#battery-issues-list {
+  scroll-margin-top: calc(var(--header-height, 56px) + var(--chrome-offset, 0px) + 16px);
+}
+@keyframes bdi-card-highlight {
+  0% { background: #d1fae5; }
+  100% { background: #ecfdf5; }
+}
+.table tbody tr.is-card-highlight td {
+  animation: bdi-card-highlight 1.6s ease;
+  background: #ecfdf5;
+  box-shadow: inset 3px 0 0 #0b6e66;
+}
+.data-card.is-card-highlight {
+  animation: bdi-card-highlight 1.6s ease;
+  background: #ecfdf5;
+  border-color: #0b6e66;
+  box-shadow: 0 0 0 2px rgba(11, 110, 102, 0.22);
+}
 .bdi-name-cell {
   display: inline-flex;
   align-items: center;

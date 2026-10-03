@@ -122,6 +122,7 @@ export function DataTable({
   pageSize,
   total,
   onPageChange,
+  highlightRows,
 }: {
   columns: {
     key: string
@@ -146,6 +147,7 @@ export function DataTable({
   pageSize?: number
   total?: number
   onPageChange?: (page: number) => void
+  highlightRows?: boolean
 }) {
   const toast = useToast()
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
@@ -350,7 +352,13 @@ export function DataTable({
                     const id = Number(row.id)
                     const canSelect = Number.isFinite(id) && id > 0
                     return (
-                      <tr key={String(row.id ?? i)} className={canSelect && selected.has(id) ? 'is-selected' : undefined}>
+                      <tr
+                        key={String(row.id ?? i)}
+                        className={[
+                          canSelect && selected.has(id) ? 'is-selected' : '',
+                          highlightRows ? 'is-card-highlight' : '',
+                        ].filter(Boolean).join(' ') || undefined}
+                      >
                         {selectable ? (
                           <td>
                             <input
@@ -383,7 +391,7 @@ export function DataTable({
                 return (
                   <article
                     key={String(row.id ?? i)}
-                    className={`data-card${canSelect && selected.has(id) ? ' is-selected' : ''}`}
+                    className={`data-card${canSelect && selected.has(id) ? ' is-selected' : ''}${highlightRows ? ' is-card-highlight' : ''}`}
                   >
                     <div className="data-card-top">
                       {selectable ? (

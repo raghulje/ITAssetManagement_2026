@@ -178,6 +178,29 @@ export async function classifyIssueSurvey(
   if (survey.battery === 'unknown' && extraMeta) {
     survey = classifyCallSurvey([], extraMeta, '')
   }
+  if (survey.battery === 'unknown' || survey.other === 'unknown' || !survey.preferred_language) {
+    const issue = await get<{ transcript: unknown; bot_summary: string | null }>(
+      `SELECT transcript, bot_summary FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
+      [issueId],
+    )
+    if (issue) {
+      const fromIssue = classifyCallSurvey(parseJson(issue.transcript, []), extraMeta, issue.bot_summary)
+      if (survey.battery === 'unknown' && fromIssue.battery !== 'unknown') survey = { ...survey, battery: fromIssue.battery }
+      if (survey.other === 'unknown' && fromIssue.other !== 'unknown') {
+        survey = {
+          ...survey,
+          other: fromIssue.other,
+          other_description: fromIssue.other_description || survey.other_description,
+          other_types: fromIssue.other_types?.length ? fromIssue.other_types : survey.other_types,
+          asked_other: fromIssue.asked_other || survey.asked_other,
+        }
+      }
+      if (!survey.preferred_language && fromIssue.preferred_language) {
+        survey = { ...survey, preferred_language: fromIssue.preferred_language }
+      }
+      survey.asked_other = survey.asked_other || fromIssue.asked_other
+    }
+  }
   if (survey.other === 'yes') {
     survey = { ...survey, other_types: typesForOtherIssue(survey) }
   } else {
@@ -417,6 +440,43 @@ export async function assignNextTechnician(issueId: number): Promise<BatteryTech
     console.log(`[battery-assign] issue ${issueId} → ${tech.name} (#${tech.id})`)
     return tech
   })
+}
+
+export async function backfillMissingSurveys(limit = 150): Promise<number> {
+  let rows: Array<{ id: number }> = []
+  try {
+    rows = await all<{ id: number }>(`
+      SELECT i.id
+      FROM battery_degradation_issues i
+      WHERE i.deleted_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM battery_degradation_calls c
+          WHERE c.issue_id = i.id AND c.call_result = 'completed'
+        )
+        AND (
+          i.battery_issue_confirmed IS NULL
+          OR i.other_issue_reported IS NULL
+          OR (
+            IFNULL(i.status, '') != 'closed'
+            AND IFNULL(i.assigned_to, 0) = 0
+          )
+        )
+      ORDER BY i.id ASC
+      LIMIT ?
+    `, [Math.max(1, Number(limit) || 150)])
+  } catch {
+    return 0
+  }
+  let updated = 0
+  for (const row of rows) {
+    try {
+      await applyAttendedCallOutcome(Number(row.id))
+      updated += 1
+    } catch (e) {
+      console.warn('[battery-survey] backfill failed', row.id, e instanceof Error ? e.message : e)
+    }
+  }
+  return updated
 }
 
 export async function assignEligibleIssues(): Promise<{ assigned: number; skipped: number; closedNoIssue: number }> {
