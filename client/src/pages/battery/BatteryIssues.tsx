@@ -157,7 +157,7 @@ export function BatteryIssuesList() {
   }, [queue?.running])
 
   const startQueue = async () => {
-    if (!window.confirm('Call every pending contact that has a phone number, one after another? Each person is dialed once now. Ignored or rejected numbers are retried after 30 minutes.')) return
+    if (!window.confirm('Call every pending contact that has a phone number, one after another? Each person is dialed once now. Ignored or rejected numbers are retried after 30 minutes, up to 3 calls in total.')) return
     setStartingQueue(true)
     try {
       const res = await batteryIssuesApi.startQueue()
@@ -658,8 +658,14 @@ export function BatteryIssueDetail() {
           ) : (
             [...visibleConversations(issue)].reverse().map((call) => {
               const result = call.call_result || call.call_status || 'queued'
-              const retryWaiting = (result === 'ignored' || result === 'rejected') && call.sequence === 1 && !call.callback_queued_at
-                && visibleConversations(issue).every((c) => c.sequence === 1)
+              const convos = visibleConversations(issue)
+              const latestSeq = Math.max(...convos.map((c) => Number(c.sequence || 1)))
+              const attended = convos.some((c) => c.call_result === 'completed')
+              const retryWaiting = !attended
+                && Number(call.sequence || 1) === latestSeq
+                && Number(call.sequence || 1) < 3
+                && (result === 'ignored' || result === 'rejected')
+                && !call.callback_queued_at
               return (
               <section key={call.id || call.sequence} className="bdi-card">
                 <div className="bdi-convo-head">
@@ -669,7 +675,8 @@ export function BatteryIssueDetail() {
                 </div>
                 {retryWaiting ? (
                   <p className="bdi-callback-note">
-                    {result === 'rejected' ? 'Call was rejected.' : 'Call was ignored / not answered.'} A callback will be placed 30 minutes after this first call.
+                    {result === 'rejected' ? 'Call was rejected.' : 'Call was ignored / not answered.'}
+                    {' '}A callback will be placed 30 minutes after this call (attempt {call.sequence} of 3).
                   </p>
                 ) : null}
                 {call.conversation_id ? (
