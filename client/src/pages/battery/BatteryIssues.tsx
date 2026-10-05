@@ -128,6 +128,8 @@ export function BatteryIssuesList() {
   const [stats, setStats] = useState<BatteryCallStats | null>(null)
   const [queue, setQueue] = useState<BatteryCallQueue | null>(null)
   const [startingQueue, setStartingQueue] = useState(false)
+  const [queueBusy, setQueueBusy] = useState(false)
+  const queueActive = Boolean(queue?.running)
   const [callMenuOpen, setCallMenuOpen] = useState(false)
   const callMenuRef = useRef<HTMLDivElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -170,7 +172,7 @@ export function BatteryIssuesList() {
   }, [search, page, callFilter, reportFilter, otherTypeFilter])
 
   useEffect(() => {
-    if (!queue?.running) return
+    if (!queue?.running && !queue?.paused) return
     const timer = window.setInterval(() => {
       void batteryIssuesApi.queueStatus().then((q) => {
         setQueue(q)
@@ -179,7 +181,7 @@ export function BatteryIssuesList() {
     }, 2500)
     return () => window.clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue?.running])
+  }, [queue?.running, queue?.paused])
 
   useEffect(() => {
     if (!callMenuOpen) return
@@ -214,6 +216,27 @@ export function BatteryIssuesList() {
       toast.error(e instanceof Error ? e.message : 'Could not start the call queue')
     } finally {
       setStartingQueue(false)
+    }
+  }
+
+  const controlQueue = async (action: 'pause' | 'resume' | 'stop') => {
+    const confirmStop = action === 'stop'
+      ? window.confirm('Stop calling pending contacts? Already placed calls stay. Remaining numbers are not called until you start Call pending again.')
+      : true
+    if (!confirmStop) return
+    setQueueBusy(true)
+    try {
+      const res = action === 'pause'
+        ? await batteryIssuesApi.pauseQueue()
+        : action === 'resume'
+          ? await batteryIssuesApi.resumeQueue()
+          : await batteryIssuesApi.stopQueue()
+      if (res.payload) setQueue(res.payload)
+      toast.success(res.messages?.[0] || (action === 'pause' ? 'Paused' : action === 'resume' ? 'Continuing' : 'Stopped'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not update the call queue')
+    } finally {
+      setQueueBusy(false)
     }
   }
 
@@ -303,13 +326,21 @@ export function BatteryIssuesList() {
         }))}
       />
       ) : null}
-      {queue?.running || queue?.message ? (
-        <div className={`callout ${queue.running ? 'callout-info' : 'callout-success'}`}>
+      {queue?.running || queue?.paused || queue?.credit_blocked || queue?.message ? (
+        <div className={`callout ${
+          queue.credit_blocked ? 'callout-danger'
+            : queue.paused ? 'callout-warning'
+              : queue.running ? 'callout-info'
+                : 'callout-success'
+        }`}>
           <p>
-            {queue.running ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-check" />}
+            {queue.credit_blocked ? <i className="fas fa-ban" />
+              : queue.paused ? <i className="fas fa-pause-circle" />
+                : queue.running ? <i className="fas fa-spinner fa-spin" />
+                  : <i className="fas fa-check" />}
             {' '}{queue.message}
             {queue.running && queue.total ? ` (${queue.done + queue.failed} / ${queue.total})` : ''}
-            {queue.current_name ? ` — ${queue.current_name}` : ''}
+            {queue.running && !queue.paused && queue.current_name ? ` — ${queue.current_name}` : ''}
           </p>
         </div>
       ) : null}
@@ -319,15 +350,45 @@ export function BatteryIssuesList() {
         type="primary"
         tools={
           <>
-            {can('battery_issues.edit') ? (
+            {can('battery_issues.edit') && queueActive ? (
+              <>
+                {queue?.paused ? (
+                  <button
+                    type="button"
+                    className="btn btn-theme btn-sm"
+                    disabled={queueBusy}
+                    onClick={() => { void controlQueue('resume') }}
+                  >
+                    <i className="fas fa-play" /> Continue
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-default btn-sm"
+                    disabled={queueBusy}
+                    onClick={() => { void controlQueue('pause') }}
+                  >
+                    <i className="fas fa-pause" /> Pause
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={queueBusy}
+                  onClick={() => { void controlQueue('stop') }}
+                >
+                  <i className="fas fa-stop" /> Stop
+                </button>
+              </>
+            ) : can('battery_issues.edit') ? (
               <div className={`dropdown ${callMenuOpen ? 'open' : ''}`} ref={callMenuRef}>
                 <button
                   type="button"
                   className="btn btn-theme btn-sm"
-                  disabled={startingQueue || queue?.running || !stats?.yet_to_call}
+                  disabled={startingQueue || !stats?.yet_to_call}
                   onClick={() => setCallMenuOpen((open) => !open)}
                 >
-                  <i className="fas fa-phone-volume" /> {startingQueue || queue?.running ? 'Calling…' : 'Call pending'}
+                  <i className="fas fa-phone-volume" /> {startingQueue ? 'Starting…' : 'Call pending'}
                   {' '}<i className="fas fa-caret-down" />
                 </button>
                 <div className="dropdown-menu">
@@ -335,7 +396,7 @@ export function BatteryIssuesList() {
                     <button
                       key={String(opt.limit)}
                       type="button"
-                      disabled={startingQueue || queue?.running || !stats?.yet_to_call}
+                      disabled={startingQueue || !stats?.yet_to_call}
                       onClick={() => { void startQueue(opt.limit) }}
                     >
                       {opt.label}

@@ -105,9 +105,12 @@ export type BatteryCallQueueLimit = 15 | 30 | 50 | 'all'
 
 export type BatteryCallQueue = {
   running: boolean
+  paused?: boolean
+  credit_blocked?: boolean
   total: number
   done: number
   failed: number
+  remaining?: number
   current_id: number | null
   current_name: string
   started_at: string | null
@@ -125,6 +128,18 @@ export const batteryIssuesApi = {
     api<{ status: string; messages: string[]; payload: BatteryCallQueue }>('/battery-issues/call-queue', {
       method: 'POST',
       json: { limit },
+    }),
+  pauseQueue: () =>
+    api<{ status: string; messages: string[]; payload: BatteryCallQueue }>('/battery-issues/call-queue/pause', {
+      method: 'POST',
+    }),
+  resumeQueue: () =>
+    api<{ status: string; messages: string[]; payload: BatteryCallQueue }>('/battery-issues/call-queue/resume', {
+      method: 'POST',
+    }),
+  stopQueue: () =>
+    api<{ status: string; messages: string[]; payload: BatteryCallQueue }>('/battery-issues/call-queue/stop', {
+      method: 'POST',
     }),
   get: (id: number | string) => api<BatteryIssue>(`/battery-issues/${id}`),
   create: (body: unknown) =>

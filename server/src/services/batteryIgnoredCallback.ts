@@ -1,6 +1,6 @@
 import { all, run, now } from '../db/index.js'
 import { classifyCallResult } from './batteryCallStatus.js'
-import { elloGetConversation } from './ello.js'
+import { elloGetConversation, elloOutboundBlockedReason, isElloCreditError, blockElloOutbound } from './ello.js'
 import { startOutboundCall } from '../routes/batteryIssues.js'
 import { assignEligibleIssues } from './batteryTechnicianAssign.js'
 
@@ -17,6 +17,14 @@ function minutesAgo(mins: number) {
 }
 
 export async function runIgnoredCallCallbacks() {
+  if (elloOutboundBlockedReason()) {
+    console.warn('[battery-callback] skipped new calls —', elloOutboundBlockedReason())
+    return { due: 0, attempted: 0, queued: 0, skipped: 'credits' as const }
+  }
+  const { isCallQueuePaused } = await import('./batteryCallQueue.js')
+  if (isCallQueuePaused()) {
+    return { due: 0, attempted: 0, queued: 0, skipped: 'paused' as const }
+  }
   const cutoff = minutesAgo(callbackMinutes())
   const due = await all<Record<string, unknown>>(`
     SELECT c.id, c.issue_id, c.sequence, c.ello_conversation_id, c.ello_call_status, c.call_result,
@@ -74,6 +82,10 @@ export async function runIgnoredCallCallbacks() {
         )
       } catch (e) {
         console.warn('[battery-callback] refresh failed', issueId, e instanceof Error ? e.message : e)
+        if (isElloCreditError(e)) {
+          blockElloOutbound(e instanceof Error ? e.message : 'Ello.AI: insufficient credits to start the call')
+          break
+        }
       }
     }
     if (result !== 'ignored' && result !== 'rejected') continue
@@ -82,6 +94,10 @@ export async function runIgnoredCallCallbacks() {
       [now(), callId],
     )
     if (!claim.affectedRows) continue
+    if (elloOutboundBlockedReason() || isCallQueuePaused()) {
+      await run(`UPDATE battery_degradation_calls SET callback_queued_at = NULL WHERE id = ?`, [callId])
+      break
+    }
     try {
       const next = await startOutboundCall(issueId)
       queued += 1
@@ -89,6 +105,10 @@ export async function runIgnoredCallCallbacks() {
     } catch (e) {
       await run(`UPDATE battery_degradation_calls SET callback_queued_at = NULL WHERE id = ?`, [callId])
       console.warn('[battery-callback] place call failed', issueId, e instanceof Error ? e.message : e)
+      if (isElloCreditError(e)) {
+        blockElloOutbound(e instanceof Error ? e.message : 'Ello.AI: insufficient credits to start the call')
+        break
+      }
     }
   }
   return { due: due.length, attempted, queued }

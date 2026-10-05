@@ -627,6 +627,36 @@ batteryIssuesRouter.post('/call-queue', async (req, res) => {
   }
 })
 
+batteryIssuesRouter.post('/call-queue/pause', async (_req, res) => {
+  try {
+    const { pauseCallQueue } = await import('../services/batteryCallQueue.js')
+    const status = pauseCallQueue()
+    return okMessage(res, status.message || 'Call queue paused', status)
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Could not pause the call queue', 409)
+  }
+})
+
+batteryIssuesRouter.post('/call-queue/resume', async (_req, res) => {
+  try {
+    const { resumeCallQueue } = await import('../services/batteryCallQueue.js')
+    const status = resumeCallQueue()
+    return okMessage(res, status.message || 'Call queue continued', status)
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Could not continue the call queue', 409)
+  }
+})
+
+batteryIssuesRouter.post('/call-queue/stop', async (_req, res) => {
+  try {
+    const { stopCallQueue } = await import('../services/batteryCallQueue.js')
+    const status = stopCallQueue()
+    return okMessage(res, status.message || 'Call queue stopped', status)
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Could not stop the call queue', 409)
+  }
+})
+
 batteryIssuesRouter.get('/:id/recording', async (req, res) => {
   const row = await get<{ recording_path: string | null; recording_mime: string | null; recording_original_name: string | null }>(
     `SELECT recording_path, recording_mime, recording_original_name FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
@@ -720,6 +750,8 @@ batteryIssuesRouter.post('/:id/call', async (req, res) => {
   const phone = String(row.phone || '').trim()
   if (!phone) return fail(res, 'Phone number is required to start the voice call')
   try {
+    const { clearElloOutboundBlock } = await import('../services/ello.js')
+    clearElloOutboundBlock()
     const { sequence, payload } = await startOutboundCall(id, { userId: req.user?.id ?? null })
     return okMessage(res, `Conversation ${sequence} queued`, payload)
   } catch (e) {

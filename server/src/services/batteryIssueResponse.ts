@@ -199,6 +199,47 @@ function isUnsure(text: string) {
     || /தெரியவில்லை|கொஞ்சம் யோசி/.test(text)
 }
 
+function isHoldOn(text: string) {
+  const t = norm(text)
+  return /\b(hold on|hold please|one second|one sec|just a (sec|second|minute)|wait a (sec|second|minute)|wait please)\b/.test(t)
+    || /^(wait|hold|second)$/.test(t)
+    || /ஒரு செகண்ட்|ஒரு நிமிடம்|சற்று நில்லு|ஒரு வினாடி/.test(t)
+    || /एक सेकंड|एक मिनट|ज़रा रुक|जरा रुक/.test(t)
+    || /ఒక్క సెకన్|ఒక్క నిమిషం/.test(t)
+}
+
+function hasIssueCue(text: string) {
+  const t = norm(text)
+  if (!t) return false
+  if (classifyOtherIssueTypes(t).length) return true
+  return /\b(battery|drain|charge|wifi|wi fi|laptop|issue|problem|hang|slow|outlook|vpn|printer|password)\b/.test(t)
+    || /बैटरी|प्रॉब्लम|समस्या|वाईफाई/.test(t)
+    || /பேட்டரி|பிரச்சனை|சிக்கல்|வைஃபை/.test(t)
+}
+
+function isIdentityQuestion(text: string) {
+  const t = norm(text)
+  return /\bam i speaking (to|with)\b/.test(t)
+    || /\bis this .{0,60}speaking\b/.test(t)
+    || /\bcan i (speak|talk) to\b/.test(t)
+    || /\bspeaking to\b/.test(t)
+    || /बात कर रहा|बोल रहा हूँ/.test(t)
+    || /பேசுகிறேனா|பேசிக் கொண்டிருக்கிறேனா/.test(t)
+}
+
+/** "Yes?" / "Yes? + unrelated Telugu-Tamil" is a confused backchannel, not a survey answer. */
+function isConfusedYes(text: string) {
+  const raw = String(text || '').trim()
+  if (!raw) return false
+  if (/^yes\s*\?+\s*$/i.test(raw)) return true
+  if (/^yes\s*\?/i.test(raw) && !hasIssueCue(raw)) return true
+  const leftover = leftoverAfterYes(raw)
+  if (!leftover) return false
+  if (isHoldOn(leftover) && !hasIssueCue(leftover)) return true
+  const hasIndic = /[\u0900-\u097F\u0B80-\u0BFF\u0C00-\u0C7F]/.test(leftover)
+  return hasIndic && leftover.length > 10 && !hasIssueCue(leftover)
+}
+
 function isNoAnswer(text: string) {
   const t = norm(text)
   if (!t || isUnsure(t)) return false
@@ -215,7 +256,8 @@ function isNoAnswer(text: string) {
 
 function isYesAnswer(text: string) {
   const t = norm(text)
-  if (!t || isUnsure(t) || isNoAnswer(t)) return false
+  if (!t || isUnsure(t) || isNoAnswer(t) || isHoldOn(t) || isConfusedYes(text)) return false
+  if (isHoldOn(leftoverAfterYes(text)) && !hasIssueCue(text)) return false
   if (/^(yes|yeah|yep|yup|yea|correct|right|i am|i do|there is|there is one|haan|ha|haanji|haan ji|ho|aama|aam|aamaanga|avunu|haudu|hoi|bilkul|irukku|sari)$/.test(t)) return true
   if (/^(हाँ|हां|जी हाँ|जी हां|ஆம்|ஆமா|ஆமாம்|ஆமாங்க|சரி|சரிங்க|இருக்கு|இருக்கிறது|இருக்கும்|உண்டு|అవును|ಹೌದು|ഉണ്ട്|হ্যাঁ|होय|હા)$/.test(t)) return true
   if (/^(yes|yeah|yep|yup|yea|haan|aama|aam)(\s|$)/.test(t)) return true
@@ -227,10 +269,12 @@ function isYesAnswer(text: string) {
 
 function isLanguageQuestion(text: string) {
   const t = norm(text)
+  if (isBatteryQuestion(text) || isOtherIssueQuestion(text)) return false
   return /\bwhich language\b/.test(t)
     || /\bprefer to speak\b/.test(t)
     || /\bprefer to continue\b/.test(t)
-    || /\bcontinue in\b/.test(t)
+    || /\bwould you prefer (english|hindi|tamil)\b/.test(t)
+    || (/\bcontinue in\b/.test(t) && !/\bbattery\b/.test(t))
     || /\bpreferred language\b/.test(t)
     || /\bkaunsi (bhasha|language)\b/.test(t)
     || /\bkis bhasha\b/.test(t)
@@ -245,6 +289,9 @@ function isOtherIssueQuestion(text: string) {
   return /\bany other (issue|issues|problem|problems)\b/.test(t)
     || /\bother (laptop |it[- ]related )?(issue|issues|problem|problems)\b/.test(t)
     || /\bit helpdesk team to look into\b/.test(t)
+    || /\bapart from the battery\b/.test(t)
+    || /\bany other (laptop|it)[- ]related\b/.test(t)
+    || /\bother (laptop|it)[- ]related\b/.test(t)
     || /\bother it\b/.test(t)
     || /\bkoi aur (issue|issues|problem|problems|samasya)\b/.test(t)
     || /\bkisi aur (issue|laptop|it)\b/.test(t)
@@ -330,12 +377,23 @@ function detectLanguage(text: string) {
   return ''
 }
 
+function previousBotText(lines: Array<{ speaker: string; text: string }>, idx: number) {
+  for (let i = idx - 1; i >= 0; i -= 1) {
+    if (lines[i].speaker === 'user') continue
+    return lines[i].text
+  }
+  return ''
+}
+
 function userTurnsAfter(lines: Array<{ speaker: string; text: string }>, startIdx: number, endIdx: number) {
   return lines
     .slice(startIdx + 1, endIdx)
-    .filter((line) => line.speaker === 'user')
-    .map((line) => line.text.trim())
-    .filter(Boolean)
+    .map((line, offset) => ({ line, abs: startIdx + 1 + offset }))
+    .filter(({ line, abs }) => {
+      if (line.speaker !== 'user' || !line.text.trim()) return false
+      return !isIdentityQuestion(previousBotText(lines, abs))
+    })
+    .map(({ line }) => line.text.trim())
 }
 
 function firstAnswer(texts: string[]): BatteryIssueAnswer {
@@ -356,18 +414,20 @@ function leftoverAfterYes(text: string) {
 
 function otherFromTurns(texts: string[]): { answer: BatteryIssueAnswer; description: string } {
   if (!texts.length) return { answer: 'unknown', description: '' }
-  for (const text of texts) {
+  const useful = texts.filter((text) => !isConfusedYes(text) && !isHoldOn(text) && !isUnsure(norm(text)))
+  if (!useful.length) return { answer: 'unknown', description: '' }
+  for (const text of useful) {
     if (isNoAnswer(text)) return { answer: 'no', description: '' }
     if (isYesAnswer(text)) {
       const extra = [
         leftoverAfterYes(text),
-        ...texts.filter((t) => t !== text && !isYesAnswer(t) && !isNoAnswer(t)),
+        ...useful.filter((t) => t !== text && !isYesAnswer(t) && !isNoAnswer(t) && hasIssueCue(t)),
       ].filter(Boolean).join(' ').trim()
       return { answer: 'yes', description: extra }
     }
   }
-  const description = texts.join(' ').trim()
-  if (description) return { answer: 'yes', description }
+  const description = useful.join(' ').trim()
+  if (description && hasIssueCue(description)) return { answer: 'yes', description }
   return { answer: 'unknown', description: '' }
 }
 
@@ -430,7 +490,10 @@ function surveyFromTranscript(linesIn: Array<{ speaker?: string; text?: string }
         break
       }
     }
-    if (!survey.preferred_language && langTurns[0]) survey.preferred_language = langTurns[0]
+    if (!survey.preferred_language) {
+      const named = langTurns.map(detectLanguage).find(Boolean)
+      if (named) survey.preferred_language = named
+    }
   }
 
   if (batteryIdx >= 0) {
@@ -445,17 +508,12 @@ function surveyFromTranscript(linesIn: Array<{ speaker?: string; text?: string }
     survey.other_description = other.description
   } else if (langIdx >= 0 && batteryIdx < 0) {
     const afterLang = userTurnsAfter(lines, langIdx, lines.length)
-    if (afterLang.length >= 2) {
-      if (!survey.preferred_language) survey.preferred_language = detectLanguage(afterLang[0]) || afterLang[0]
-      survey.battery = firstAnswer([afterLang[1]])
-      if (afterLang.length >= 3) {
-        survey.asked_other = true
-        const extra = otherFromTurns(afterLang.slice(2))
-        survey.other = extra.answer
-        survey.other_description = extra.description
+    for (const turn of afterLang) {
+      const lang = detectLanguage(turn)
+      if (lang) {
+        if (!survey.preferred_language) survey.preferred_language = lang
+        break
       }
-    } else if (afterLang.length === 1 && !detectLanguage(afterLang[0])) {
-      survey.battery = firstAnswer(afterLang)
     }
   }
 
