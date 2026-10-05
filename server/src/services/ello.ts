@@ -217,6 +217,33 @@ function elloUserRole(value: string) {
   return /^(user|human|customer|contact|callee|employee|caller)$/.test(String(value || '').toLowerCase().trim())
 }
 
+export async function elloDownloadRecording(url: string): Promise<{
+  buffer: Buffer
+  mime: string
+  ext: string
+} | null> {
+  const src = String(url || '').trim()
+  if (!/^https?:\/\//i.test(src)) return null
+  const cfg = await elloConfig()
+  const tryFetch = async (headers: Record<string, string>) => {
+    const res = await fetch(src, { headers })
+    if (!res.ok) return null
+    const mime = String(res.headers.get('content-type') || 'audio/mpeg').split(';')[0].trim() || 'audio/mpeg'
+    const buffer = Buffer.from(await res.arrayBuffer())
+    if (!buffer.length || buffer.length > 50 * 1024 * 1024) return null
+    const ext = mime.includes('wav')
+      ? '.wav'
+      : mime.includes('ogg')
+        ? '.ogg'
+        : (mime.includes('mp4') || mime.includes('m4a'))
+          ? '.m4a'
+          : '.mp3'
+    return { buffer, mime, ext }
+  }
+  return (await tryFetch({ Accept: 'audio/*,*/*' }))
+    || (await tryFetch({ Accept: 'audio/*,*/*', 'X-API-Key': cfg.apiKey }))
+}
+
 export function mapElloTranscript(lines: ElloTranscriptLine[]): Array<{ speaker: 'bot' | 'user'; text: string }> {
   return lines
     .map((line) => ({

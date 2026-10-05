@@ -24,6 +24,7 @@ const dirs = [
   'private_uploads/maintenances',
   'private_uploads/battery_issues',
   'private_uploads/battery_close_proofs',
+  'private_uploads/battery_recordings',
 ]
 
 for (const d of dirs) {

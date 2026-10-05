@@ -35,6 +35,7 @@ export type BatteryCall = {
   agent_id: string
   bot_summary: string
   recording_url: string
+  recording_stream: string
   transcript: BatteryTranscriptLine[]
   duration: string
   connected_at: string
@@ -98,7 +99,18 @@ export type BatteryCallStats = {
   other_only: number
   no_issues: number
   both_issues: number
+  answered_both: number
+  incomplete: number
   other_type_counts: Array<{ key: string; label: string; icon: string; count: number }>
+}
+
+export type BatterySyncAll = {
+  running: boolean
+  total: number
+  done: number
+  failed: number
+  recordings: number
+  message: string
 }
 
 export type BatteryCallQueueLimit = 15 | 30 | 50 | 'all'
@@ -162,6 +174,24 @@ export const batteryIssuesApi = {
     api<{ status: string; messages: string[]; payload: BatteryIssue }>(`/battery-issues/${id}/sync-call`, {
       method: 'POST',
     }),
+  syncAllStatus: () => api<BatterySyncAll>('/battery-issues/sync-all'),
+  syncAll: () =>
+    api<{ status: string; messages: string[]; payload: BatterySyncAll }>('/battery-issues/sync-all', {
+      method: 'POST',
+    }),
+  recordingBlobUrl: async (streamPath: string) => {
+    const token = localStorage.getItem('refex_token')
+    const path = streamPath.startsWith('/api/v1/')
+      ? streamPath.slice('/api/v1'.length)
+      : streamPath.startsWith('/')
+        ? streamPath
+        : `/${streamPath}`
+    const res = await fetch(`${getApiBase()}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+    if (!res.ok) throw new Error('Could not load recording')
+    return URL.createObjectURL(await res.blob())
+  },
   close: (id: number | string, comments: string, files: File[]) => {
     const form = new FormData()
     form.append('comments', comments)
