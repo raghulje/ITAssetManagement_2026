@@ -535,7 +535,7 @@ export function BatteryIssuesList() {
           onSearch={(v) => { writeListParams({ q: v, page: 0 }) }}
           rows={rows as unknown as Record<string, unknown>[]}
           exportName="battery-degradation-issues"
-          storageKey="battery_issues_columns_v5"
+          storageKey="battery_issues_columns_v6"
           highlightRows={cardFilterOn}
           onRefresh={load}
           page={page}
@@ -577,21 +577,10 @@ export function BatteryIssuesList() {
               render: (r) => yesNoLabel(r.other_issue_reported),
             },
             {
-              key: 'other_issue_types',
-              label: 'Issue type',
-              exportValue: (r) => otherTypeLabels(r as BatteryIssue).join(', '),
-              render: (r) => {
-                const labels = otherTypeLabels(r as BatteryIssue)
-                return labels.length ? labels.join(', ') : <span className="cell-muted">—</span>
-              },
-            },
-            {
               key: 'assigned_name',
-              label: 'Assigned',
-              exportValue: (r) => String(r.assigned_name || (isNoIssueClose(r) ? 'No Issues' : '')),
-              render: (r) => String(r.assigned_name || '') || (
-                <span className="cell-muted">{isNoIssueClose(r) ? 'No Issues' : '—'}</span>
-              ),
+              label: 'Technician',
+              exportValue: (r) => String(r.assigned_name || ''),
+              render: (r) => String(r.assigned_name || '') || <span className="cell-muted">—</span>,
             },
             {
               key: 'call_result',
