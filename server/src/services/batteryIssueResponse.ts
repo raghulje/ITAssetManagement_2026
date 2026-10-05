@@ -107,6 +107,20 @@ export function classifyOtherIssueTypes(text: string): OtherIssueTypeKey[] {
     add('software_os')
   }
   if (/\b(laptop|notebook|hardware|fan|overheat|hinge|motherboard|ram|port)\b/.test(t)) add('laptop_hardware')
+  if (/(வைஃபை|வைபை|இணையம்|நெட்வொர்க்)/.test(t)) add('network_wifi')
+  if (/(விபிஎன்)/.test(t)) add('vpn')
+  if (/(மின்னஞ்சல்|அவுட்லுக்)/.test(t)) add('email_outlook')
+  if (/(டீம்ஸ்|மீட்டிங்)/.test(t)) add('teams_meetings')
+  if (/(திரை|மானிட்டர்|டிஸ்ப்ளே)/.test(t)) add('display')
+  if (/(விசைப்பலகை|மவுஸ்|டச்பேட்)/.test(t)) add('keyboard_mouse')
+  if (/(சார்ஜர்|சார்ஜ் ஆகவில்லை)/.test(t)) add('charger_power')
+  if (/(கடவுச்சொல்|லாகின்|உள்நுழை)/.test(t)) add('login_password')
+  if (/(அச்சுப்பொறி|பிரிண்டர்|ஸ்கேனர்)/.test(t)) add('printer')
+  if (/(ஸ்பீக்கர்|மைக்|ஒலி|ஹெட்செட்)/.test(t)) add('audio')
+  if (/(கேமரா)/.test(t)) add('camera')
+  if (/(சேமிப்பகம்|ஹார்டு டிஸ்க்)/.test(t)) add('storage')
+  if (/(விண்டோஸ்|மென்பொருள்)/.test(t)) add('software_os')
+  if (/(லாப்டாப்|வன்பொருள்)/.test(t)) add('laptop_hardware')
   return found
 }
 
@@ -170,8 +184,8 @@ function classifyToken(value: string): BatteryIssueAnswer {
   const t = norm(value)
   if (!t) return 'unknown'
   if (botForwardsBatteryIssue(t)) return 'yes'
-  if (/^(no|false|n|no issue|no issues|not confirmed|not_confirmed)$/.test(t)) return 'no'
-  if (/^(yes|true|y|confirmed)$/.test(t)) return 'yes'
+  if (/^(no|false|n|no issue|no issues|not confirmed|not_confirmed|இல்லை)$/.test(t)) return 'no'
+  if (/^(yes|true|y|confirmed|ஆம்)$/.test(t)) return 'yes'
   if (t === 'complaint skipped') return 'no'
   if (/\bcomplaint forwarded\b/.test(t) || /\bhelpdesk followup\b/.test(t)) return 'yes'
   // Do not treat "thank you for confirming" / mixed summaries as no — a later
@@ -182,13 +196,17 @@ function classifyToken(value: string): BatteryIssueAnswer {
 
 function isUnsure(text: string) {
   return /\b(not sure|dont know|do not know|no idea|maybe|perhaps|unsure|what do you mean)\b/.test(text)
+    || /தெரியவில்லை|கொஞ்சம் யோசி/.test(text)
 }
 
 function isNoAnswer(text: string) {
   const t = norm(text)
   if (!t || isUnsure(t)) return false
-  if (/^(no|nope|nah|no thanks|no thank you|not really|not at all|nothing|none|negative|nahi|nahin|nahee|nahi ji|nahin ji|illa|ille|illai|kadu|ledu|leda|alla|venta|nai|naa|नहीं|नही|ना|नहीं जी|नही जी)$/.test(t)) return true
+  if (/^(no|nope|nah|no thanks|no thank you|not really|not at all|nothing|none|negative|nahi|nahin|nahee|nahi ji|nahin ji|illa|ille|illai|illainga|illaiya|kadu|ledu|leda|alla|venta|vendam|vendaam|venam|nai|naa|नहीं|नही|ना|नहीं जी|नही जी)$/.test(t)) return true
+  if (/^(இல்லை|இல்ல)(ங்க|யே|யா|யோ)?$/.test(t)) return true
+  if (/^(வேண்டாம்|வேணாம்|வேண்டா|வேணா)$/.test(t)) return true
   if (/^(no (issue|issues|problem|problems|drain|battery issue|battery drain)|all good|im fine|i am fine|its fine|it is fine|doing fine)$/.test(t)) return true
+  if (/^(பிரச்சனை இல்லை|சிக்கல் இல்லை|ஒன்றுமில்லை)$/.test(t)) return true
   if (/\bno (battery )?(drain|issue|problem)s?\b/.test(t)) return true
   if (/\bnot (experiencing|having|facing|seeing) (any )?(battery|issue|problem|drain|other)/.test(t)) return true
   if (/\bi (dont|do not|havent|have not) (have|had|noticed|seen)\b/.test(t)) return true
@@ -198,9 +216,12 @@ function isNoAnswer(text: string) {
 function isYesAnswer(text: string) {
   const t = norm(text)
   if (!t || isUnsure(t) || isNoAnswer(t)) return false
-  if (/^(yes|yeah|yep|yup|yea|correct|right|i am|i do|there is|there is one|haan|ha|haanji|haan ji|ho|aama|aam|avunu|haudu|hoi|bilkul)$/.test(t)) return true
-  if (/^(हाँ|हां|जी हाँ|जी हां|ஆம்|అవును|ಹೌದು|ഉണ്ട്|হ্যাঁ|होय|હા)$/.test(t)) return true
+  if (/^(yes|yeah|yep|yup|yea|correct|right|i am|i do|there is|there is one|haan|ha|haanji|haan ji|ho|aama|aam|aamaanga|avunu|haudu|hoi|bilkul|irukku|sari)$/.test(t)) return true
+  if (/^(हाँ|हां|जी हाँ|जी हां|ஆம்|ஆமா|ஆமாம்|ஆமாங்க|சரி|சரிங்க|இருக்கு|இருக்கிறது|இருக்கும்|உண்டு|అవును|ಹೌದು|ഉണ്ട്|হ্যাঁ|होय|હા)$/.test(t)) return true
+  if (/^(yes|yeah|yep|yup|yea|haan|aama|aam)(\s|$)/.test(t)) return true
+  if (/^(ஆம்|ஆமா|ஆமாம்|ஆமாங்க|சரி|சரிங்க)(\s|$)/.test(t)) return true
   if (/\b(draining|drains|dies fast|dies quickly|charge[sd]? (a lot|more|frequently)|battery (issue|problem|drain))\b/.test(t)) return true
+  if (/(சீக்கிரம் முடி|அடிக்கடி சார்ஜ்|பேட்டரி பிரச்சனை|பேட்டரி சிக்கல்)/.test(t)) return true
   return false
 }
 
@@ -214,6 +235,9 @@ function isLanguageQuestion(text: string) {
     || /\bkaunsi (bhasha|language)\b/.test(t)
     || /\bkis bhasha\b/.test(t)
     || /किस भाषा/.test(t)
+    || /எந்த மொழி/.test(t)
+    || /மொழியில் தொடர/.test(t)
+    || /விருப்ப(?:மான)? மொழி/.test(t)
 }
 
 function isOtherIssueQuestion(text: string) {
@@ -230,12 +254,20 @@ function isOtherIssueQuestion(text: string) {
     || /समस्या के अलावा/.test(t)
     || /किसी और/.test(t)
     || /IT से जुड़ी/.test(t)
+    || /வேறு ஏதேனும்/.test(t)
+    || /வேறு எதாவது/.test(t)
+    || /வேறு (பிரச்சனை|சிக்கல்)/.test(t)
+    || /பிரச்சனையைத் தவிர/.test(t)
+    || /பிரச்சனை தவிர/.test(t)
+    || /பேட்டரி தவிர/.test(t)
+    || /(ஐடி|it) தொடர்பான/.test(t)
 }
 
 function isBatteryQuestion(text: string) {
   const t = norm(text)
   if (isOtherIssueQuestion(text)) return false
   if (/बैटरी की जानकारी/.test(t) && !/(खत्म|चार्ज|drain)/.test(t)) return false
+  if (/பேட்டரி (தகவல்|விவரம்)/.test(t) && !/(சீக்கிரம்|சார்ஜ்|முடிந்து|வேக|வழக்கம்|drain)/.test(t)) return false
   return /\bbattery drain\b/.test(t)
     || /\bbattery draining\b/.test(t)
     || /\bdraining quickly\b/.test(t)
@@ -247,11 +279,16 @@ function isBatteryQuestion(text: string) {
     || /बार बार चार्ज/.test(t)
     || /सामान्य से जल्दी/.test(t)
     || (/बैटरी/.test(t) && /(खत्म|चार्ज|drain|jaldi)/.test(t))
+    || /சீக்கிரம் முடி/.test(t)
+    || /அடிக்கடி சார்ஜ்/.test(t)
+    || /வழக்கத்தை விட/.test(t)
+    || (/பேட்டரி/.test(t) && /(சீக்கிரம்|சார்ஜ்|முடிந்து|வேக|வழக்கம்|drain)/.test(t))
 }
 
 function isContactDetailsQuestion(text: string) {
   const t = norm(text)
   return /\b(company name and email|email for our records|share your (company|email))\b/.test(t)
+    || /(நிறுவனம்|இமெயில்|மின்னஞ்சல்).*(பதிவு|சொல்ல)/.test(t)
 }
 
 function botForwardsBatteryIssue(text: string) {
@@ -260,7 +297,8 @@ function botForwardsBatteryIssue(text: string) {
     || /\bbattery (drain )?issue (has been |will be )?(forwarded|raised|logged|assigned)\b/.test(t)
     || (/\braise (a |the )?complaint\b/.test(t) && /\bbattery\b/.test(t))
     || /\bbattery issue (ko )?(forward|bhej)\b/.test(t)
-    || /बैटरी (ड्रेन )?इश्यू/.test(t) && /(forward|भेज|शिकायत)/.test(t)
+    || (/बैटरी (ड्रेन )?इश्यू/.test(t) && /(forward|भेज|शिकायत)/.test(t))
+    || (/(பேட்டரி (பிரச்சனை|சிக்கல்))/.test(t) && /(முன்னனுப்பு|புகார்|உதவிக்குழு)/.test(t))
 }
 
 function isUserSpeaker(value: string) {
@@ -278,7 +316,7 @@ function detectLanguage(text: string) {
   const map: Array<[RegExp, string]> = [
     [/\benglish\b|अंग्रेजी/, 'English'],
     [/\bhindi\b|हिंदी|हिन्दी/, 'Hindi'],
-    [/\btamil\b|தமிழ்/, 'Tamil'],
+    [/\btamil\b|தமிழ்|தமிழில்|தமிழ்ல|thamizh/, 'Tamil'],
     [/\btelugu\b|తెలుగు/, 'Telugu'],
     [/\bkannada\b|ಕನ್ನಡ/, 'Kannada'],
     [/\bmalayalam\b|മലയാളം/, 'Malayalam'],
@@ -309,7 +347,10 @@ function firstAnswer(texts: string[]): BatteryIssueAnswer {
 }
 
 function leftoverAfterYes(text: string) {
-  const cleaned = String(text || '').replace(/^(yes|yeah|yep|yup|yea|haan|ha|aama|avunu)\b[,.\s-]*/i, '').trim()
+  const cleaned = String(text || '')
+    .replace(/^(yes|yeah|yep|yup|yea|haan|ha|aama|aam|avunu)[,.\s-]*/i, '')
+    .replace(/^(ஆம்|ஆமா|ஆமாம்|ஆமாங்க|சரி|சரிங்க)[,.\s-]*/u, '')
+    .trim()
   return cleaned && cleaned !== text.trim() ? cleaned : ''
 }
 
@@ -439,6 +480,9 @@ function botConfirmsNoIssues(text: string) {
   if (/\bno further action\b/.test(t) && /\bbattery\b/.test(t)) return true
   if (/कोई बात नहीं/.test(t) && /धन्यवाद/.test(t) && !/बाद में/.test(t)) return true
   if (/देखने के लिए कोई/.test(t) && /नहीं/.test(t)) return true
+  if (/பரவாயில்லை/.test(t) && /நன்றி/.test(t)) return true
+  if (/மேலும் நடவடிக்கை/.test(t) && /(தேவையில்லை|இல்லை)/.test(t)) return true
+  if (/பிரச்சனை இல்லை/.test(t) && /(பேட்டரி|ஐடி|it)/.test(t)) return true
   return false
 }
 
