@@ -81,6 +81,26 @@ export function dialDigits(phone: string): string {
   return digits
 }
 
+let outboundBlockReason = ''
+
+export function isElloCreditError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || '')
+  return /insufficient credit|payment required|\b402\b|subscription (expired|over|ended|inactive)|quota|out of credit|no credit|plan expired|credits?\s+(exhausted|over|depleted)/i.test(msg)
+}
+
+export function blockElloOutbound(reason: string) {
+  outboundBlockReason = String(reason || 'Ello.AI credits or subscription ran out').trim()
+  console.warn('[ello] outbound calls blocked:', outboundBlockReason)
+}
+
+export function clearElloOutboundBlock() {
+  outboundBlockReason = ''
+}
+
+export function elloOutboundBlockedReason() {
+  return outboundBlockReason
+}
+
 async function elloFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const cfg = await elloConfig()
   const res = await fetch(`${cfg.baseUrl}${path}`, {
@@ -101,7 +121,10 @@ async function elloFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const msg = json.message || `Ello.AI HTTP ${res.status}`
-    if (res.status === 402) throw new Error('Ello.AI: insufficient credits to start the call')
+    const combined = `${msg} ${text}`.slice(0, 400)
+    if (res.status === 402 || isElloCreditError(combined)) {
+      throw new Error('Ello.AI: insufficient credits to start the call')
+    }
     if (res.status === 401) throw new Error('Ello.AI: API key missing or invalid')
     throw new Error(msg)
   }
@@ -114,26 +137,34 @@ export async function elloCreateCall(input: {
   email?: string
   company?: string
 }): Promise<ElloCreateCallResult & { agent_id: string }> {
+  const blocked = elloOutboundBlockedReason()
+  if (blocked) throw new Error(blocked)
   const cfg = await elloConfig()
   const toNumber = dialDigits(input.phone)
   if (!toNumber) throw new Error('A valid phone number is required to start the call')
-  const data = await elloFetch<ElloCreateCallResult>(`/api/agents/${cfg.agentId}/calls`, {
-    method: 'POST',
-    body: JSON.stringify({
-      message: cfg.greeting,
-      agent_type: 'telephonic',
-      from_number: cfg.fromNumber,
-      to_number: toNumber,
-      assistant_id: cfg.agentId,
-      call_type: 'outbound',
-      name: input.name,
-      context_data: {
-        customer_name: input.name,
-        company_name: input.company || '',
-        user_email: input.email || '',
-      },
-    }),
-  })
+  let data: ElloCreateCallResult
+  try {
+    data = await elloFetch<ElloCreateCallResult>(`/api/agents/${cfg.agentId}/calls`, {
+      method: 'POST',
+      body: JSON.stringify({
+        message: cfg.greeting,
+        agent_type: 'telephonic',
+        from_number: cfg.fromNumber,
+        to_number: toNumber,
+        assistant_id: cfg.agentId,
+        call_type: 'outbound',
+        name: input.name,
+        context_data: {
+          customer_name: input.name,
+          company_name: input.company || '',
+          user_email: input.email || '',
+        },
+      }),
+    })
+  } catch (e) {
+    if (isElloCreditError(e)) blockElloOutbound(e instanceof Error ? e.message : 'Ello.AI: insufficient credits to start the call')
+    throw e
+  }
   const conversation_id = String(data?.conversation_id || '').trim()
   if (!conversation_id) throw new Error('Ello.AI did not return a conversation_id')
   return {
