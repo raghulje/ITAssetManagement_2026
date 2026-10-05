@@ -14,6 +14,7 @@ export default function BatterySettings() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [migrateBusy, setMigrateBusy] = useState(false)
+  const [recordingsBusy, setRecordingsBusy] = useState(false)
   const [error, setError] = useState('')
   const [okMsg, setOkMsg] = useState('')
   const [agentId, setAgentId] = useState('')
@@ -162,6 +163,37 @@ export default function BatterySettings() {
           onClick={runMigration}
         >
           {migrateBusy ? 'Running…' : 'Run Battery Degradation migration'}
+        </button>
+        <p className="help-block" style={{ marginTop: 16 }}>
+          Use this after deploying the call-recording / English-transcript update. It only applies
+          migration <code>054</code> (local recordings) and <code>055</code> (English transcript cache).
+          It does not import contacts again.
+        </p>
+        <button
+          type="button"
+          className="btn btn-default"
+          disabled={recordingsBusy || !canEdit}
+          onClick={() => {
+            if (!window.confirm(
+              'Apply call recordings migration 054 on this server?\n\nThis adds local recording storage and English transcript cache. It does not import contacts.',
+            )) return
+            setRecordingsBusy(true)
+            setError('')
+            setOkMsg('')
+            api<{ messages?: string[] }>('/settings/run-battery-recordings-migration', { method: 'POST' })
+              .then((res) => {
+                const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'Call recordings migration applied'
+                setOkMsg(msg)
+                toast.success(msg)
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setRecordingsBusy(false))
+          }}
+        >
+          {recordingsBusy ? 'Applying…' : 'Apply call recordings migration (054)'}
         </button>
       </Box>
     </AppLayout>

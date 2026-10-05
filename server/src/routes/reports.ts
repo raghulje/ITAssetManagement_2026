@@ -976,6 +976,34 @@ settingsRouter.put('/battery', async (req, res) => {
   return okMessage(res, 'Battery Degradation settings saved', saved)
 })
 
+settingsRouter.post('/run-battery-recordings-migration', async (req, res) => {
+  try {
+    const { runNamedSchemaMigrations } = await import('../services/schemaMigrate.js')
+    const result = await runNamedSchemaMigrations([
+      '054_battery_call_recordings',
+      '055_battery_transcript_en',
+    ])
+    await logAction({
+      userId: req.user?.id,
+      actionType: 'run_battery_recordings_migration',
+      itemType: 'settings',
+      itemId: 1,
+      note: `Battery recordings/transcript migrations applied ${result.applied.length}; skipped ${result.skipped.length}`,
+      meta: result,
+    })
+    const applied = result.applied.length ? result.applied.join(', ') : 'none'
+    return okMessage(
+      res,
+      result.applied.length
+        ? `Call recordings migration applied: ${applied}.`
+        : 'Call recordings migration 054 is already applied on this server.',
+      result,
+    )
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Call recordings migration failed', 500)
+  }
+})
+
 settingsRouter.post('/run-battery-migration', async (req, res) => {
   try {
     const { runBatteryDegradationSetup } = await import('../services/batterySetup.js')

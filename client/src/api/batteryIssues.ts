@@ -37,6 +37,7 @@ export type BatteryCall = {
   recording_url: string
   recording_stream: string
   transcript: BatteryTranscriptLine[]
+  transcript_en: BatteryTranscriptLine[]
   duration: string
   connected_at: string
   ended_at: string
@@ -179,6 +180,8 @@ export const batteryIssuesApi = {
     api<{ status: string; messages: string[]; payload: BatterySyncAll }>('/battery-issues/sync-all', {
       method: 'POST',
     }),
+  translateCall: (issueId: number | string, callId: number | string) =>
+    api<{ transcript_en: BatteryTranscriptLine[] }>(`/battery-issues/${issueId}/calls/${callId}/english`),
   recordingBlobUrl: async (streamPath: string) => {
     const token = localStorage.getItem('refex_token')
     const path = streamPath.startsWith('/api/v1/')

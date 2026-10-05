@@ -752,6 +752,7 @@ function visibleConversations(issue: BatteryIssue): BatteryCall[] {
       recording_url: issue.recording_url || '',
       recording_stream: issue.recording_stream || '',
       transcript: issue.transcript || [],
+      transcript_en: [],
       duration: '',
       connected_at: '',
       ended_at: '',
@@ -832,24 +833,75 @@ function ConversationCard({
         streamUrl={call.recording_stream || (Number(call.sequence || 1) === latestSeq ? issue.recording_stream : '')}
         remoteUrl={call.recording_url}
       />
-      <ConversationTranscript call={call} view={view} />
+      <ConversationTranscript issueId={issue.id} call={call} view={view} />
     </section>
   )
 }
 
-function ConversationTranscript({ call, view }: { call: BatteryCall; view: 'original' | 'english' }) {
+function ConversationTranscript({
+  issueId,
+  call,
+  view,
+}: {
+  issueId: number
+  call: BatteryCall
+  view: 'original' | 'english'
+}) {
   const original = call.transcript || []
-  const english = useMemo(() => transcriptInEnglish(call.transcript || []), [call.transcript])
-  const lines = view === 'english' ? english : original
+  const cached = call.transcript_en || []
+  const [english, setEnglish] = useState<BatteryTranscriptLine[]>(cached)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const fallback = useMemo(() => transcriptInEnglish(original), [original])
+  const fetchedKey = useRef('')
+
+  useEffect(() => {
+    if (view !== 'english' || !original.length || !call.id) return
+    const key = `${call.id}:${original.map((line) => line.text).join('\n')}`
+    const alreadyEnglish = english.length === original.length
+      && english.every((line) => !/[\u0900-\u097F\u0B80-\u0BFF\u0C00-\u0C7F]/.test(line.text || ''))
+    if (alreadyEnglish && english.length) {
+      fetchedKey.current = key
+      return
+    }
+    if (fetchedKey.current === key) return
+    fetchedKey.current = key
+    let cancelled = false
+    setLoading(true)
+    setError('')
+    void batteryIssuesApi.translateCall(issueId, call.id)
+      .then((res) => {
+        if (!cancelled) setEnglish(res.transcript_en || [])
+      })
+      .catch((e: Error) => {
+        if (!cancelled) {
+          setEnglish(fallback)
+          setError(e.message || 'Could not translate this conversation')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [view, issueId, call.id, original, english, fallback])
+
+  const lines = view === 'english' ? (english.length ? english : fallback) : original
 
   return (
     <>
       <div className="bdi-recording-label">Conversation transcript</div>
       {view === 'english' ? (
-        <p className="bdi-muted">English view for the helpdesk. Hindi and Tamil answers are shown as Yes / No / the spoken language.</p>
+        <p className="bdi-muted">
+          {loading
+            ? 'Translating Hindi, Tamil, and Telugu into English…'
+            : 'English view for the helpdesk. Hindi, Tamil, and Telugu lines are machine-translated.'}
+        </p>
       ) : null}
+      {view === 'english' && error ? <p className="bdi-muted">{error}</p> : null}
       <div className="bdi-chat">
-        {lines.length === 0 ? (
+        {loading && view === 'english' && !english.length ? (
+          <p className="bdi-muted">Translating…</p>
+        ) : lines.length === 0 ? (
           <p className="bdi-muted">No transcript captured yet.</p>
         ) : (
           lines.map((line, i) => (

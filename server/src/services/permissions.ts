@@ -317,7 +317,7 @@ export function moduleGate(module: ModuleKey) {
     } else if (req.method === 'POST') {
       if (/\/(checkout|checkin|replace|checkinbytag)\b/i.test(path) || /\/(checkout|checkin|replace)\b/i.test(req.path)) {
         action = 'checkout'
-      } else if (/\/(complete|audit|call|sync-call|sync-all|close|run-migrations|run-battery-migration|seed-admin-spaces|migrate-asset-tags|regenerate-asset-tags|reset-qr)\b/i.test(req.path)) {
+      } else if (/\/(complete|audit|call|sync-call|sync-all|close|run-migrations|run-battery-migration|run-battery-recordings-migration|seed-admin-spaces|migrate-asset-tags|regenerate-asset-tags|reset-qr)\b/i.test(req.path)) {
         action = 'edit'
       } else if (/\/labels\b/i.test(path) || /\/labels\b/i.test(req.baseUrl || '')) {
         // Print label is not "create asset" — allow with view or edit
