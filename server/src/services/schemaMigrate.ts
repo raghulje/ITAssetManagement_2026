@@ -121,3 +121,61 @@ export async function runPendingSchemaMigrations(): Promise<SchemaMigrateResult>
     await root.end()
   }
 }
+
+/** Apply specific numbered SQL files (already-applied versions are skipped). */
+export async function runNamedSchemaMigrations(versions: string[]): Promise<SchemaMigrateResult> {
+  const wanted = new Set(versions.map((v) => v.replace(/\.sql$/, '').trim()).filter(Boolean))
+  const host = process.env.DB_HOST || 'localhost'
+  const port = Number(process.env.DB_PORT || 3306)
+  const user = process.env.DB_USER || 'root'
+  const password = process.env.DB_PASSWORD || ''
+  const database = process.env.DB_NAME || 'ITAssetManagement_2026'
+
+  const root = await mysql.createConnection({
+    host,
+    port,
+    user,
+    password,
+    multipleStatements: true,
+    charset: 'utf8mb4',
+  })
+
+  try {
+    await root.changeUser({ database })
+    const dir = mysqlMigrationsDir()
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+    const applied: string[] = []
+    const skipped: string[] = []
+
+    for (const file of files) {
+      const versionName = file.replace(/\.sql$/, '')
+      if (!wanted.has(versionName) && !wanted.has(file)) continue
+      const [rows] = await root.query<mysql.RowDataPacket[]>(
+        `SELECT id FROM schema_migrations WHERE version = ? LIMIT 1`,
+        [versionName],
+      ).catch(() => [[] as mysql.RowDataPacket[]])
+      if (rows.length) {
+        skipped.push(versionName)
+        continue
+      }
+      let sql = fs.readFileSync(path.join(dir, file), 'utf8')
+        .replace(/CREATE DATABASE[\s\S]*?;/i, '')
+        .replace(/USE\s+`?[\w]+`?\s*;/gi, '')
+      await root.query(sql)
+      await root.query(
+        `INSERT IGNORE INTO schema_migrations (version) VALUES (?)`,
+        [versionName],
+      ).catch(() => undefined)
+      applied.push(versionName)
+    }
+
+    const [tables] = await root.query<mysql.RowDataPacket[]>(
+      `SELECT TABLE_NAME as name FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME`,
+      [database],
+    )
+    return { applied, skipped, table_count: tables.length }
+  } finally {
+    await root.end()
+  }
+}

@@ -700,6 +700,37 @@ export function SettingsGeneral() {
         >
           {schemaMigrateBusy ? 'Running…' : 'Run Battery Degradation migration'}
         </button>
+        <button
+          type="button"
+          className="btn btn-default"
+          style={{ marginLeft: 8 }}
+          disabled={schemaMigrateBusy || !canEdit}
+          onClick={() => {
+            if (!window.confirm(
+              'Apply call recordings migration 054 on this server?\n\nThis adds local recording storage and English transcript cache. It does not import contacts.',
+            )) return
+            setSchemaMigrateBusy(true)
+            setError('')
+            setOkMsg('')
+            api<{ messages?: string[] }>('/settings/run-battery-recordings-migration', { method: 'POST' })
+              .then((res) => {
+                const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'Call recordings migration applied'
+                setOkMsg(msg)
+                toast.success(msg)
+                return api<{ pending: string[]; applied: string[] }>('/settings/migrations')
+              })
+              .then((s) => {
+                if (s) setMigStatus({ pending: s.pending || [], applied: s.applied || [] })
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setSchemaMigrateBusy(false))
+          }}
+        >
+          {schemaMigrateBusy ? 'Applying…' : 'Apply call recordings migration (054)'}
+        </button>
         <p className="help-block" style={{ marginTop: 12, marginBottom: 0 }}>
           Agent id and notify email: <a href="/settings/battery">Settings → Battery Degradation</a>.
         </p>

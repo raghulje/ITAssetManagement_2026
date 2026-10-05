@@ -25,6 +25,7 @@ import {
 import { applyAttendedCallOutcome, isNoIssueClose, userDisplayName } from '../services/batteryTechnicianAssign.js'
 import { isTruthyPerm } from '../services/permissions.js'
 import { ensureLocalCallRecording } from '../services/batteryRecordings.js'
+import { translateTranscriptToEnglish } from '../services/batteryTranscriptEnglish.js'
 
 export const batteryIssuesRouter = Router()
 
@@ -86,6 +87,7 @@ function transformCall(row: Record<string, unknown>) {
       ? `/battery-issues/${Number(row.issue_id)}/calls/${Number(row.id)}/recording`
       : '',
     transcript: parseJson<TranscriptLine[]>(row.transcript, []),
+    transcript_en: parseJson<TranscriptLine[]>(row.transcript_en, []),
     duration: row.duration ? String(row.duration) : '',
     connected_at: row.connected_at ? String(row.connected_at) : '',
     ended_at: row.ended_at ? String(row.ended_at) : '',
@@ -937,6 +939,38 @@ batteryIssuesRouter.get('/:id/recording', async (req, res) => {
   res.setHeader('Content-Type', row.recording_mime || 'audio/mpeg')
   res.setHeader('Content-Disposition', `inline; filename="${row.recording_original_name || 'recording'}"`)
   return res.sendFile(abs)
+})
+
+batteryIssuesRouter.get('/:id/calls/:callId/english', async (req, res) => {
+  const issueId = Number(req.params.id)
+  const callId = Number(req.params.callId)
+  const issue = await loadIssue(issueId)
+  if (!issue) return fail(res, 'Issue not found', 404)
+  const call = await get<Record<string, unknown>>(
+    `SELECT * FROM battery_degradation_calls WHERE id = ? AND issue_id = ?`,
+    [callId, issueId],
+  )
+  if (!call) return fail(res, 'Conversation not found', 404)
+  const original = parseJson<TranscriptLine[]>(call.transcript, [])
+  const cached = parseJson<TranscriptLine[]>(call.transcript_en, [])
+  const cacheOk = cached.length === original.length
+    && cached.length > 0
+    && cached.every((line) => !/[\u0900-\u097F\u0B80-\u0BFF\u0C00-\u0C7F]/.test(String(line.text || '')))
+  if (cacheOk) return okItem(res, { transcript_en: cached })
+  try {
+    const english = await translateTranscriptToEnglish(original)
+    try {
+      await run(
+        `UPDATE battery_degradation_calls SET transcript_en = ?, updated_at = ? WHERE id = ?`,
+        [JSON.stringify(english), now(), callId],
+      )
+    } catch {
+      // column arrives with migration 055
+    }
+    return okItem(res, { transcript_en: english })
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Could not translate this conversation', 502)
+  }
 })
 
 batteryIssuesRouter.get('/:id/calls/:callId/recording', async (req, res) => {
