@@ -24,6 +24,7 @@ import {
 } from '../services/batteryIssueResponse.js'
 import { applyAttendedCallOutcome, isNoIssueClose, userDisplayName } from '../services/batteryTechnicianAssign.js'
 import { isTruthyPerm } from '../services/permissions.js'
+import { ensureLocalCallRecording } from '../services/batteryRecordings.js'
 
 export const batteryIssuesRouter = Router()
 
@@ -81,6 +82,9 @@ function transformCall(row: Record<string, unknown>) {
     agent_id: row.ello_agent_id ? String(row.ello_agent_id) : '',
     bot_summary: row.bot_summary ? String(row.bot_summary) : '',
     recording_url: row.recording_url ? String(row.recording_url) : '',
+    recording_stream: Number(row.issue_id) && Number(row.id) && row.recording_path
+      ? `/battery-issues/${Number(row.issue_id)}/calls/${Number(row.id)}/recording`
+      : '',
     transcript: parseJson<TranscriptLine[]>(row.transcript, []),
     duration: row.duration ? String(row.duration) : '',
     connected_at: row.connected_at ? String(row.connected_at) : '',
@@ -107,8 +111,9 @@ function transform(row: Record<string, unknown>, conversations: IssueCall[] = []
     bot_summary: latest ? latest.bot_summary : (row.bot_summary ? String(row.bot_summary) : ''),
     recording_url: latest ? latest.recording_url : (row.recording_url ? String(row.recording_url) : ''),
     recording_original_name: row.recording_original_name ? String(row.recording_original_name) : '',
-    has_recording: Boolean((latest && latest.recording_url) || row.recording_path || row.recording_url),
-    recording_stream: row.recording_path ? `/api/v1/battery-issues/${id}/recording` : '',
+    has_recording: Boolean((latest && (latest.recording_url || latest.recording_stream)) || row.recording_path || row.recording_url),
+    recording_stream: latest?.recording_stream
+      || (row.recording_path ? `/battery-issues/${id}/recording` : ''),
     transcript: latest ? latest.transcript : parseJson<TranscriptLine[]>(row.transcript, []),
     conversations,
     call_count: count,
@@ -445,6 +450,11 @@ batteryIssuesRouter.get('/', async (req, res) => {
     where.push(`battery_issue_confirmed = 'no' AND other_issue_reported = 'no'`)
   } else if (report === 'both') {
     where.push(`battery_issue_confirmed = 'yes' AND other_issue_reported = 'yes'`)
+  } else if (report === 'answered_both') {
+    where.push(`battery_issue_confirmed IN ('yes', 'no') AND other_issue_reported IN ('yes', 'no')`)
+  } else if (report === 'incomplete' || report === 'not_answered') {
+    where.push(`EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed')`)
+    where.push(`(IFNULL(battery_issue_confirmed, '') NOT IN ('yes', 'no') OR IFNULL(other_issue_reported, '') NOT IN ('yes', 'no'))`)
   }
   if (otherType) {
     where.push(`other_issue_reported = 'yes' AND CAST(other_issue_types AS CHAR) LIKE ?`)
@@ -507,7 +517,7 @@ batteryIssuesRouter.get('/stats', async (_req, res) => {
   const zeros = {
     total: 0, with_phone: 0, yet_to_call: 0, called: 0, attended: 0,
     rejected: 0, ignored: 0, calling: 0, battery_yes: 0, battery_no: 0,
-    other_only: 0, no_issues: 0, both_issues: 0,
+    other_only: 0, no_issues: 0, both_issues: 0, answered_both: 0, incomplete: 0,
   }
   let row: Record<string, number> | undefined
   try {
@@ -535,7 +545,15 @@ batteryIssuesRouter.get('/stats', async (_req, res) => {
       SUM(CASE WHEN battery_issue_confirmed = 'no' THEN 1 ELSE 0 END) AS battery_no,
       SUM(CASE WHEN IFNULL(battery_issue_confirmed, '') != 'yes' AND other_issue_reported = 'yes' THEN 1 ELSE 0 END) AS other_only,
       SUM(CASE WHEN battery_issue_confirmed = 'no' AND other_issue_reported = 'no' THEN 1 ELSE 0 END) AS no_issues,
-      SUM(CASE WHEN battery_issue_confirmed = 'yes' AND other_issue_reported = 'yes' THEN 1 ELSE 0 END) AS both_issues
+      SUM(CASE WHEN battery_issue_confirmed = 'yes' AND other_issue_reported = 'yes' THEN 1 ELSE 0 END) AS both_issues,
+      SUM(CASE WHEN battery_issue_confirmed IN ('yes', 'no') AND other_issue_reported IN ('yes', 'no') THEN 1 ELSE 0 END) AS answered_both,
+      SUM(CASE WHEN EXISTS (
+        SELECT 1 FROM battery_degradation_calls c
+        WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed'
+      ) AND (
+        IFNULL(battery_issue_confirmed, '') NOT IN ('yes', 'no')
+        OR IFNULL(other_issue_reported, '') NOT IN ('yes', 'no')
+      ) THEN 1 ELSE 0 END) AS incomplete
     FROM battery_degradation_issues
     WHERE deleted_at IS NULL
   `)
@@ -578,6 +596,8 @@ batteryIssuesRouter.get('/stats', async (_req, res) => {
     other_only: Number(row?.other_only || 0),
     no_issues: Number(row?.no_issues || 0),
     both_issues: Number(row?.both_issues || zeros.both_issues),
+    answered_both: Number(row?.answered_both || zeros.answered_both),
+    incomplete: Number(row?.incomplete || zeros.incomplete),
     other_type_counts: await loadOtherTypeCounts(),
   })
 })
@@ -657,6 +677,255 @@ batteryIssuesRouter.post('/call-queue/stop', async (_req, res) => {
   }
 })
 
+type SyncAllStatus = {
+  running: boolean
+  total: number
+  done: number
+  failed: number
+  recordings: number
+  message: string
+}
+
+const syncAllJob: SyncAllStatus = {
+  running: false,
+  total: 0,
+  done: 0,
+  failed: 0,
+  recordings: 0,
+  message: '',
+}
+
+function getSyncAllStatus(): SyncAllStatus {
+  return { ...syncAllJob }
+}
+
+async function persistCallRecordingFields(
+  callId: number,
+  fields: { recording_path: string; recording_mime: string; recording_original_name: string },
+) {
+  try {
+    await run(
+      `UPDATE battery_degradation_calls
+       SET recording_path = ?, recording_mime = ?, recording_original_name = ?, updated_at = ?
+       WHERE id = ?`,
+      [fields.recording_path, fields.recording_mime, fields.recording_original_name, now(), callId],
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function syncIssueConversations(id: number) {
+  const row = await loadIssue(id)
+  if (!row) throw new Error('Issue not found')
+  const calls = await all<Record<string, unknown>>(
+    `SELECT * FROM battery_degradation_calls WHERE issue_id = ? ORDER BY sequence ASC, id ASC`,
+    [id],
+  )
+  if (!calls.length) throw new Error('No Ello.AI conversation on this issue yet')
+  let latestMeta: Record<string, unknown> | null = null
+  let recordings = 0
+  for (const call of calls) {
+    const conversationId = String(call.ello_conversation_id || '').trim()
+    if (!conversationId) continue
+    let conv: ElloConversation | null = null
+    try {
+      conv = await elloGetConversation(conversationId)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      if (!/not found/i.test(msg)) throw e
+    }
+    let transcript = parseJson<TranscriptLine[]>(call.transcript, [])
+    try {
+      const fetched = mapElloTranscript(await elloGetTranscripts(conversationId))
+      if (fetched.length) transcript = fetched
+    } catch {
+      // transcripts often arrive after the call ends
+    }
+    if (conv?.metadata && typeof conv.metadata === 'object') latestMeta = conv.metadata
+    const applied = conv ? applyConversationToCall(call, conv, transcript.length) : null
+    const ts = applied?.ts || now()
+    const nextStatus = String(applied?.ello_call_status ?? call.ello_call_status ?? '')
+    const nextEndedAt = String(applied?.ended_at ?? call.ended_at ?? '') || null
+    const nextSummary = String(applied?.bot_summary ?? call.bot_summary ?? '')
+    const nextDuration = String(applied?.duration ?? call.duration ?? '')
+    const nextRecordingUrl = String(applied?.recording_url ?? call.recording_url ?? '') || null
+    const nextResult = applied?.call_result || String(call.call_result || '') || classifyCallResult({
+      elloStatus: nextStatus,
+      endedAt: nextEndedAt,
+      connectedAt: String(applied?.connected_at ?? call.connected_at ?? '') || null,
+      duration: nextDuration,
+      disconnectReason: applied?.disconnect_reason || String(call.disconnect_reason || '') || null,
+      transcriptCount: transcript.length,
+    })
+    await run(`
+      UPDATE battery_degradation_calls
+      SET bot_summary = ?, recording_url = ?, transcript = ?, ello_call_status = ?, call_result = ?,
+          disconnect_reason = ?, duration = ?, connected_at = ?, ended_at = ?, updated_at = ?
+      WHERE id = ?
+    `, [
+      applied?.bot_summary ?? call.bot_summary ?? null,
+      nextRecordingUrl,
+      JSON.stringify(transcript),
+      applied?.ello_call_status ?? call.ello_call_status ?? null,
+      nextResult,
+      applied?.disconnect_reason ?? call.disconnect_reason ?? null,
+      applied?.duration ?? call.duration ?? null,
+      applied?.connected_at ?? call.connected_at ?? null,
+      applied?.ended_at ?? call.ended_at ?? null,
+      ts,
+      Number(call.id),
+    ])
+    try {
+      const stored = await ensureLocalCallRecording({
+        issueId: id,
+        callId: Number(call.id),
+        conversationId,
+        recordingUrl: nextRecordingUrl,
+        existingPath: call.recording_path ? String(call.recording_path) : null,
+      })
+      if (stored && await persistCallRecordingFields(Number(call.id), {
+        recording_path: stored.path,
+        recording_mime: stored.mime,
+        recording_original_name: stored.original_name,
+      })) {
+        recordings += 1
+        const issuePath = String(row.recording_path || '')
+        if (!issuePath || issuePath.includes('battery_recordings')) {
+          try {
+            await run(
+              `UPDATE battery_degradation_issues
+               SET recording_path = ?, recording_mime = ?, recording_original_name = ?, updated_at = ?
+               WHERE id = ?`,
+              [stored.path, stored.mime, stored.original_name, ts, id],
+            )
+            row.recording_path = stored.path
+          } catch {
+            // issue-level recording columns already exist from 044; ignore if a host is mid-migration
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[battery-recording] download failed', id, e instanceof Error ? e.message : e)
+    }
+    const alreadyMailed = Boolean(call.email_sent_at)
+    if (!alreadyMailed && nextResult === 'completed') {
+      try {
+        const mailed = await sendBatteryCallEndedEmail({
+          issueId: id,
+          sequence: Number(call.sequence || 1),
+          name: String(row.name || ''),
+          phone: String(row.phone || ''),
+          email: String(row.email || ''),
+          company: String(row.company || ''),
+          botSummary: nextSummary,
+          transcript,
+          callStatus: nextStatus || 'ended',
+          duration: nextDuration,
+          at: nextEndedAt || String(applied?.connected_at || call.connected_at || ts),
+        })
+        if (mailed.sent) {
+          await run(`UPDATE battery_degradation_calls SET email_sent_at = ? WHERE id = ?`, [ts, Number(call.id)])
+        }
+      } catch (e) {
+        console.warn('[battery-call-email] send failed', e instanceof Error ? e.message : e)
+      }
+    }
+  }
+  const conversations = await loadCalls(id)
+  const latest = conversations[conversations.length - 1]
+  await maybeAssignTechnician(id, latestMeta)
+  const assignedRow = await loadIssue(id)
+  if (assignedRow) await hydrateAssignees([assignedRow])
+  const tracker = applyWorkflowTracker(assignedRow || row, conversations)
+  const ts = now()
+  await run(`
+    UPDATE battery_degradation_issues
+    SET bot_summary = ?, recording_url = ?, transcript = ?, tracker = ?,
+        ello_call_status = ?, ello_conversation_id = ?, ello_siptrunk_id = ?, call_result = ?, updated_at = ?
+    WHERE id = ?
+  `, [
+    latest?.bot_summary || row.bot_summary || null,
+    latest?.recording_url || row.recording_url || null,
+    JSON.stringify(latest?.transcript || parseJson(row.transcript, [])),
+    JSON.stringify(tracker),
+    latest?.call_status || row.ello_call_status || null,
+    latest?.conversation_id || row.ello_conversation_id || null,
+    latest?.siptrunk_id || row.ello_siptrunk_id || null,
+    latest?.call_result || row.call_result || null,
+    ts,
+    id,
+  ])
+  return { payload: await loadIssuePayload(id), recordings }
+}
+
+async function runSyncAllConversations(issueIds: number[]) {
+  syncAllJob.running = true
+  syncAllJob.total = issueIds.length
+  syncAllJob.done = 0
+  syncAllJob.failed = 0
+  syncAllJob.recordings = 0
+  syncAllJob.message = issueIds.length
+    ? `Refreshing ${issueIds.length} conversation${issueIds.length === 1 ? '' : 's'}…`
+    : 'No conversations to refresh'
+  try {
+    for (const issueId of issueIds) {
+      try {
+        const result = await syncIssueConversations(issueId)
+        syncAllJob.recordings += result.recordings
+      } catch (e) {
+        syncAllJob.failed += 1
+        console.warn('[battery-sync-all]', issueId, e instanceof Error ? e.message : e)
+      }
+      syncAllJob.done += 1
+      syncAllJob.message = `Refreshing conversations (${syncAllJob.done} / ${syncAllJob.total})`
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    }
+    syncAllJob.message = syncAllJob.failed
+      ? `Refreshed ${syncAllJob.done - syncAllJob.failed} of ${syncAllJob.total} conversations`
+      : `Refreshed ${syncAllJob.done} conversation${syncAllJob.done === 1 ? '' : 's'}`
+  } finally {
+    syncAllJob.running = false
+  }
+}
+
+batteryIssuesRouter.get('/sync-all', async (_req, res) => {
+  return okItem(res, getSyncAllStatus())
+})
+
+batteryIssuesRouter.post('/sync-all', async (_req, res) => {
+  if (syncAllJob.running) {
+    return okMessage(res, syncAllJob.message || 'Refresh already running', getSyncAllStatus())
+  }
+  const rows = await all<{ id: number }>(`
+    SELECT DISTINCT i.id
+    FROM battery_degradation_issues i
+    INNER JOIN battery_degradation_calls c ON c.issue_id = i.id
+    WHERE i.deleted_at IS NULL
+      AND c.ello_conversation_id IS NOT NULL
+      AND TRIM(c.ello_conversation_id) != ''
+    ORDER BY i.id DESC
+  `)
+  const ids = rows.map((r) => Number(r.id)).filter(Boolean)
+  if (!ids.length) {
+    syncAllJob.total = 0
+    syncAllJob.done = 0
+    syncAllJob.failed = 0
+    syncAllJob.recordings = 0
+    syncAllJob.message = 'No conversations to refresh'
+    return okMessage(res, 'No conversations to refresh', getSyncAllStatus())
+  }
+  syncAllJob.running = true
+  syncAllJob.total = ids.length
+  syncAllJob.done = 0
+  syncAllJob.failed = 0
+  syncAllJob.recordings = 0
+  syncAllJob.message = `Refreshing ${ids.length} conversation${ids.length === 1 ? '' : 's'}…`
+  void runSyncAllConversations(ids)
+  return okMessage(res, `Refreshing ${ids.length} conversations`, getSyncAllStatus())
+})
+
 batteryIssuesRouter.get('/:id/recording', async (req, res) => {
   const row = await get<{ recording_path: string | null; recording_mime: string | null; recording_original_name: string | null }>(
     `SELECT recording_path, recording_mime, recording_original_name FROM battery_degradation_issues WHERE id = ? AND deleted_at IS NULL`,
@@ -667,6 +936,30 @@ batteryIssuesRouter.get('/:id/recording', async (req, res) => {
   if (!fs.existsSync(abs)) return fail(res, 'Recording file missing on disk', 404)
   res.setHeader('Content-Type', row.recording_mime || 'audio/mpeg')
   res.setHeader('Content-Disposition', `inline; filename="${row.recording_original_name || 'recording'}"`)
+  return res.sendFile(abs)
+})
+
+batteryIssuesRouter.get('/:id/calls/:callId/recording', async (req, res) => {
+  const issueId = Number(req.params.id)
+  const callId = Number(req.params.callId)
+  const issue = await loadIssue(issueId)
+  if (!issue) return fail(res, 'Issue not found', 404)
+  let call: { recording_path?: string | null; recording_mime?: string | null; recording_original_name?: string | null } | undefined
+  try {
+    call = await get<{ recording_path?: string | null; recording_mime?: string | null; recording_original_name?: string | null }>(
+      `SELECT recording_path, recording_mime, recording_original_name
+       FROM battery_degradation_calls WHERE id = ? AND issue_id = ?`,
+      [callId, issueId],
+    )
+  } catch {
+    call = undefined
+  }
+  const diskPath = String(call?.recording_path || issue.recording_path || '')
+  if (!diskPath) return fail(res, 'No local recording on this conversation', 404)
+  const abs = absolutePath(diskPath)
+  if (!fs.existsSync(abs)) return fail(res, 'Recording file missing on disk', 404)
+  res.setHeader('Content-Type', String(call?.recording_mime || issue.recording_mime || 'audio/mpeg'))
+  res.setHeader('Content-Disposition', `inline; filename="${String(call?.recording_original_name || issue.recording_original_name || 'recording')}"`)
   return res.sendFile(abs)
 })
 
@@ -761,117 +1054,13 @@ batteryIssuesRouter.post('/:id/call', async (req, res) => {
 
 batteryIssuesRouter.post('/:id/sync-call', async (req, res) => {
   const id = Number(req.params.id)
-  const row = await loadIssue(id)
-  if (!row) return fail(res, 'Issue not found', 404)
-  const calls = await all<Record<string, unknown>>(
-    `SELECT * FROM battery_degradation_calls WHERE issue_id = ? ORDER BY sequence ASC, id ASC`,
-    [id],
-  )
-  if (!calls.length) return fail(res, 'No Ello.AI conversation on this issue yet')
   try {
-    let latestMeta: Record<string, unknown> | null = null
-    for (const call of calls) {
-      const conversationId = String(call.ello_conversation_id || '').trim()
-      if (!conversationId) continue
-      let conv: ElloConversation | null = null
-      try {
-        conv = await elloGetConversation(conversationId)
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : ''
-        if (!/not found/i.test(msg)) throw e
-      }
-      let transcript = parseJson<TranscriptLine[]>(call.transcript, [])
-      try {
-        const fetched = mapElloTranscript(await elloGetTranscripts(conversationId))
-        if (fetched.length) transcript = fetched
-      } catch {
-        // transcripts often arrive after the call ends
-      }
-      if (conv?.metadata && typeof conv.metadata === 'object') latestMeta = conv.metadata
-      const applied = conv ? applyConversationToCall(call, conv, transcript.length) : null
-      const ts = applied?.ts || now()
-      const nextStatus = String(applied?.ello_call_status ?? call.ello_call_status ?? '')
-      const nextEndedAt = String(applied?.ended_at ?? call.ended_at ?? '') || null
-      const nextSummary = String(applied?.bot_summary ?? call.bot_summary ?? '')
-      const nextDuration = String(applied?.duration ?? call.duration ?? '')
-      const nextResult = applied?.call_result || String(call.call_result || '') || classifyCallResult({
-        elloStatus: nextStatus,
-        endedAt: nextEndedAt,
-        connectedAt: String(applied?.connected_at ?? call.connected_at ?? '') || null,
-        duration: nextDuration,
-        disconnectReason: applied?.disconnect_reason || String(call.disconnect_reason || '') || null,
-        transcriptCount: transcript.length,
-      })
-      await run(`
-        UPDATE battery_degradation_calls
-        SET bot_summary = ?, recording_url = ?, transcript = ?, ello_call_status = ?, call_result = ?,
-            disconnect_reason = ?, duration = ?, connected_at = ?, ended_at = ?, updated_at = ?
-        WHERE id = ?
-      `, [
-        applied?.bot_summary ?? call.bot_summary ?? null,
-        applied?.recording_url ?? call.recording_url ?? null,
-        JSON.stringify(transcript),
-        applied?.ello_call_status ?? call.ello_call_status ?? null,
-        nextResult,
-        applied?.disconnect_reason ?? call.disconnect_reason ?? null,
-        applied?.duration ?? call.duration ?? null,
-        applied?.connected_at ?? call.connected_at ?? null,
-        applied?.ended_at ?? call.ended_at ?? null,
-        ts,
-        Number(call.id),
-      ])
-      const alreadyMailed = Boolean(call.email_sent_at)
-      if (!alreadyMailed && nextResult === 'completed') {
-        try {
-          const mailed = await sendBatteryCallEndedEmail({
-            issueId: id,
-            sequence: Number(call.sequence || 1),
-            name: String(row.name || ''),
-            phone: String(row.phone || ''),
-            email: String(row.email || ''),
-            company: String(row.company || ''),
-            botSummary: nextSummary,
-            transcript,
-            callStatus: nextStatus || 'ended',
-            duration: nextDuration,
-            at: nextEndedAt || String(applied?.connected_at || call.connected_at || ts),
-          })
-          if (mailed.sent) {
-            await run(`UPDATE battery_degradation_calls SET email_sent_at = ? WHERE id = ?`, [ts, Number(call.id)])
-          }
-        } catch (e) {
-          console.warn('[battery-call-email] send failed', e instanceof Error ? e.message : e)
-        }
-      }
-    }
-    const conversations = await loadCalls(id)
-    const latest = conversations[conversations.length - 1]
-    await maybeAssignTechnician(id, latestMeta)
-    const assignedRow = await loadIssue(id)
-    if (assignedRow) await hydrateAssignees([assignedRow])
-    const tracker = applyWorkflowTracker(assignedRow || row, conversations)
-    const ts = now()
-    await run(`
-      UPDATE battery_degradation_issues
-      SET bot_summary = ?, recording_url = ?, transcript = ?, tracker = ?,
-          ello_call_status = ?, ello_conversation_id = ?, ello_siptrunk_id = ?, call_result = ?, updated_at = ?
-      WHERE id = ?
-    `, [
-      latest?.bot_summary || row.bot_summary || null,
-      latest?.recording_url || row.recording_url || null,
-      JSON.stringify(latest?.transcript || parseJson(row.transcript, [])),
-      JSON.stringify(tracker),
-      latest?.call_status || row.ello_call_status || null,
-      latest?.conversation_id || row.ello_conversation_id || null,
-      latest?.siptrunk_id || row.ello_siptrunk_id || null,
-      latest?.call_result || row.call_result || null,
-      ts,
-      id,
-    ])
-    const payload = await loadIssuePayload(id)
+    const { payload } = await syncIssueConversations(id)
     return okMessage(res, 'Conversations refreshed', payload)
   } catch (e) {
-    return fail(res, e instanceof Error ? e.message : 'Failed to refresh conversation', 502)
+    const msg = e instanceof Error ? e.message : 'Failed to refresh conversation'
+    const status = msg === 'Issue not found' ? 404 : 502
+    return fail(res, msg, status)
   }
 })
 

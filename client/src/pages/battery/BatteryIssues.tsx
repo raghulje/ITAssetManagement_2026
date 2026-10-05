@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AppLayout from '../../layout/AppLayout'
 import { Box, DataTable, Field, PageForm } from '../../components/ui'
@@ -12,10 +12,35 @@ import {
   type BatteryCallQueue,
   type BatteryCallQueueLimit,
   type BatteryCallStats,
+  type BatterySyncAll,
   type BatteryIssue,
   type BatteryTrackerStep,
   type BatteryTranscriptLine,
 } from '../../api/batteryIssues'
+import { transcriptInEnglish } from './transcriptEnglish'
+
+const LIST_QUERY_KEY = 'battery_issues_list_query'
+
+function rememberListQuery(search: string) {
+  try {
+    sessionStorage.setItem(LIST_QUERY_KEY, search || '')
+  } catch {
+    // ignore private-mode storage failures
+  }
+}
+
+function rememberedListQuery() {
+  try {
+    return sessionStorage.getItem(LIST_QUERY_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+function listReturnPath(listSearch?: string | null) {
+  const query = listSearch != null ? listSearch : rememberedListQuery()
+  return query ? `/battery-issues${query.startsWith('?') ? query : `?${query}`}` : '/battery-issues'
+}
 
 const CALL_PENDING_OPTIONS: Array<{ limit: BatteryCallQueueLimit; label: string; hint: string }> = [
   { limit: 15, label: 'Call first 15', hint: 'Oldest 15 yet-to-call contacts' },
@@ -116,11 +141,13 @@ function callStateIcon(result: string) {
 export function BatteryIssuesList() {
   const { can } = useAuth()
   const toast = useToast()
-  const [search, setSearch] = useState('')
-  const [callFilter, setCallFilter] = useState('')
-  const [reportFilter, setReportFilter] = useState('')
-  const [otherTypeFilter, setOtherTypeFilter] = useState('')
-  const [page, setPage] = useState(0)
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const search = searchParams.get('q') || ''
+  const callFilter = searchParams.get('call') || ''
+  const reportFilter = searchParams.get('report') || ''
+  const otherTypeFilter = searchParams.get('other_type') || ''
+  const page = Math.max(0, Number(searchParams.get('page') || 0) || 0)
   const [rows, setRows] = useState<BatteryIssue[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -129,6 +156,8 @@ export function BatteryIssuesList() {
   const [queue, setQueue] = useState<BatteryCallQueue | null>(null)
   const [startingQueue, setStartingQueue] = useState(false)
   const [queueBusy, setQueueBusy] = useState(false)
+  const [refreshingAll, setRefreshingAll] = useState(false)
+  const [refreshJob, setRefreshJob] = useState<BatterySyncAll | null>(null)
   const queueActive = Boolean(queue?.running)
   const [callMenuOpen, setCallMenuOpen] = useState(false)
   const callMenuRef = useRef<HTMLDivElement | null>(null)
@@ -139,6 +168,7 @@ export function BatteryIssuesList() {
   const loadStats = () => {
     batteryIssuesApi.stats().then(setStats).catch(() => undefined)
     batteryIssuesApi.queueStatus().then(setQueue).catch(() => undefined)
+    batteryIssuesApi.syncAllStatus().then(setRefreshJob).catch(() => undefined)
   }
 
   const load = () => {
@@ -166,6 +196,19 @@ export function BatteryIssuesList() {
     loadStats()
   }
 
+  const writeListParams = (patch: Record<string, string | number | undefined>) => {
+    const next = new URLSearchParams(searchParams)
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined || value === '' || (key === 'page' && Number(value) === 0)) next.delete(key)
+      else next.set(key, String(value))
+    }
+    setSearchParams(next, { replace: true })
+  }
+
+  useEffect(() => {
+    rememberListQuery(location.search)
+  }, [location.search])
+
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -182,6 +225,23 @@ export function BatteryIssuesList() {
     return () => window.clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queue?.running, queue?.paused])
+
+  useEffect(() => {
+    if (!refreshJob?.running && !refreshingAll) return
+    const timer = window.setInterval(() => {
+      void batteryIssuesApi.syncAllStatus().then((job) => {
+        const finished = (refreshJob?.running || refreshingAll) && !job.running
+        setRefreshJob(job)
+        if (!job.running) {
+          setRefreshingAll(false)
+          load()
+          if (finished && job.message) toast.success(job.message)
+        }
+      })
+    }, 2000)
+    return () => window.clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshJob?.running, refreshingAll])
 
   useEffect(() => {
     if (!callMenuOpen) return
@@ -219,6 +279,23 @@ export function BatteryIssuesList() {
     }
   }
 
+  const refreshAllConversations = async () => {
+    if (refreshJob?.running || refreshingAll) return
+    setRefreshingAll(true)
+    try {
+      const res = await batteryIssuesApi.syncAll()
+      if (res.payload) setRefreshJob(res.payload)
+      toast.success(res.messages?.[0] || 'Refreshing conversations')
+      if (!res.payload?.running) {
+        setRefreshingAll(false)
+        load()
+      }
+    } catch (e) {
+      setRefreshingAll(false)
+      toast.error(e instanceof Error ? e.message : 'Could not refresh conversations')
+    }
+  }
+
   const controlQueue = async (action: 'pause' | 'resume' | 'stop') => {
     const confirmStop = action === 'stop'
       ? window.confirm('Stop calling pending contacts? Already placed calls stay. Remaining numbers are not called until you start Call pending again.')
@@ -247,26 +324,32 @@ export function BatteryIssuesList() {
   }
 
   const setFilter = (value: string) => {
-    setCallFilter((prev) => (prev === value ? '' : value))
-    setReportFilter('')
-    setOtherTypeFilter('')
-    setPage(0)
+    writeListParams({
+      call: callFilter === value ? '' : value,
+      report: '',
+      other_type: '',
+      page: 0,
+    })
     scrollToRecords()
   }
 
   const setReport = (value: string) => {
-    setReportFilter((prev) => (prev === value ? '' : value))
-    setCallFilter('')
-    setOtherTypeFilter('')
-    setPage(0)
+    writeListParams({
+      report: reportFilter === value ? '' : value,
+      call: '',
+      other_type: '',
+      page: 0,
+    })
     scrollToRecords()
   }
 
   const setOtherType = (value: string) => {
-    setOtherTypeFilter((prev) => (prev === value ? '' : value))
-    setCallFilter('')
-    setReportFilter('')
-    setPage(0)
+    writeListParams({
+      other_type: otherTypeFilter === value ? '' : value,
+      call: '',
+      report: '',
+      page: 0,
+    })
     scrollToRecords()
   }
 
@@ -326,6 +409,21 @@ export function BatteryIssuesList() {
         }))}
       />
       ) : null}
+      <ModuleInsights
+        title="Survey answers"
+        cards={[
+          { filter: 'answered_both', label: 'Answered both', value: stats?.answered_both ?? '—', icon: 'fas fa-clipboard-check', color: 'bg-teal', hint: 'Yes or no for battery and other issue' },
+          { filter: 'incomplete', label: 'Not answered', value: stats?.incomplete ?? '—', icon: 'fas fa-comment-slash', color: 'bg-orange', hint: 'Picked up, then cut the call or answered only one question' },
+        ].map((c) => ({
+          label: c.label,
+          value: c.value,
+          icon: c.icon,
+          color: c.color,
+          hint: reportFilter === c.filter ? 'Showing this filter' : c.hint,
+          active: reportFilter === c.filter,
+          onClick: () => setReport(c.filter),
+        }))}
+      />
       {queue?.running || queue?.paused || queue?.credit_blocked || queue?.message ? (
         <div className={`callout ${
           queue.credit_blocked ? 'callout-danger'
@@ -344,19 +442,53 @@ export function BatteryIssuesList() {
           </p>
         </div>
       ) : null}
+      {refreshJob?.running ? (
+        <div className="callout callout-info">
+          <p>
+            <i className="fas fa-sync fa-spin" /> {refreshJob.message}
+            {refreshJob.recordings ? ` — ${refreshJob.recordings} recording${refreshJob.recordings === 1 ? '' : 's'} stored locally` : ''}
+          </p>
+        </div>
+      ) : null}
       <div id="battery-issues-list" ref={listRef}>
       <Box
         title="Issues"
         type="primary"
         tools={
           <>
-            {can('battery_issues.edit') && queueActive ? (
+            {can('battery_issues.edit') ? (
               <>
+                <div className={`dropdown ${callMenuOpen ? 'open' : ''}`} ref={callMenuRef}>
+                  <button
+                    type="button"
+                    className="btn btn-theme btn-sm"
+                    disabled={startingQueue || queueActive || !stats?.yet_to_call}
+                    onClick={() => setCallMenuOpen((open) => !open)}
+                  >
+                    <i className="fas fa-phone-volume" /> {startingQueue ? 'Starting…' : 'Call pending'}
+                    {' '}<i className="fas fa-caret-down" />
+                  </button>
+                  <div className="dropdown-menu">
+                    {CALL_PENDING_OPTIONS.map((opt) => (
+                      <button
+                        key={String(opt.limit)}
+                        type="button"
+                        disabled={startingQueue || queueActive || !stats?.yet_to_call}
+                        onClick={() => { void startQueue(opt.limit) }}
+                      >
+                        {opt.label}
+                        <span className="text-muted" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>
+                          {opt.hint}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {queue?.paused ? (
                   <button
                     type="button"
                     className="btn btn-theme btn-sm"
-                    disabled={queueBusy}
+                    disabled={queueBusy || !queueActive}
                     onClick={() => { void controlQueue('resume') }}
                   >
                     <i className="fas fa-play" /> Continue
@@ -365,7 +497,7 @@ export function BatteryIssuesList() {
                   <button
                     type="button"
                     className="btn btn-default btn-sm"
-                    disabled={queueBusy}
+                    disabled={queueBusy || !queueActive}
                     onClick={() => { void controlQueue('pause') }}
                   >
                     <i className="fas fa-pause" /> Pause
@@ -374,39 +506,21 @@ export function BatteryIssuesList() {
                 <button
                   type="button"
                   className="btn btn-danger btn-sm"
-                  disabled={queueBusy}
+                  disabled={queueBusy || !queueActive}
                   onClick={() => { void controlQueue('stop') }}
                 >
                   <i className="fas fa-stop" /> Stop
                 </button>
-              </>
-            ) : can('battery_issues.edit') ? (
-              <div className={`dropdown ${callMenuOpen ? 'open' : ''}`} ref={callMenuRef}>
                 <button
                   type="button"
-                  className="btn btn-theme btn-sm"
-                  disabled={startingQueue || !stats?.yet_to_call}
-                  onClick={() => setCallMenuOpen((open) => !open)}
+                  className="btn btn-default btn-sm"
+                  disabled={refreshingAll || Boolean(refreshJob?.running) || queueActive || !stats?.called}
+                  onClick={() => { void refreshAllConversations() }}
                 >
-                  <i className="fas fa-phone-volume" /> {startingQueue ? 'Starting…' : 'Call pending'}
-                  {' '}<i className="fas fa-caret-down" />
+                  <i className={`fas fa-sync${refreshingAll || refreshJob?.running ? ' fa-spin' : ''}`} />
+                  {' '}{refreshingAll || refreshJob?.running ? 'Refreshing…' : 'Refresh conversations'}
                 </button>
-                <div className="dropdown-menu">
-                  {CALL_PENDING_OPTIONS.map((opt) => (
-                    <button
-                      key={String(opt.limit)}
-                      type="button"
-                      disabled={startingQueue || !stats?.yet_to_call}
-                      onClick={() => { void startQueue(opt.limit) }}
-                    >
-                      {opt.label}
-                      <span className="text-muted" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>
-                        {opt.hint}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              </>
             ) : null}
             {can('battery_issues.create') ? (
               <Link to="/battery-issues/create" className="btn btn-default btn-sm">
@@ -418,7 +532,7 @@ export function BatteryIssuesList() {
       >
         <DataTable
           search={search}
-          onSearch={(v) => { setSearch(v); setPage(0) }}
+          onSearch={(v) => { writeListParams({ q: v, page: 0 }) }}
           rows={rows as unknown as Record<string, unknown>[]}
           exportName="battery-degradation-issues"
           storageKey="battery_issues_columns_v5"
@@ -427,7 +541,7 @@ export function BatteryIssuesList() {
           page={page}
           pageSize={pageSize}
           total={total}
-          onPageChange={setPage}
+          onPageChange={(nextPage) => { writeListParams({ page: nextPage }) }}
           onBulkDelete={can('battery_issues.delete') ? async (ids) => {
             for (const id of ids) await batteryIssuesApi.remove(id)
             load()
@@ -442,7 +556,7 @@ export function BatteryIssuesList() {
                 return (
                   <span className="bdi-name-cell">
                     <i className={`${ico.icon} ${ico.cls}`} title={ico.title} />
-                    <Link to={`/battery-issues/${r.id}`}>{String(r.name)}</Link>
+                    <Link to={`/battery-issues/${r.id}`} state={{ listSearch: location.search }}>{String(r.name)}</Link>
                   </span>
                 )
               },
@@ -506,9 +620,9 @@ export function BatteryIssuesList() {
               exportable: false,
               render: (r) => (
                 <span className="actions">
-                  <Link to={`/battery-issues/${r.id}`} className="btn btn-sm btn-default" title="View"><i className="fas fa-eye" /></Link>
+                  <Link to={`/battery-issues/${r.id}`} state={{ listSearch: location.search }} className="btn btn-sm btn-default" title="View"><i className="fas fa-eye" /></Link>
                   {can('battery_issues.edit') ? (
-                    <Link to={`/battery-issues/${r.id}/edit`} className="btn btn-sm btn-warning" title="Edit"><i className="fas fa-pencil-alt" /></Link>
+                    <Link to={`/battery-issues/${r.id}/edit`} state={{ listSearch: location.search }} className="btn btn-sm btn-warning" title="Edit"><i className="fas fa-pencil-alt" /></Link>
                   ) : null}
                 </span>
               ),
@@ -521,18 +635,54 @@ export function BatteryIssuesList() {
   )
 }
 
-function RecordingPlayer({ recordingUrl }: { recordingUrl: string }) {
+function RecordingPlayer({ streamUrl = '', remoteUrl = '' }: { streamUrl?: string; remoteUrl?: string }) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [current, setCurrent] = useState(0)
   const [duration, setDuration] = useState(0)
-  const src = /^https?:\/\//i.test(recordingUrl) ? recordingUrl : ''
+  const [src, setSrc] = useState('')
+  const [loading, setLoading] = useState(Boolean(streamUrl || remoteUrl))
+  const remote = /^https?:\/\//i.test(remoteUrl) ? remoteUrl : ''
+
+  useEffect(() => {
+    let objectUrl = ''
+    let cancelled = false
+    if (!streamUrl) {
+      setSrc(remote)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    void batteryIssuesApi.recordingBlobUrl(streamUrl)
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        objectUrl = url
+        setSrc(url)
+      })
+      .catch(() => {
+        if (!cancelled) setSrc(remote)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [streamUrl, remote])
 
   const fmt = (n: number) => {
     if (!Number.isFinite(n) || n < 0) return '0:00'
     const m = Math.floor(n / 60)
     const s = Math.floor(n % 60)
     return `${m}:${String(s).padStart(2, '0')}`
+  }
+
+  if (loading) {
+    return <p className="bdi-muted">Loading recording…</p>
   }
 
   if (!src) {
@@ -600,6 +750,7 @@ function visibleConversations(issue: BatteryIssue): BatteryCall[] {
       agent_id: issue.agent_id || '',
       bot_summary: issue.bot_summary || '',
       recording_url: issue.recording_url || '',
+      recording_stream: issue.recording_stream || '',
       transcript: issue.transcript || [],
       duration: '',
       connected_at: '',
@@ -612,9 +763,113 @@ function visibleConversations(issue: BatteryIssue): BatteryCall[] {
   return []
 }
 
+function ConversationLangTabs({
+  view,
+  onChange,
+}: {
+  view: 'original' | 'english'
+  onChange: (view: 'original' | 'english') => void
+}) {
+  return (
+    <div className="bdi-convo-tabs" role="tablist" aria-label="Transcript language">
+      <button
+        type="button"
+        role="tab"
+        className={view === 'original' ? 'is-active' : ''}
+        aria-selected={view === 'original'}
+        onClick={() => onChange('original')}
+      >
+        Original
+      </button>
+      <button
+        type="button"
+        role="tab"
+        className={view === 'english' ? 'is-active' : ''}
+        aria-selected={view === 'english'}
+        onClick={() => onChange('english')}
+      >
+        See in English
+      </button>
+    </div>
+  )
+}
+
+function ConversationCard({
+  call,
+  issue,
+  result,
+  latestSeq,
+  retryWaiting,
+}: {
+  call: BatteryCall
+  issue: BatteryIssue
+  result: string
+  latestSeq: number
+  retryWaiting: boolean
+}) {
+  const [view, setView] = useState<'original' | 'english'>('original')
+  return (
+    <section className="bdi-card">
+      <div className="bdi-convo-head">
+        <h3>{call.label}</h3>
+        {(call.transcript || []).length ? <ConversationLangTabs view={view} onChange={setView} /> : null}
+        <span className={callResultClass(result)}>{callResultLabel(result)}</span>
+        {call.duration ? <span className="bdi-call-chip">{call.duration}</span> : null}
+      </div>
+      {retryWaiting ? (
+        <p className="bdi-callback-note">
+          {result === 'rejected' ? 'Call was rejected.' : 'Call was ignored / not answered.'}
+          {' '}A callback will be placed 30 minutes after this call (attempt {call.sequence} of 3).
+        </p>
+      ) : null}
+      {call.conversation_id ? (
+        <p className="bdi-step-source">Ello id {call.conversation_id}</p>
+      ) : null}
+      <div className="bdi-recording-label">Bot Summary</div>
+      <p className="bdi-summary">{call.bot_summary || 'No bot summary yet.'}</p>
+      <div className="bdi-recording-label">Recording</div>
+      <RecordingPlayer
+        streamUrl={call.recording_stream || (Number(call.sequence || 1) === latestSeq ? issue.recording_stream : '')}
+        remoteUrl={call.recording_url}
+      />
+      <ConversationTranscript call={call} view={view} />
+    </section>
+  )
+}
+
+function ConversationTranscript({ call, view }: { call: BatteryCall; view: 'original' | 'english' }) {
+  const original = call.transcript || []
+  const english = useMemo(() => transcriptInEnglish(call.transcript || []), [call.transcript])
+  const lines = view === 'english' ? english : original
+
+  return (
+    <>
+      <div className="bdi-recording-label">Conversation transcript</div>
+      {view === 'english' ? (
+        <p className="bdi-muted">English view for the helpdesk. Hindi and Tamil answers are shown as Yes / No / the spoken language.</p>
+      ) : null}
+      <div className="bdi-chat">
+        {lines.length === 0 ? (
+          <p className="bdi-muted">No transcript captured yet.</p>
+        ) : (
+          lines.map((line, i) => (
+            <div key={`${call.sequence}-${view}-${line.speaker}-${i}`} className={`bdi-bubble bdi-bubble--${line.speaker}`}>
+              {line.speaker === 'bot' ? <span className="bdi-chat-mark">E</span> : null}
+              <p>{line.text}</p>
+              {line.speaker === 'user' ? <span className="bdi-chat-user"><i className="fas fa-user" /></span> : null}
+            </div>
+          ))
+        )}
+      </div>
+    </>
+  )
+}
+
 export function BatteryIssueDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const listBackTo = listReturnPath((location.state as { listSearch?: string } | null)?.listSearch)
   const { can, user, isAdmin } = useAuth()
   const toast = useToast()
   const [issue, setIssue] = useState<BatteryIssue | null>(null)
@@ -686,7 +941,7 @@ export function BatteryIssueDetail() {
     try {
       await batteryIssuesApi.remove(issue.id)
       toast.success('Issue deleted')
-      navigate('/battery-issues')
+      navigate(listBackTo)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Delete failed')
     }
@@ -722,14 +977,14 @@ export function BatteryIssueDetail() {
   }
   if (error || !issue) {
     return (
-      <AppLayout title="Battery Degradation Issue" backTo="/battery-issues">
+      <AppLayout title="Battery Degradation Issue" backTo={listBackTo}>
         <div className="callout callout-danger"><p>{error || 'Issue not found'}</p></div>
       </AppLayout>
     )
   }
 
   return (
-    <AppLayout title={issue.name} subtitle="Battery Degradation Issue" backTo="/battery-issues" backLabel="Issues">
+    <AppLayout title={issue.name} subtitle="Battery Degradation Issue" backTo={listBackTo} backLabel="Issues">
       <div className="bdi-layout">
         <div className="bdi-main">
           <section className="bdi-card">
@@ -848,40 +1103,14 @@ export function BatteryIssueDetail() {
                 && (result === 'ignored' || result === 'rejected')
                 && !call.callback_queued_at
               return (
-              <section key={call.id || call.sequence} className="bdi-card">
-                <div className="bdi-convo-head">
-                  <h3>{call.label}</h3>
-                  <span className={callResultClass(result)}>{callResultLabel(result)}</span>
-                  {call.duration ? <span className="bdi-call-chip">{call.duration}</span> : null}
-                </div>
-                {retryWaiting ? (
-                  <p className="bdi-callback-note">
-                    {result === 'rejected' ? 'Call was rejected.' : 'Call was ignored / not answered.'}
-                    {' '}A callback will be placed 30 minutes after this call (attempt {call.sequence} of 3).
-                  </p>
-                ) : null}
-                {call.conversation_id ? (
-                  <p className="bdi-step-source">Ello id {call.conversation_id}</p>
-                ) : null}
-                <div className="bdi-recording-label">Bot Summary</div>
-                <p className="bdi-summary">{call.bot_summary || 'No bot summary yet.'}</p>
-                <div className="bdi-recording-label">Recording</div>
-                <RecordingPlayer recordingUrl={call.recording_url} />
-                <div className="bdi-recording-label">Conversation transcript</div>
-                <div className="bdi-chat">
-                  {(call.transcript || []).length === 0 ? (
-                    <p className="bdi-muted">No transcript captured yet.</p>
-                  ) : (
-                    call.transcript.map((line, i) => (
-                      <div key={`${call.sequence}-${line.speaker}-${i}`} className={`bdi-bubble bdi-bubble--${line.speaker}`}>
-                        {line.speaker === 'bot' ? <span className="bdi-chat-mark">E</span> : null}
-                        <p>{line.text}</p>
-                        {line.speaker === 'user' ? <span className="bdi-chat-user"><i className="fas fa-user" /></span> : null}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
+              <ConversationCard
+                key={call.id || call.sequence}
+                call={call}
+                issue={issue}
+                result={result}
+                latestSeq={latestSeq}
+                retryWaiting={retryWaiting}
+              />
               )
             })
           )}
@@ -892,7 +1121,7 @@ export function BatteryIssueDetail() {
             <div className="bdi-side-head">
               <h3>Status Tracker</h3>
               {can('battery_issues.edit') ? (
-                <Link to={`/battery-issues/${issue.id}/edit`} className="btn btn-default btn-sm">Edit</Link>
+                <Link to={`/battery-issues/${issue.id}/edit`} state={{ listSearch: (location.state as { listSearch?: string } | null)?.listSearch }} className="btn btn-default btn-sm">Edit</Link>
               ) : null}
             </div>
             <ol className="bdi-tracker">

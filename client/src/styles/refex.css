@@ -6357,7 +6357,27 @@ button.space-nav-card {
   flex-wrap: wrap;
   margin-bottom: 4px;
 }
-.bdi-convo-head h3 { margin: 0; flex: 1; }
+.bdi-convo-head h3 { margin: 0; flex: 1; min-width: 140px; }
+.bdi-convo-tabs {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+.bdi-convo-tabs button {
+  border: 0;
+  background: transparent;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+}
+.bdi-convo-tabs button.is-active {
+  background: #0F9D8A;
+  color: #fff;
+}
 .bdi-identity {
   display: flex;
   align-items: center;
