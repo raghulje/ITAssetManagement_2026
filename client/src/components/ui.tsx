@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { downloadCsv } from '../utils/csv'
 import { useToast } from './Toast'
+import { InsightKpiCard } from './ModuleInsights'
 
 export function Box({
   title,
@@ -63,7 +64,7 @@ export function SmallBox({
   label,
   color,
   icon,
-  colClass = 'col-lg-2 col-xs-6',
+  colClass = 'col-lg-3 col-md-4 col-sm-6 col-xs-12',
   footer,
 }: {
   to?: string
@@ -75,20 +76,17 @@ export function SmallBox({
   footer?: string
 }) {
   const box = (
-    <div className={`dashboard small-box ${color}`}>
-      <div className="inner">
-        <h3>{typeof count === 'number' ? count.toLocaleString() : count}</h3>
-        <p>{label}</p>
-      </div>
-      <div className="icon" aria-hidden="true"><i className={icon} /></div>
-      <span className="small-box-footer">
-        {footer || (to ? <>View all <i className="fas fa-arrow-right" /></> : 'Overview')}
-      </span>
-    </div>
+    <InsightKpiCard
+      label={label}
+      value={count}
+      hint={footer || (to ? 'View records' : 'Overview')}
+      color={color}
+      icon={icon}
+    />
   )
   return (
-    <div className={colClass}>
-      {to ? <Link to={to} className="small-box-link">{box}</Link> : <div className="small-box-static">{box}</div>}
+    <div className={`${colClass} insight-dash-col`}>
+      {to ? <Link to={to} className="insight-kpi-hit">{box}</Link> : <div>{box}</div>}
     </div>
   )
 }
