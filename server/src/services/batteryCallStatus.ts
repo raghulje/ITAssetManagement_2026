@@ -1,9 +1,27 @@
 export type CallResult = 'yet_to_call' | 'queued' | 'in_progress' | 'completed' | 'rejected' | 'ignored'
 
+const STALE_CALL_MS = 15 * 60 * 1000
+
+/** Map stored Ello / legacy labels onto the three insight outcomes. */
+export function canonicalCallResult(result: string | null | undefined): CallResult | '' {
+  const r = String(result || '').toLowerCase().trim()
+  if (['completed', 'attended', 'ended', 'success'].includes(r)) return 'completed'
+  if (r === 'rejected') return 'rejected'
+  if (r === 'ignored') return 'ignored'
+  if (r === 'queued' || r === 'in_progress' || r === 'yet_to_call') return r
+  return ''
+}
+
+export function isTerminalCallResult(result: string | null | undefined) {
+  const r = canonicalCallResult(result)
+  return r === 'completed' || r === 'rejected' || r === 'ignored'
+}
+
 export function callResultLabel(result: string | null | undefined) {
   switch (String(result || '').toLowerCase()) {
     case 'yet_to_call': return 'Yet to call'
     case 'queued':
+    case 'calling':
     case 'in_progress': return 'Calling'
     case 'completed':
     case 'ended': return 'Call completed'
@@ -81,4 +99,31 @@ export function classifyCallResult(input: {
   if (status === 'completed' || status === 'success') return 'completed'
 
   return 'ignored'
+}
+
+/**
+ * Final insight outcome for a stored call row.
+ * Calls left as queued/in_progress after Ello never posted an end status are
+ * settled from duration/transcript, or ignored once they are stale.
+ */
+export function settleStoredCallResult(input: {
+  stored?: string | null
+  live?: boolean
+  updatedAt?: string | null
+  createdAt?: string | null
+  staleMs?: number
+} & Parameters<typeof classifyCallResult>[0]): CallResult {
+  const stored = canonicalCallResult(input.stored)
+  if (isTerminalCallResult(stored)) return stored
+  const raw = classifyCallResult(input)
+  const classified = canonicalCallResult(raw) || raw
+  if (isTerminalCallResult(classified)) return classified
+  if (input.live) return classified === 'in_progress' ? 'in_progress' : 'queued'
+  const ts = Date.parse(String(input.updatedAt || input.createdAt || ''))
+  const staleMs = input.staleMs ?? STALE_CALL_MS
+  const stale = Number.isFinite(ts) && Date.now() - ts > staleMs
+  if (!stale) return classified === 'in_progress' ? 'in_progress' : 'queued'
+  const secs = durationSeconds(input.duration, input.durationSec)
+  const talked = Boolean(input.connectedAt) || secs >= 8 || Number(input.transcriptCount || 0) >= 2
+  return talked ? 'completed' : 'ignored'
 }

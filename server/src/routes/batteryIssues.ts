@@ -13,7 +13,12 @@ import {
   type ElloConversation,
 } from '../services/ello.js'
 import { sendBatteryCallEndedEmail } from '../services/batteryCallEmail.js'
-import { classifyCallResult, callResultLabel } from '../services/batteryCallStatus.js'
+import {
+  classifyCallResult,
+  callResultLabel,
+  canonicalCallResult,
+  settleStoredCallResult,
+} from '../services/batteryCallStatus.js'
 import {
   classifyCallSurvey,
   isBothNo,
@@ -61,15 +66,89 @@ function parseJson<T>(raw: unknown, fallback: T): T {
   }
 }
 
+/** Latest call_result on the issue. Used so Attended / Rejected / Ignored do not overlap. */
+const LATEST_CALL_RESULT_SQL = `(
+  SELECT c.call_result
+  FROM battery_degradation_calls c
+  WHERE c.issue_id = battery_degradation_issues.id
+  ORDER BY c.sequence DESC, c.id DESC
+  LIMIT 1
+)`
+
+const LATEST_OUTCOME_SQL = `CASE
+  WHEN ${LATEST_CALL_RESULT_SQL} IN ('completed', 'attended', 'ended', 'success') THEN 'completed'
+  WHEN ${LATEST_CALL_RESULT_SQL} = 'rejected' THEN 'rejected'
+  WHEN ${LATEST_CALL_RESULT_SQL} = 'ignored' THEN 'ignored'
+  WHEN EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id) THEN 'calling'
+  ELSE 'yet_to_call'
+END`
+
+async function backfillStaleCallResults(limit = 400) {
+  let liveId = 0
+  try {
+    const { getCallQueueStatus } = await import('../services/batteryCallQueue.js')
+    const queue = getCallQueueStatus()
+    if (queue.running) liveId = Number(queue.current_id || 0)
+  } catch {
+    liveId = 0
+  }
+  const rows = await all<Record<string, unknown>>(`
+    SELECT id, issue_id, call_result, ello_call_status, connected_at, ended_at, duration,
+           disconnect_reason, transcript, created_at, updated_at
+    FROM battery_degradation_calls
+    WHERE IFNULL(call_result, '') NOT IN ('completed', 'rejected', 'ignored')
+    ORDER BY id DESC
+    LIMIT ?
+  `, [Math.max(1, Number(limit) || 400)])
+  const touched = new Set<number>()
+  const ts = now()
+  for (const row of rows) {
+    const next = settleStoredCallResult({
+      stored: String(row.call_result || ''),
+      live: liveId > 0 && Number(row.issue_id) === liveId,
+      updatedAt: row.updated_at ? String(row.updated_at) : null,
+      createdAt: row.created_at ? String(row.created_at) : null,
+      elloStatus: String(row.ello_call_status || ''),
+      endedAt: row.ended_at ? String(row.ended_at) : null,
+      connectedAt: row.connected_at ? String(row.connected_at) : null,
+      duration: row.duration ? String(row.duration) : null,
+      disconnectReason: row.disconnect_reason ? String(row.disconnect_reason) : null,
+      transcriptCount: parseJson<TranscriptLine[]>(row.transcript, []).length,
+    })
+    const prev = canonicalCallResult(String(row.call_result || '')) || String(row.call_result || '')
+    if (next === prev) continue
+    await run(
+      `UPDATE battery_degradation_calls SET call_result = ?, updated_at = ? WHERE id = ?`,
+      [next, ts, Number(row.id)],
+    )
+    touched.add(Number(row.issue_id))
+  }
+  for (const issueId of touched) {
+    const latest = await get<{ call_result: string | null }>(
+      `SELECT call_result FROM battery_degradation_calls WHERE issue_id = ? ORDER BY sequence DESC, id DESC LIMIT 1`,
+      [issueId],
+    )
+    if (!latest) continue
+    await run(
+      `UPDATE battery_degradation_issues SET call_result = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+      [latest.call_result, ts, issueId],
+    )
+  }
+  return touched.size
+}
+
 function transformCall(row: Record<string, unknown>) {
   const sequence = Number(row.sequence || 1)
-  const callResult = String(row.call_result || '') || classifyCallResult({
+  const callResult = settleStoredCallResult({
+    stored: String(row.call_result || ''),
     elloStatus: String(row.ello_call_status || ''),
     endedAt: row.ended_at ? String(row.ended_at) : null,
     connectedAt: row.connected_at ? String(row.connected_at) : null,
     duration: row.duration ? String(row.duration) : null,
     disconnectReason: row.disconnect_reason ? String(row.disconnect_reason) : null,
     transcriptCount: parseJson<TranscriptLine[]>(row.transcript, []).length,
+    updatedAt: row.updated_at ? String(row.updated_at) : null,
+    createdAt: row.created_at ? String(row.created_at) : null,
   })
   return {
     id: Number(row.id),
@@ -221,7 +300,8 @@ async function latestCallResults(issueIds: number[]) {
     issueIds,
   )
   for (const r of rows) {
-    const result = String(r.call_result || '') || classifyCallResult({
+    const result = settleStoredCallResult({
+      stored: r.call_result,
       elloStatus: r.ello_call_status,
       endedAt: r.ended_at,
       connectedAt: r.connected_at,
@@ -443,11 +523,11 @@ batteryIssuesRouter.get('/', async (req, res) => {
     params.push(status)
   }
   if (report === 'battery_yes') {
-    where.push(`battery_issue_confirmed = 'yes'`)
+    where.push(`battery_issue_confirmed = 'yes' AND other_issue_reported = 'no'`)
   } else if (report === 'battery_no') {
-    where.push(`battery_issue_confirmed = 'no'`)
+    where.push(`battery_issue_confirmed = 'no' AND IFNULL(other_issue_reported, '') NOT IN ('yes', 'no')`)
   } else if (report === 'other_only') {
-    where.push(`IFNULL(battery_issue_confirmed, '') != 'yes' AND other_issue_reported = 'yes'`)
+    where.push(`battery_issue_confirmed = 'no' AND other_issue_reported = 'yes'`)
   } else if (report === 'no_issues') {
     where.push(`battery_issue_confirmed = 'no' AND other_issue_reported = 'no'`)
   } else if (report === 'both') {
@@ -455,7 +535,7 @@ batteryIssuesRouter.get('/', async (req, res) => {
   } else if (report === 'answered_both') {
     where.push(`battery_issue_confirmed IN ('yes', 'no') AND other_issue_reported IN ('yes', 'no')`)
   } else if (report === 'incomplete' || report === 'not_answered') {
-    where.push(`EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed')`)
+    where.push(`${LATEST_OUTCOME_SQL} = 'completed'`)
     where.push(`(IFNULL(battery_issue_confirmed, '') NOT IN ('yes', 'no') OR IFNULL(other_issue_reported, '') NOT IN ('yes', 'no'))`)
   }
   if (otherType) {
@@ -467,9 +547,14 @@ batteryIssuesRouter.get('/', async (req, res) => {
   } else if (callResult === 'called') {
     where.push(`EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id)`)
   } else if (callResult === 'completed' || callResult === 'attended') {
-    where.push(`EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed')`)
+    where.push(`${LATEST_OUTCOME_SQL} = 'completed'`)
+  } else if (callResult === 'calling' || callResult === 'queued' || callResult === 'in_progress') {
+    where.push(`${LATEST_OUTCOME_SQL} = 'calling'`)
+  } else if (callResult === 'rejected' || callResult === 'ignored') {
+    where.push(`${LATEST_OUTCOME_SQL} = ?`)
+    params.push(callResult)
   } else if (callResult) {
-    where.push(`EXISTS (SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = ?)`)
+    where.push(`${LATEST_OUTCOME_SQL} = ?`)
     params.push(callResult)
   }
   if (search) {
@@ -511,8 +596,13 @@ batteryIssuesRouter.get('/', async (req, res) => {
 
 batteryIssuesRouter.get('/stats', async (_req, res) => {
   try {
+    await backfillStaleCallResults(500)
+  } catch (e) {
+    console.warn('[battery-stats] call-result backfill', e instanceof Error ? e.message : e)
+  }
+  try {
     const { backfillMissingSurveys } = await import('../services/batteryTechnicianAssign.js')
-    await backfillMissingSurveys(150)
+    await backfillMissingSurveys(400)
   } catch (e) {
     console.warn('[battery-stats] survey backfill', e instanceof Error ? e.message : e)
   }
@@ -521,67 +611,60 @@ batteryIssuesRouter.get('/stats', async (_req, res) => {
     rejected: 0, ignored: 0, calling: 0, battery_yes: 0, battery_no: 0,
     other_only: 0, no_issues: 0, both_issues: 0, answered_both: 0, incomplete: 0,
   }
+  const latestJoin = `
+    FROM battery_degradation_issues i
+    LEFT JOIN (
+      SELECT c.issue_id,
+        CASE
+          WHEN c.call_result IN ('completed', 'attended', 'ended', 'success') THEN 'completed'
+          WHEN c.call_result = 'rejected' THEN 'rejected'
+          WHEN c.call_result = 'ignored' THEN 'ignored'
+          ELSE 'calling'
+        END AS outcome
+      FROM battery_degradation_calls c
+      INNER JOIN (
+        SELECT issue_id, MAX(id) AS max_id
+        FROM battery_degradation_calls
+        GROUP BY issue_id
+      ) t ON t.max_id = c.id
+    ) latest ON latest.issue_id = i.id
+    WHERE i.deleted_at IS NULL`
   let row: Record<string, number> | undefined
   try {
   row = await get<Record<string, number>>(`
     SELECT
       COUNT(*) AS total,
-      SUM(CASE WHEN phone IS NOT NULL AND TRIM(phone) != '' AND phone != '-' THEN 1 ELSE 0 END) AS with_phone,
-      SUM(CASE WHEN NOT EXISTS (
-        SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id
-      ) THEN 1 ELSE 0 END) AS yet_to_call,
-      SUM(CASE WHEN EXISTS (
-        SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id
-      ) THEN 1 ELSE 0 END) AS called,
-      SUM(CASE WHEN EXISTS (
-        SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed'
-      ) THEN 1 ELSE 0 END) AS attended,
-      SUM(CASE WHEN EXISTS (
-        SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'rejected'
-      ) THEN 1 ELSE 0 END) AS rejected,
-      SUM(CASE WHEN EXISTS (
-        SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'ignored'
-      ) THEN 1 ELSE 0 END) AS ignored,
-      SUM(CASE WHEN call_result IN ('queued', 'in_progress') THEN 1 ELSE 0 END) AS calling,
-      SUM(CASE WHEN battery_issue_confirmed = 'yes' THEN 1 ELSE 0 END) AS battery_yes,
-      SUM(CASE WHEN battery_issue_confirmed = 'no' THEN 1 ELSE 0 END) AS battery_no,
-      SUM(CASE WHEN IFNULL(battery_issue_confirmed, '') != 'yes' AND other_issue_reported = 'yes' THEN 1 ELSE 0 END) AS other_only,
-      SUM(CASE WHEN battery_issue_confirmed = 'no' AND other_issue_reported = 'no' THEN 1 ELSE 0 END) AS no_issues,
-      SUM(CASE WHEN battery_issue_confirmed = 'yes' AND other_issue_reported = 'yes' THEN 1 ELSE 0 END) AS both_issues,
-      SUM(CASE WHEN battery_issue_confirmed IN ('yes', 'no') AND other_issue_reported IN ('yes', 'no') THEN 1 ELSE 0 END) AS answered_both,
-      SUM(CASE WHEN EXISTS (
-        SELECT 1 FROM battery_degradation_calls c
-        WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed'
-      ) AND (
-        IFNULL(battery_issue_confirmed, '') NOT IN ('yes', 'no')
-        OR IFNULL(other_issue_reported, '') NOT IN ('yes', 'no')
+      SUM(CASE WHEN i.phone IS NOT NULL AND TRIM(i.phone) != '' AND i.phone != '-' THEN 1 ELSE 0 END) AS with_phone,
+      SUM(CASE WHEN latest.issue_id IS NULL THEN 1 ELSE 0 END) AS yet_to_call,
+      SUM(CASE WHEN latest.issue_id IS NOT NULL THEN 1 ELSE 0 END) AS called,
+      SUM(CASE WHEN latest.outcome = 'completed' THEN 1 ELSE 0 END) AS attended,
+      SUM(CASE WHEN latest.outcome = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+      SUM(CASE WHEN latest.outcome = 'ignored' THEN 1 ELSE 0 END) AS ignored,
+      SUM(CASE WHEN latest.outcome = 'calling' THEN 1 ELSE 0 END) AS calling,
+      SUM(CASE WHEN i.battery_issue_confirmed = 'yes' AND i.other_issue_reported = 'no' THEN 1 ELSE 0 END) AS battery_yes,
+      SUM(CASE WHEN i.battery_issue_confirmed = 'no' AND IFNULL(i.other_issue_reported, '') NOT IN ('yes', 'no') THEN 1 ELSE 0 END) AS battery_no,
+      SUM(CASE WHEN i.battery_issue_confirmed = 'no' AND i.other_issue_reported = 'yes' THEN 1 ELSE 0 END) AS other_only,
+      SUM(CASE WHEN i.battery_issue_confirmed = 'no' AND i.other_issue_reported = 'no' THEN 1 ELSE 0 END) AS no_issues,
+      SUM(CASE WHEN i.battery_issue_confirmed = 'yes' AND i.other_issue_reported = 'yes' THEN 1 ELSE 0 END) AS both_issues,
+      SUM(CASE WHEN i.battery_issue_confirmed IN ('yes', 'no') AND i.other_issue_reported IN ('yes', 'no') THEN 1 ELSE 0 END) AS answered_both,
+      SUM(CASE WHEN latest.outcome = 'completed' AND (
+        IFNULL(i.battery_issue_confirmed, '') NOT IN ('yes', 'no')
+        OR IFNULL(i.other_issue_reported, '') NOT IN ('yes', 'no')
       ) THEN 1 ELSE 0 END) AS incomplete
-    FROM battery_degradation_issues
-    WHERE deleted_at IS NULL
+    ${latestJoin}
   `)
   } catch {
     row = await get<Record<string, number>>(`
       SELECT
         COUNT(*) AS total,
-        SUM(CASE WHEN phone IS NOT NULL AND TRIM(phone) != '' AND phone != '-' THEN 1 ELSE 0 END) AS with_phone,
-        SUM(CASE WHEN NOT EXISTS (
-          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id
-        ) THEN 1 ELSE 0 END) AS yet_to_call,
-        SUM(CASE WHEN EXISTS (
-          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id
-        ) THEN 1 ELSE 0 END) AS called,
-        SUM(CASE WHEN EXISTS (
-          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'completed'
-        ) THEN 1 ELSE 0 END) AS attended,
-        SUM(CASE WHEN EXISTS (
-          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'rejected'
-        ) THEN 1 ELSE 0 END) AS rejected,
-        SUM(CASE WHEN EXISTS (
-          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = battery_degradation_issues.id AND c.call_result = 'ignored'
-        ) THEN 1 ELSE 0 END) AS ignored,
-        SUM(CASE WHEN call_result IN ('queued', 'in_progress') THEN 1 ELSE 0 END) AS calling
-      FROM battery_degradation_issues
-      WHERE deleted_at IS NULL
+        SUM(CASE WHEN i.phone IS NOT NULL AND TRIM(i.phone) != '' AND i.phone != '-' THEN 1 ELSE 0 END) AS with_phone,
+        SUM(CASE WHEN latest.issue_id IS NULL THEN 1 ELSE 0 END) AS yet_to_call,
+        SUM(CASE WHEN latest.issue_id IS NOT NULL THEN 1 ELSE 0 END) AS called,
+        SUM(CASE WHEN latest.outcome = 'completed' THEN 1 ELSE 0 END) AS attended,
+        SUM(CASE WHEN latest.outcome = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+        SUM(CASE WHEN latest.outcome = 'ignored' THEN 1 ELSE 0 END) AS ignored,
+        SUM(CASE WHEN latest.outcome = 'calling' THEN 1 ELSE 0 END) AS calling
+      ${latestJoin}
     `)
   }
   return okItem(res, {
