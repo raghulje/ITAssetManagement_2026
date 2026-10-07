@@ -92,6 +92,7 @@ function callResultLabel(result: string) {
   switch (String(result || '').toLowerCase()) {
     case 'yet_to_call': return 'Yet to call'
     case 'queued':
+    case 'calling':
     case 'in_progress': return 'Calling'
     case 'completed':
     case 'ended': return 'Call completed'
@@ -106,7 +107,7 @@ function callResultClass(result: string) {
   if (r === 'completed' || r === 'ended') return 'bdi-pill bdi-pill--ok'
   if (r === 'rejected') return 'bdi-pill bdi-pill--danger'
   if (r === 'ignored') return 'bdi-pill bdi-pill--warn'
-  if (r === 'queued' || r === 'in_progress') return 'bdi-pill bdi-pill--progress'
+  if (r === 'queued' || r === 'calling' || r === 'in_progress') return 'bdi-pill bdi-pill--progress'
   return 'bdi-pill bdi-pill--muted'
 }
 
@@ -134,7 +135,7 @@ function callStateIcon(result: string) {
   if (r === 'completed' || r === 'ended') return { icon: 'fas fa-phone', cls: 'bdi-call-ico bdi-call-ico--ok', title: 'Call completed' }
   if (r === 'rejected') return { icon: 'fas fa-phone-slash', cls: 'bdi-call-ico bdi-call-ico--danger', title: 'Rejected' }
   if (r === 'ignored') return { icon: 'fas fa-phone-alt', cls: 'bdi-call-ico bdi-call-ico--warn', title: 'Ignored / no answer' }
-  if (r === 'queued' || r === 'in_progress') return { icon: 'fas fa-spinner fa-spin', cls: 'bdi-call-ico bdi-call-ico--progress', title: 'Calling' }
+  if (r === 'queued' || r === 'calling' || r === 'in_progress') return { icon: 'fas fa-spinner fa-spin', cls: 'bdi-call-ico bdi-call-ico--progress', title: 'Calling' }
   return { icon: 'far fa-clock', cls: 'bdi-call-ico bdi-call-ico--muted', title: 'Yet to call' }
 }
 
@@ -360,11 +361,12 @@ export function BatteryIssuesList() {
         title="Call insights"
         cards={[
           { filter: 'all', label: 'Total users', value: stats?.total ?? '—', icon: 'fas fa-users', color: 'bg-navy', hint: 'All contacts' },
-          { filter: 'called', label: 'Called', value: stats?.called ?? '—', icon: 'fas fa-phone', color: 'bg-teal', hint: 'At least one attempt' },
+          { filter: 'called', label: 'Called', value: stats?.called ?? '—', icon: 'fas fa-phone', color: 'bg-teal', hint: 'Attended + rejected + ignored + calling' },
           { filter: 'yet_to_call', label: 'Yet to call', value: stats?.yet_to_call ?? '—', icon: 'far fa-clock', color: 'bg-olive', hint: 'No call yet' },
-          { filter: 'completed', label: 'Attended', value: stats?.attended ?? '—', icon: 'fas fa-user-check', color: 'bg-green', hint: 'Picked up' },
-          { filter: 'rejected', label: 'Rejected', value: stats?.rejected ?? '—', icon: 'fas fa-phone-slash', color: 'bg-maroon', hint: 'Declined' },
-          { filter: 'ignored', label: 'Ignored', value: stats?.ignored ?? '—', icon: 'fas fa-phone-alt', color: 'bg-orange', hint: 'No answer' },
+          { filter: 'completed', label: 'Attended', value: stats?.attended ?? '—', icon: 'fas fa-user-check', color: 'bg-green', hint: 'Latest call was picked up' },
+          { filter: 'rejected', label: 'Rejected', value: stats?.rejected ?? '—', icon: 'fas fa-phone-slash', color: 'bg-maroon', hint: 'Latest call was declined' },
+          { filter: 'ignored', label: 'Ignored', value: stats?.ignored ?? '—', icon: 'fas fa-phone-alt', color: 'bg-orange', hint: 'Latest call had no answer' },
+          { filter: 'calling', label: 'Calling', value: stats?.calling ?? '—', icon: 'fas fa-phone-volume', color: 'bg-aqua', hint: 'Attempted, waiting for a final outcome' },
         ].map((c) => ({
           label: c.label,
           value: c.value,
@@ -380,8 +382,7 @@ export function BatteryIssuesList() {
       <ModuleInsights
         title="Issue report"
         cards={[
-          { filter: 'battery_yes', label: 'Battery yes', value: stats?.battery_yes ?? '—', icon: 'fas fa-battery-quarter', color: 'bg-maroon', hint: 'Said yes to battery drain' },
-          { filter: 'battery_no', label: 'Battery no', value: stats?.battery_no ?? '—', icon: 'fas fa-battery-full', color: 'bg-olive', hint: 'Said no to battery drain' },
+          { filter: 'battery_yes', label: 'Battery yes', value: stats?.battery_yes ?? '—', icon: 'fas fa-battery-quarter', color: 'bg-maroon', hint: 'Yes to battery, no other issue' },
           { filter: 'other_only', label: 'Other issue only', value: stats?.other_only ?? '—', icon: 'fas fa-laptop', color: 'bg-orange', hint: 'No battery, other IT issue' },
           { filter: 'no_issues', label: 'No issues', value: stats?.no_issues ?? '—', icon: 'fas fa-check-circle', color: 'bg-teal', hint: 'No battery and no other issue' },
           { filter: 'both', label: 'Both issues', value: stats?.both_issues ?? '—', icon: 'fas fa-layer-group', color: 'bg-navy', hint: 'Battery and another issue' },
@@ -412,7 +413,7 @@ export function BatteryIssuesList() {
       <ModuleInsights
         title="Survey answers"
         cards={[
-          { filter: 'answered_both', label: 'Answered both', value: stats?.answered_both ?? '—', icon: 'fas fa-clipboard-check', color: 'bg-teal', hint: 'Yes or no for battery and other issue' },
+          { filter: 'answered_both', label: 'Answered both', value: stats?.answered_both ?? '—', icon: 'fas fa-clipboard-check', color: 'bg-teal', hint: 'Battery yes + other only + no issues + both' },
           { filter: 'incomplete', label: 'Not answered', value: stats?.incomplete ?? '—', icon: 'fas fa-comment-slash', color: 'bg-orange', hint: 'Picked up, then cut the call or answered only one question' },
         ].map((c) => ({
           label: c.label,

@@ -131,48 +131,75 @@ export function isNoIssueClose(issue: Record<string, unknown> | null | undefined
 
 export async function issueHasAttendedCall(issueId: number): Promise<boolean> {
   const row = await get<{ c: number }>(
-    `SELECT COUNT(*) AS c FROM battery_degradation_calls WHERE issue_id = ? AND call_result = 'completed'`,
+    `SELECT COUNT(*) AS c FROM battery_degradation_calls WHERE issue_id = ? AND call_result IN ('completed', 'attended', 'ended', 'success')`,
     [issueId],
   )
   return Number(row?.c || 0) > 0
+}
+
+function absorbSurvey(survey: BatterySurvey, next: BatterySurvey): BatterySurvey {
+  let out = { ...survey }
+  if (next.battery === 'yes' || out.battery === 'unknown') {
+    if (next.battery !== 'unknown') out = { ...out, battery: next.battery }
+  }
+  if (next.other === 'yes' || out.other === 'unknown') {
+    if (next.other !== 'unknown') {
+      out = {
+        ...out,
+        other: next.other,
+        other_description: next.other_description || out.other_description,
+        other_types: next.other_types?.length ? next.other_types : out.other_types,
+        asked_other: next.asked_other || out.asked_other,
+      }
+    }
+  } else {
+    if (!out.other_description && next.other_description) out.other_description = next.other_description
+    if (next.other_types?.length) {
+      out.other_types = [...new Set([...(out.other_types || []), ...next.other_types])]
+    }
+  }
+  if (!out.preferred_language && next.preferred_language) out = { ...out, preferred_language: next.preferred_language }
+  out.asked_other = out.asked_other || next.asked_other
+  return out
 }
 
 export async function classifyIssueSurvey(
   issueId: number,
   extraMeta?: Record<string, unknown> | null,
 ): Promise<BatterySurvey> {
-  const calls = await all<{ transcript: unknown; bot_summary: string | null; call_result: string | null }>(
-    `SELECT transcript, bot_summary, call_result
-     FROM battery_degradation_calls
-     WHERE issue_id = ? AND call_result = 'completed'
-     ORDER BY sequence DESC, id DESC`,
-    [issueId],
-  )
+  let calls: Array<{
+    transcript: unknown
+    transcript_en?: unknown
+    bot_summary: string | null
+    call_result: string | null
+  }> = []
+  try {
+    calls = await all(
+      `SELECT transcript, transcript_en, bot_summary, call_result
+       FROM battery_degradation_calls
+       WHERE issue_id = ? AND call_result IN ('completed', 'attended', 'ended', 'success')
+       ORDER BY sequence DESC, id DESC`,
+      [issueId],
+    )
+  } catch {
+    calls = await all(
+      `SELECT transcript, bot_summary, call_result
+       FROM battery_degradation_calls
+       WHERE issue_id = ? AND call_result IN ('completed', 'attended', 'ended', 'success')
+       ORDER BY sequence DESC, id DESC`,
+      [issueId],
+    )
+  }
   let survey = emptySurvey()
   for (const call of calls) {
-    const next = classifyCallSurvey(parseJson(call.transcript, []), extraMeta, call.bot_summary)
+    survey = absorbSurvey(survey, classifyCallSurvey(parseJson(call.transcript, []), extraMeta, call.bot_summary))
     extraMeta = null
-    if (next.battery === 'yes' || survey.battery === 'unknown') {
-      if (next.battery !== 'unknown') survey = { ...survey, battery: next.battery }
-    }
-    if (next.other === 'yes' || survey.other === 'unknown') {
-      if (next.other !== 'unknown') {
-        survey = {
-          ...survey,
-          other: next.other,
-          other_description: next.other_description || survey.other_description,
-          other_types: next.other_types?.length ? next.other_types : survey.other_types,
-          asked_other: next.asked_other || survey.asked_other,
-        }
-      }
-    } else {
-      if (!survey.other_description && next.other_description) survey.other_description = next.other_description
-      if (next.other_types?.length) {
-        survey.other_types = [...new Set([...(survey.other_types || []), ...next.other_types])]
+    if (survey.battery === 'unknown' || survey.other === 'unknown') {
+      const english = parseJson<Array<{ speaker?: string; text?: string }>>(call.transcript_en, [])
+      if (english.length) {
+        survey = absorbSurvey(survey, classifyCallSurvey(english, null, call.bot_summary))
       }
     }
-    if (!survey.preferred_language && next.preferred_language) survey = { ...survey, preferred_language: next.preferred_language }
-    survey.asked_other = survey.asked_other || next.asked_other
     if (hasReportedIssue(survey)) break
   }
   if (survey.battery === 'unknown' && extraMeta) {
@@ -451,7 +478,7 @@ export async function backfillMissingSurveys(limit = 150): Promise<number> {
       WHERE i.deleted_at IS NULL
         AND EXISTS (
           SELECT 1 FROM battery_degradation_calls c
-          WHERE c.issue_id = i.id AND c.call_result = 'completed'
+          WHERE c.issue_id = i.id AND c.call_result IN ('completed', 'attended', 'ended', 'success')
         )
         AND (
           i.battery_issue_confirmed IS NULL
@@ -494,7 +521,7 @@ export async function assignEligibleIssues(): Promise<{ assigned: number; skippe
       )
       AND EXISTS (
         SELECT 1 FROM battery_degradation_calls c
-        WHERE c.issue_id = i.id AND c.call_result = 'completed'
+        WHERE c.issue_id = i.id AND c.call_result IN ('completed', 'attended', 'ended', 'success')
       )
     ORDER BY i.id ASC
   `)
