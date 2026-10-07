@@ -229,11 +229,15 @@ async function listIds(req: { query: Record<string, unknown>; user?: { permissio
 
 router.get('/', async (req, res) => {
   const { sql, params } = await listIds(req)
-  const limit = Math.min(Number(req.query.limit) || 50, 500)
+  const idsOnly = String(req.query.ids_only || '') === '1'
+  const limit = idsOnly
+    ? Math.min(Number(req.query.limit) || 20000, 20000)
+    : Math.min(Number(req.query.limit) || 50, 500)
   const offset = Number(req.query.offset) || 0
   const totalRow = await get<{ c: number }>(`SELECT COUNT(*) as c FROM (${sql}) AS _count_q`, params)
   const total = Number(totalRow?.c || 0)
   const ids = await all<{ id: number }>(`${sql} ${limitSql(limit, offset)}`, params)
+  if (idsOnly) return okList(res, ids, total)
   const rows = (await Promise.all(ids.map((r) => transformAsset(r.id)))).filter(Boolean)
   return okList(res, rows, total)
 })

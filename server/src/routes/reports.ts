@@ -860,6 +860,7 @@ settingsRouter.put('/notifications', async (req, res) => {
   const { saveNotificationConfig, notificationAdminSnapshot } = await import('../services/notificationConfig.js')
   const b = req.body || {}
   await saveNotificationConfig({
+    emails_enabled: b.emails_enabled,
     email_notifications: b.email_notifications,
     extra_ops_emails: b.extra_ops_emails,
     eol_to_it_asset_manager: b.eol_to_it_asset_manager,

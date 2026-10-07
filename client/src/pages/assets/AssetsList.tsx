@@ -77,6 +77,7 @@ export default function AssetsList() {
   const [assigneeOptions, setAssigneeOptions] = useState<string[]>([])
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
+  const [selectAllMatching, setSelectAllMatching] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkMsg, setBulkMsg] = useState('')
   const [dash, setDash] = useState<Record<string, number>>({})
@@ -287,11 +288,8 @@ export default function AssetsList() {
   useEffect(() => {
     setPage(0)
     setSelected(new Set())
+    setSelectAllMatching(false)
   }, [listFilterParams])
-
-  useEffect(() => {
-    setSelected(new Set())
-  }, [rows])
 
   const toggleSort = (key: string) => {
     if (sort === key) setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))
@@ -301,14 +299,41 @@ export default function AssetsList() {
     }
   }
 
+  const fetchMatchingIds = async () => {
+    const batch = 20000
+    const ids: number[] = []
+    let offset = 0
+    let totalCount = Infinity
+    while (ids.length < totalCount) {
+      const res = await hardwareApi.list({ ...listFilterParams, ids_only: 1, limit: batch, offset })
+      totalCount = Number(res.total || 0)
+      const chunk = (res.rows || []).map((r) => Number(r.id)).filter((id) => Number.isFinite(id) && id > 0)
+      ids.push(...chunk)
+      if (!chunk.length) break
+      offset += batch
+    }
+    return ids
+  }
+
+  const fetchMatchingRows = async () => {
+    const batch = 500
+    const data: Row[] = []
+    let offset = 0
+    let totalCount = Infinity
+    while (data.length < totalCount) {
+      const res = await hardwareApi.list({ ...listFilterParams, limit: batch, offset })
+      totalCount = Number(res.total || 0)
+      const chunk = (res.rows || []).map(flattenAsset)
+      data.push(...chunk)
+      if (!chunk.length) break
+      offset += batch
+    }
+    return data
+  }
+
   const exportRows = async () => {
     const cols = exportableColumns
-    const res = await hardwareApi.list({
-      ...listFilterParams,
-      limit: 500,
-      offset: 0,
-    })
-    const data = res.rows.map(flattenAsset)
+    const data = await fetchMatchingRows()
     downloadCsv(
       `assets-export-${new Date().toISOString().slice(0, 10)}.csv`,
       cols.map((c) => c.label),
@@ -318,18 +343,75 @@ export default function AssetsList() {
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const rowIds = rows.map((r) => Number(r.id)).filter((id) => Number.isFinite(id) && id > 0)
-  const allSelected = rowIds.length > 0 && rowIds.every((id) => selected.has(id))
+  const pageSelected = rowIds.length > 0 && rowIds.every((id) => selected.has(id))
+  const selectedCount = selectAllMatching ? total : selected.size
+  const headerChecked = selectAllMatching || pageSelected
 
-  const bulkDelete = async () => {
-    if (!selected.size) return
-    const count = selected.size
-    if (!confirm(`Delete ${count} selected asset(s)?`)) return
+  const clearSelection = () => {
+    setSelected(new Set())
+    setSelectAllMatching(false)
+  }
+
+  const toggleRow = (id: number) => {
+    if (selectAllMatching) {
+      setSelectAllMatching(false)
+      setSelected(new Set(rowIds.filter((rowId) => rowId !== id)))
+      return
+    }
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const togglePage = () => {
+    if (selectAllMatching || pageSelected) {
+      if (selectAllMatching) {
+        clearSelection()
+        return
+      }
+      setSelected((prev) => {
+        const next = new Set(prev)
+        for (const id of rowIds) next.delete(id)
+        return next
+      })
+      return
+    }
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const id of rowIds) next.add(id)
+      return next
+    })
+  }
+
+  const selectEveryMatching = async () => {
     setBulkBusy(true)
     setBulkMsg('')
     try {
-      for (const id of selected) await hardwareApi.remove(id)
-      setSelected(new Set())
-      setBulkMsg(`Deleted ${count} asset(s)`)
+      const ids = await fetchMatchingIds()
+      setSelected(new Set(ids))
+      setSelectAllMatching(true)
+      setBulkMsg(`Selected all ${ids.length.toLocaleString('en-IN')} matching records`)
+    } catch (e) {
+      setBulkMsg(e instanceof Error ? e.message : 'Could not select all records')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  const bulkDelete = async () => {
+    if (!selectedCount) return
+    const count = selectedCount
+    if (!confirm(`Delete ${count.toLocaleString('en-IN')} selected asset(s)?`)) return
+    setBulkBusy(true)
+    setBulkMsg('')
+    try {
+      const ids = selectAllMatching ? await fetchMatchingIds() : [...selected]
+      for (const id of ids) await hardwareApi.remove(id)
+      clearSelection()
+      setBulkMsg(`Deleted ${ids.length.toLocaleString('en-IN')} asset(s)`)
       load()
     } catch (e) {
       setBulkMsg(e instanceof Error ? e.message : 'Bulk delete failed')
@@ -338,15 +420,32 @@ export default function AssetsList() {
     }
   }
 
-  const exportSelected = () => {
+  const exportSelected = async () => {
     const cols = exportableColumns
-    const data = rows.filter((r) => selected.has(Number(r.id)))
-    if (!data.length) return
-    downloadCsv(
-      `assets-selected-${new Date().toISOString().slice(0, 10)}.csv`,
-      cols.map((c) => c.label),
-      data.map((r) => cols.map((c) => String(r[c.key] ?? ''))),
-    )
+    setBulkBusy(true)
+    try {
+      const allMatching = selectAllMatching || (total > 0 && selected.size >= total)
+      let data: Row[]
+      if (allMatching) {
+        data = await fetchMatchingRows()
+      } else {
+        const onThisPage = rows.filter((r) => selected.has(Number(r.id)))
+        data = onThisPage.length === selected.size
+          ? onThisPage
+          : (await fetchMatchingRows()).filter((r) => selected.has(Number(r.id)))
+      }
+      if (!data.length) return
+      downloadCsv(
+        `assets-selected-${new Date().toISOString().slice(0, 10)}.csv`,
+        cols.map((c) => c.label),
+        data.map((r) => cols.map((c) => String(r[c.key] ?? ''))),
+      )
+      setBulkMsg(`Exported ${data.length.toLocaleString('en-IN')} asset(s)`)
+    } catch (e) {
+      setBulkMsg(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setBulkBusy(false)
+    }
   }
 
   return (
@@ -449,18 +548,27 @@ export default function AssetsList() {
           </div>
         </div>
 
-        {selected.size > 0 ? (
+        {selectedCount > 0 ? (
           <div className="bulk-bar">
-            <span><strong>{selected.size}</strong> selected</span>
-            <button type="button" className="btn btn-default btn-sm" onClick={exportSelected}>
+            <span>
+              <strong>{selectedCount.toLocaleString('en-IN')}</strong>
+              {selectAllMatching ? ' matching records selected' : ' selected'}
+              {!selectAllMatching && total > selectedCount ? ` on this list` : ''}
+            </span>
+            {!selectAllMatching && total > selected.size ? (
+              <button type="button" className="btn btn-theme btn-sm" disabled={bulkBusy} onClick={() => { void selectEveryMatching() }}>
+                Select all {total.toLocaleString('en-IN')} matching records
+              </button>
+            ) : null}
+            <button type="button" className="btn btn-default btn-sm" disabled={bulkBusy} onClick={() => { void exportSelected() }}>
               <i className="fas fa-download" /> Export selected
             </button>
             {statusType !== 'Deleted' ? (
               <button type="button" className="btn btn-danger btn-sm" disabled={bulkBusy} onClick={() => { void bulkDelete() }}>
-                <i className="fas fa-trash" /> {bulkBusy ? 'Deleting…' : 'Delete selected'}
+                <i className="fas fa-trash" /> {bulkBusy ? 'Working…' : 'Delete selected'}
               </button>
             ) : null}
-            <button type="button" className="btn btn-link btn-sm" onClick={() => setSelected(new Set())}>Clear</button>
+            <button type="button" className="btn btn-link btn-sm" onClick={clearSelection}>Clear</button>
           </div>
         ) : null}
 
@@ -471,13 +579,10 @@ export default function AssetsList() {
                 <th style={{ width: 40 }}>
                   <input
                     type="checkbox"
-                    checked={allSelected}
+                    checked={headerChecked}
                     disabled={!rowIds.length}
-                    onChange={() => {
-                      if (allSelected) setSelected(new Set())
-                      else setSelected(new Set(rowIds))
-                    }}
-                    aria-label="Select all"
+                    onChange={togglePage}
+                    aria-label="Select this page"
                   />
                 </th>
                 {visibleColumns.map((c) => (
@@ -519,19 +624,12 @@ export default function AssetsList() {
               {rows.map((row, i) => {
                 const id = Number(row.id)
                 return (
-                  <tr key={String(row.id ?? i)} className={selected.has(id) ? 'is-selected' : undefined}>
+                  <tr key={String(row.id ?? i)} className={selectAllMatching || selected.has(id) ? 'is-selected' : undefined}>
                     <td>
                       <input
                         type="checkbox"
-                        checked={selected.has(id)}
-                        onChange={() => {
-                          setSelected((prev) => {
-                            const next = new Set(prev)
-                            if (next.has(id)) next.delete(id)
-                            else next.add(id)
-                            return next
-                          })
-                        }}
+                        checked={selectAllMatching || selected.has(id)}
+                        onChange={() => toggleRow(id)}
                         aria-label={`Select ${String(row.asset_tag || id)}`}
                       />
                     </td>
@@ -566,19 +664,12 @@ export default function AssetsList() {
             const titleCol = bodyCols.find((c) => c.key === 'asset_tag') || bodyCols[0]
             const metaCols = bodyCols.filter((c) => c !== titleCol)
             return (
-              <article key={String(row.id ?? i)} className={`data-card${selected.has(id) ? ' is-selected' : ''}`}>
+              <article key={String(row.id ?? i)} className={`data-card${selectAllMatching || selected.has(id) ? ' is-selected' : ''}`}>
                 <div className="data-card-top">
                   <input
                     type="checkbox"
-                    checked={selected.has(id)}
-                    onChange={() => {
-                      setSelected((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(id)) next.delete(id)
-                        else next.add(id)
-                        return next
-                      })
-                    }}
+                    checked={selectAllMatching || selected.has(id)}
+                    onChange={() => toggleRow(id)}
                     aria-label={`Select ${String(row.asset_tag || id)}`}
                   />
                   <div className="data-card-title">

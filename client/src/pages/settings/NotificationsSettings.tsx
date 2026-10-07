@@ -12,6 +12,7 @@ type Snapshot = {
   smtp_hint: string
   alert_email: string | null
   config: {
+    emails_enabled: boolean
     email_notifications: Record<string, boolean>
     extra_ops_emails: string
     eol_to_it_asset_manager: boolean
@@ -24,6 +25,7 @@ type Snapshot = {
 }
 
 const emptyCfg = {
+  emails_enabled: false,
   email_notifications: {
     custody: true,
     maintenance: true,
@@ -64,6 +66,7 @@ export default function NotificationsSettings() {
         setSmtpHint(String(s.smtp_hint || ''))
         setAlertEmail(String(s.alert_email || ''))
         setCfg({
+          emails_enabled: s.config?.emails_enabled === true,
           email_notifications: { ...emptyCfg.email_notifications, ...(s.config?.email_notifications || {}) },
           extra_ops_emails: String(s.config?.extra_ops_emails || ''),
           eol_to_it_asset_manager: s.config?.eol_to_it_asset_manager !== false,
@@ -91,6 +94,7 @@ export default function NotificationsSettings() {
         method: 'PUT',
         json: {
           alert_email: alertEmail.trim() || null,
+          emails_enabled: cfg.emails_enabled,
           email_notifications: cfg.email_notifications,
           extra_ops_emails: cfg.extra_ops_emails,
           eol_to_it_asset_manager: cfg.eol_to_it_asset_manager,
@@ -125,6 +129,22 @@ export default function NotificationsSettings() {
         <div className="col-md-7">
           <Box title="Email alerts" type="primary">
             <form className="form-horizontal" onSubmit={(e) => { void submit(e) }}>
+              <div className={`callout ${cfg.emails_enabled ? 'callout-success' : 'callout-warning'}`}>
+                <label className="checkbox" style={{ display: 'block', margin: 0, fontWeight: 700 }}>
+                  <input
+                    type="checkbox"
+                    disabled={!canEdit}
+                    checked={cfg.emails_enabled}
+                    onChange={(e) => setCfg((c) => ({ ...c, emails_enabled: e.target.checked }))}
+                  />
+                  {' '}Email notifications are {cfg.emails_enabled ? 'enabled' : 'disabled'}
+                </label>
+                <p className="help-block" style={{ margin: '8px 0 0' }}>
+                  Keep this off to stop all asset create/delete, assign, maintenance, inventory, EOL, and license emails.
+                  Turn it on here when you want those messages to go out again, then save.
+                </p>
+              </div>
+
               <Field label="SMTP">
                 <p className={`help-block ${smtpOk ? 'text-success' : 'text-danger'}`} style={{ marginTop: 0 }}>
                   {smtpHint}
@@ -162,7 +182,7 @@ export default function NotificationsSettings() {
                 <label className="checkbox" style={{ display: 'block' }}>
                   <input
                     type="checkbox"
-                    disabled={!canEdit}
+                    disabled={!canEdit || !cfg.emails_enabled}
                     checked={cfg.workflow_to_ops_roles}
                     onChange={(e) => setCfg((c) => ({ ...c, workflow_to_ops_roles: e.target.checked }))}
                   />
@@ -171,7 +191,7 @@ export default function NotificationsSettings() {
                 <label className="checkbox" style={{ display: 'block' }}>
                   <input
                     type="checkbox"
-                    disabled={!canEdit}
+                    disabled={!canEdit || !cfg.emails_enabled}
                     checked={cfg.eol_to_it_asset_manager}
                     onChange={(e) => setCfg((c) => ({ ...c, eol_to_it_asset_manager: e.target.checked }))}
                   />
@@ -184,8 +204,8 @@ export default function NotificationsSettings() {
                   <label key={cat.key} className="checkbox" style={{ display: 'block', marginBottom: 6 }}>
                     <input
                       type="checkbox"
-                      disabled={!canEdit}
-                      checked={cfg.email_notifications[cat.key] !== false}
+                    disabled={!canEdit || !cfg.emails_enabled}
+                    checked={cfg.email_notifications[cat.key] !== false}
                       onChange={(e) => setCfg((c) => ({
                         ...c,
                         email_notifications: { ...c.email_notifications, [cat.key]: e.target.checked },

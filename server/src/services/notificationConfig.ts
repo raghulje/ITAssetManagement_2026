@@ -11,6 +11,8 @@ export type EmailCategoryKey =
   | 'license_renewal'
 
 export type NotificationConfig = {
+  /** Master switch. When false, no workflow / create / delete / EOL / license emails are sent. */
+  emails_enabled: boolean
   email_notifications: Record<EmailCategoryKey, boolean>
   /** Extra addresses (comma/newline) always BCC'd on ops digests */
   extra_ops_emails: string
@@ -21,6 +23,7 @@ export type NotificationConfig = {
 }
 
 const DEFAULT_CONFIG: NotificationConfig = {
+  emails_enabled: false,
   email_notifications: {
     custody: true,
     maintenance: true,
@@ -50,6 +53,7 @@ function parseConfig(raw: unknown): NotificationConfig {
     else if (toggles[k] === true || toggles[k] === 1 || toggles[k] === '1') en[k] = true
   }
   return {
+    emails_enabled: obj.emails_enabled === true || obj.emails_enabled === 1 || obj.emails_enabled === '1',
     email_notifications: en,
     extra_ops_emails: String(obj.extra_ops_emails ?? ''),
     eol_to_it_asset_manager: obj.eol_to_it_asset_manager === false ? false : true,
@@ -73,6 +77,9 @@ export async function saveNotificationConfig(partial: Partial<NotificationConfig
 }): Promise<NotificationConfig> {
   const current = await getNotificationConfig()
   const next: NotificationConfig = {
+    emails_enabled: partial.emails_enabled !== undefined
+      ? Boolean(partial.emails_enabled)
+      : current.emails_enabled,
     email_notifications: {
       ...current.email_notifications,
       ...(partial.email_notifications || {}),
@@ -97,6 +104,7 @@ export async function saveNotificationConfig(partial: Partial<NotificationConfig
 export async function isEmailCategoryEnabled(category: EmailCategoryKey | string): Promise<boolean> {
   if (!mailConfigured()) return false
   const cfg = await getNotificationConfig()
+  if (!cfg.emails_enabled) return false
   const key = category as EmailCategoryKey
   if (key in cfg.email_notifications) return Boolean(cfg.email_notifications[key])
   return true
