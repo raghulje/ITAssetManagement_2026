@@ -9,9 +9,13 @@ export type EmailCategoryKey =
   | 'crud'
   | 'eol_warranty'
   | 'license_renewal'
+  | 'battery_calls'
+
+/** Not turned off by the master emails_enabled switch. */
+const INDEPENDENT_CATEGORIES = new Set<EmailCategoryKey>(['battery_calls'])
 
 export type NotificationConfig = {
-  /** Master switch. When false, no workflow / create / delete / EOL / license emails are sent. */
+  /** Master switch. When false, asset/workflow/EOL/license emails are not sent. Battery call emails stay on. */
   emails_enabled: boolean
   email_notifications: Record<EmailCategoryKey, boolean>
   /** Extra addresses (comma/newline) always BCC'd on ops digests */
@@ -31,6 +35,7 @@ const DEFAULT_CONFIG: NotificationConfig = {
     crud: true,
     eol_warranty: true,
     license_renewal: true,
+    battery_calls: true,
   },
   extra_ops_emails: '',
   eol_to_it_asset_manager: true,
@@ -104,9 +109,13 @@ export async function saveNotificationConfig(partial: Partial<NotificationConfig
 export async function isEmailCategoryEnabled(category: EmailCategoryKey | string): Promise<boolean> {
   if (!mailConfigured()) return false
   const cfg = await getNotificationConfig()
-  if (!cfg.emails_enabled) return false
   const key = category as EmailCategoryKey
-  if (key in cfg.email_notifications) return Boolean(cfg.email_notifications[key])
+  const categoryOn = key in cfg.email_notifications
+    ? Boolean(cfg.email_notifications[key])
+    : true
+  if (!categoryOn) return false
+  if (INDEPENDENT_CATEGORIES.has(key)) return true
+  if (!cfg.emails_enabled) return false
   return true
 }
 
@@ -183,6 +192,7 @@ export async function notificationAdminSnapshot() {
       { key: 'crud', label: 'Asset created / deleted' },
       { key: 'eol_warranty', label: 'EOL & warranty prior reminders (30d / 7d / 1d)' },
       { key: 'license_renewal', label: 'Recurring license renewals (7d / last 3 days → IT Asset Manager)' },
+      { key: 'battery_calls', label: 'Battery Degradation call / issue emails (independent of the switch above)' },
     ],
   }
 }

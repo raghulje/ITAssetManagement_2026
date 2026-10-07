@@ -117,6 +117,7 @@ export default function BatterySettings() {
             />
             <span className="help-block">
               Receives new issue submissions and completed-call alerts. Separate multiple addresses with commas.
+              This is not turned off by Settings → Notifications master switch.
             </span>
           </Field>
           {/* Kissflow webhook posting is paused. Keep the field/code here to turn back on later.

@@ -1,6 +1,7 @@
 import { mailConfigured, sendMail } from './mail.js'
 import { batteryNotifyEmails } from './batteryConfig.js'
 import { appSignedInUrl, refexOneHomeUrl } from './appLinks.js'
+import { isEmailCategoryEnabled } from './notificationConfig.js'
 
 export type CallEmailTranscriptLine = { speaker: 'bot' | 'user'; text: string }
 
@@ -175,6 +176,9 @@ export function batteryCallEndedEmail(input: BatteryCallEndedMail) {
 }
 
 export async function sendBatteryCallEndedEmail(input: BatteryCallEndedMail) {
+  if (!(await isEmailCategoryEnabled('battery_calls'))) {
+    return { sent: false, reason: 'disabled' as const }
+  }
   const recipients = new Set<string>()
   const contact = String(input.email || '').trim().toLowerCase()
   if (contact.includes('@')) recipients.add(contact)
