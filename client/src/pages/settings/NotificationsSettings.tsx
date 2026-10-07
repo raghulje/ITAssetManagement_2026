@@ -33,6 +33,7 @@ const emptyCfg = {
     crud: true,
     eol_warranty: true,
     license_renewal: true,
+    battery_calls: true,
   } as Record<string, boolean>,
   extra_ops_emails: '',
   eol_to_it_asset_manager: true,
@@ -140,8 +141,9 @@ export default function NotificationsSettings() {
                   {' '}Email notifications are {cfg.emails_enabled ? 'enabled' : 'disabled'}
                 </label>
                 <p className="help-block" style={{ margin: '8px 0 0' }}>
-                  Keep this off to stop all asset create/delete, assign, maintenance, inventory, EOL, and license emails.
-                  Turn it on here when you want those messages to go out again, then save.
+                  Keep this off to stop asset create/delete, assign, maintenance, inventory, EOL, and license emails.
+                  Battery Degradation call emails are separate and stay on unless you turn that category off below.
+                  Recipients for those are set in Settings → Battery Degradation.
                 </p>
               </div>
 
@@ -200,20 +202,23 @@ export default function NotificationsSettings() {
               </Field>
 
               <Field label="Alert categories">
-                {categories.map((cat) => (
-                  <label key={cat.key} className="checkbox" style={{ display: 'block', marginBottom: 6 }}>
-                    <input
-                      type="checkbox"
-                    disabled={!canEdit || !cfg.emails_enabled}
-                    checked={cfg.email_notifications[cat.key] !== false}
-                      onChange={(e) => setCfg((c) => ({
-                        ...c,
-                        email_notifications: { ...c.email_notifications, [cat.key]: e.target.checked },
-                      }))}
-                    />
-                    {' '}{cat.label}
-                  </label>
-                ))}
+                {categories.map((cat) => {
+                  const independent = cat.key === 'battery_calls'
+                  return (
+                    <label key={cat.key} className="checkbox" style={{ display: 'block', marginBottom: 6 }}>
+                      <input
+                        type="checkbox"
+                        disabled={!canEdit || (!independent && !cfg.emails_enabled)}
+                        checked={cfg.email_notifications[cat.key] !== false}
+                        onChange={(e) => setCfg((c) => ({
+                          ...c,
+                          email_notifications: { ...c.email_notifications, [cat.key]: e.target.checked },
+                        }))}
+                      />
+                      {' '}{cat.label}
+                    </label>
+                  )
+                })}
               </Field>
 
               <div className="form-actions">

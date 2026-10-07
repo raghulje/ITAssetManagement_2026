@@ -1134,6 +1134,8 @@ batteryIssuesRouter.post('/', async (req, res) => {
   const payload = await loadIssuePayload(result.insertId)
   void (async () => {
     try {
+      const { isEmailCategoryEnabled } = await import('../services/notificationConfig.js')
+      if (!(await isEmailCategoryEnabled('battery_calls'))) return
       const { batteryNotifyEmails } = await import('../services/batteryConfig.js')
       const { mailConfigured, sendMail } = await import('../services/mail.js')
       const to = (await batteryNotifyEmails()).join(', ')
