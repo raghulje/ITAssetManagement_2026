@@ -181,7 +181,7 @@ function daysLabel(d: number | null) {
 async function sendToMany(recipients: string[], subject: string, html: string, text: string) {
   for (const to of recipients) {
     try {
-      await sendMail({ to, subject, html, text })
+      await sendMail({ to, subject, html, text, emailType: 'eol_warranty', relatedType: 'asset' })
     } catch (e) {
       console.warn('[eolAlerts] send failed', to, e instanceof Error ? e.message : e)
     }

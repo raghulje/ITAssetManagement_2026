@@ -863,6 +863,7 @@ settingsRouter.put('/notifications', async (req, res) => {
     emails_enabled: b.emails_enabled,
     email_notifications: b.email_notifications,
     extra_ops_emails: b.extra_ops_emails,
+    email_recipient_user_ids: b.email_recipient_user_ids,
     eol_to_it_asset_manager: b.eol_to_it_asset_manager,
     workflow_to_ops_roles: b.workflow_to_ops_roles,
   })
@@ -873,6 +874,18 @@ settingsRouter.put('/notifications', async (req, res) => {
     ])
   }
   return okMessage(res, 'Notification settings saved', await notificationAdminSnapshot())
+})
+
+settingsRouter.get('/email-logs', async (req, res) => {
+  const { listEmailLogs } = await import('../services/emailLog.js')
+  const data = await listEmailLogs({
+    status: String(req.query.status || '').trim() || undefined,
+    emailType: String(req.query.email_type || req.query.emailType || '').trim() || undefined,
+    search: String(req.query.search || '').trim() || undefined,
+    limit: Number(req.query.limit || 40),
+    offset: Number(req.query.offset || 0),
+  })
+  return res.json(data)
 })
 
 settingsRouter.put('/', async (req, res) => {

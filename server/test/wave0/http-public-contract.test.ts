@@ -24,6 +24,18 @@ describe('Wave 0 — HTTP contracts (no DB required)', () => {
     assert.ok(features.includes('imports'))
   })
 
+  it('QR asset lookup is not public — requires Bearer (401 Unauthorized)', async () => {
+    const { status, body } = await jsonRequest(app.baseUrl, '/api/v1/public/assets/any-token')
+    assert.equal(status, 401)
+    assert.deepEqual(body, { status: 'error', messages: ['Unauthorized'], payload: null })
+  })
+
+  it('QR captures are not public — requires Bearer (401 Unauthorized)', async () => {
+    const { status, body } = await jsonRequest(app.baseUrl, '/api/v1/public/assets/any-token/captures')
+    assert.equal(status, 401)
+    assert.deepEqual(body, { status: 'error', messages: ['Unauthorized'], payload: null })
+  })
+
   it('protected hardware/location/inventory routes require Bearer (401 Unauthorized)', async () => {
     for (const path of [
       '/api/v1/hardware',

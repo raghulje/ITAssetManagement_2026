@@ -1,5 +1,5 @@
 import { all, get, run, now } from '../db/index.js'
-import { mailConfigured } from './mail.js'
+import { mailConfigured, smtpAdminHint } from './mail.js'
 import { listOpsRecipientEmails, listRoleRecipientEmails } from './permissions.js'
 
 export type EmailCategoryKey =
@@ -20,9 +20,11 @@ export type NotificationConfig = {
   email_notifications: Record<EmailCategoryKey, boolean>
   /** Extra addresses (comma/newline) always BCC'd on ops digests */
   extra_ops_emails: string
+  /** App users (users.id) who receive workflow / create / delete emails. */
+  email_recipient_user_ids: number[]
   /** Also email IT Asset Manager role members for EOL/warranty / license renewals (default true) */
   eol_to_it_asset_manager: boolean
-  /** Also email all notify.ops / admin / superuser for workflow events (default true) */
+  /** Also email users whose role has notify.ops. Off unless explicitly enabled. */
   workflow_to_ops_roles: boolean
 }
 
@@ -38,8 +40,9 @@ const DEFAULT_CONFIG: NotificationConfig = {
     battery_calls: true,
   },
   extra_ops_emails: '',
+  email_recipient_user_ids: [],
   eol_to_it_asset_manager: true,
-  workflow_to_ops_roles: true,
+  workflow_to_ops_roles: false,
 }
 
 function parseConfig(raw: unknown): NotificationConfig {
@@ -61,9 +64,20 @@ function parseConfig(raw: unknown): NotificationConfig {
     emails_enabled: obj.emails_enabled === true || obj.emails_enabled === 1 || obj.emails_enabled === '1',
     email_notifications: en,
     extra_ops_emails: String(obj.extra_ops_emails ?? ''),
+    email_recipient_user_ids: parseIdList(obj.email_recipient_user_ids),
     eol_to_it_asset_manager: obj.eol_to_it_asset_manager === false ? false : true,
-    workflow_to_ops_roles: obj.workflow_to_ops_roles === false ? false : true,
+    workflow_to_ops_roles: obj.workflow_to_ops_roles === true || obj.workflow_to_ops_roles === 1 || obj.workflow_to_ops_roles === '1',
   }
+}
+
+function parseIdList(raw: unknown): number[] {
+  const arr = Array.isArray(raw) ? raw : []
+  const ids = new Set<number>()
+  for (const v of arr) {
+    const n = Number(v)
+    if (Number.isInteger(n) && n > 0) ids.add(n)
+  }
+  return [...ids]
 }
 
 export async function getNotificationConfig(): Promise<NotificationConfig> {
@@ -92,6 +106,9 @@ export async function saveNotificationConfig(partial: Partial<NotificationConfig
     extra_ops_emails: partial.extra_ops_emails !== undefined
       ? String(partial.extra_ops_emails)
       : current.extra_ops_emails,
+    email_recipient_user_ids: partial.email_recipient_user_ids !== undefined
+      ? parseIdList(partial.email_recipient_user_ids)
+      : current.email_recipient_user_ids,
     eol_to_it_asset_manager: partial.eol_to_it_asset_manager !== undefined
       ? Boolean(partial.eol_to_it_asset_manager)
       : current.eol_to_it_asset_manager,
@@ -126,9 +143,26 @@ function splitEmails(raw: string): string[] {
     .filter((s) => s.includes('@'))
 }
 
+async function emailsForUserIds(ids: number[]): Promise<string[]> {
+  if (!ids.length) return []
+  const placeholders = ids.map(() => '?').join(',')
+  const rows = await all<{ email: string | null }>(
+    `SELECT email FROM users
+     WHERE deleted_at IS NULL AND activated = 1 AND id IN (${placeholders})`,
+    ids,
+  )
+  const emails: string[] = []
+  for (const r of rows) {
+    const e = String(r.email || '').trim().toLowerCase()
+    if (e.includes('@')) emails.push(e)
+  }
+  return emails
+}
+
 export async function resolveWorkflowRecipients(): Promise<string[]> {
   const cfg = await getNotificationConfig()
   const emails = new Set<string>()
+  for (const e of await emailsForUserIds(cfg.email_recipient_user_ids)) emails.add(e)
   if (cfg.workflow_to_ops_roles) {
     for (const e of await listOpsRecipientEmails()) emails.add(e)
   }
@@ -143,6 +177,7 @@ export async function resolveEolRecipients(): Promise<string[]> {
   const cfg = await getNotificationConfig()
   if (!(await isEmailCategoryEnabled('eol_warranty'))) return []
   const emails = new Set<string>()
+  for (const e of await emailsForUserIds(cfg.email_recipient_user_ids)) emails.add(e)
   if (cfg.eol_to_it_asset_manager) {
     for (const e of await listRoleRecipientEmails('IT Asset Manager')) emails.add(e)
   }
@@ -169,18 +204,27 @@ export async function notificationAdminSnapshot() {
     WHERE g.name = 'IT Asset Manager' AND u.deleted_at IS NULL AND u.activated = 1
     ORDER BY u.first_name, u.last_name
   `)
+  const appUsers = await all<{ id: number; email: string | null; first_name: string; last_name: string; username: string }>(`
+    SELECT id, email, first_name, last_name, username
+    FROM users
+    WHERE deleted_at IS NULL AND activated = 1
+    ORDER BY first_name, last_name, username
+  `)
   const ops = await listOpsRecipientEmails()
   return {
     smtp_configured: mailConfigured(),
-    smtp_hint: mailConfigured()
-      ? 'SMTP is configured via server environment (SMTP_HOST / SMTP_USER).'
-      : 'SMTP is not configured. Set SMTP_USER / SMTP_PASS in server/.env',
+    smtp_hint: smtpAdminHint(),
     alert_email: settings?.alert_email || null,
     site_name: settings?.site_name || null,
     config: cfg,
     it_asset_managers: itam.map((u) => ({
       id: u.id,
       name: `${u.first_name} ${u.last_name}`.trim() || u.username,
+      email: u.email,
+    })),
+    app_users: appUsers.map((u) => ({
+      id: Number(u.id),
+      name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username,
       email: u.email,
     })),
     resolved_ops_emails: ops,

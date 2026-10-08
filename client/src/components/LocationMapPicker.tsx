@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import { api } from '../api/client'
 
 export type MapLocationValue = {
@@ -17,18 +15,8 @@ type Props = {
 const DEFAULT_CENTER = { lat: 13.0827, lng: 80.2707 } // Chennai
 const DEFAULT_ZOOM = 12
 
-const markerIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-})
-
 type SearchHit = { lat: number; lng: number; address: string; place_id: string }
-type MapConfig = { provider: 'google' | 'osm'; browser_key?: string | null }
+type MapConfig = { provider: 'google' | 'none'; browser_key?: string | null }
 
 declare global {
   interface Window {
@@ -93,8 +81,6 @@ export default function LocationMapPicker({ value, onChange }: Props) {
   const [err, setErr] = useState('')
   const [config, setConfig] = useState<MapConfig | null>(null)
   const mapEl = useRef<HTMLDivElement>(null)
-  const leafletMap = useRef<L.Map | null>(null)
-  const leafletMarker = useRef<L.Marker | null>(null)
   const gMap = useRef<GoogleMap | null>(null)
   const gMarker = useRef<GoogleMarker | null>(null)
   const onChangeRef = useRef(onChange)
@@ -103,10 +89,10 @@ export default function LocationMapPicker({ value, onChange }: Props) {
   useEffect(() => {
     api<MapConfig>('/geo/config')
       .then((c) => setConfig({
-        provider: c.provider === 'google' && c.browser_key ? 'google' : 'osm',
+        provider: c.provider === 'google' && c.browser_key ? 'google' : 'none',
         browser_key: c.browser_key,
       }))
-      .catch(() => setConfig({ provider: 'osm' }))
+      .catch(() => setConfig({ provider: 'none' }))
   }, [])
 
   const applyPoint = async (lat: number, lng: number, address?: string) => {
@@ -139,43 +125,8 @@ export default function LocationMapPicker({ value, onChange }: Props) {
 
   useEffect(() => {
     if (!open || !mapEl.current || !config) return
+    if (config.provider !== 'google' || !config.browser_key) return
     let cancelled = false
-
-    const setupLeaflet = () => {
-      if (!mapEl.current) return
-      if (!leafletMap.current) {
-        const map = L.map(mapEl.current, { scrollWheelZoom: true }).setView(
-          hasPin ? [value.latitude!, value.longitude!] : [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng],
-          hasPin ? 16 : DEFAULT_ZOOM,
-        )
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-          maxZoom: 19,
-        }).addTo(map)
-        map.on('click', (e: L.LeafletMouseEvent) => {
-          void applyPointRef.current(e.latlng.lat, e.latlng.lng)
-        })
-        leafletMap.current = map
-      }
-      const map = leafletMap.current
-      if (hasPin) {
-        const ll: L.LatLngExpression = [value.latitude!, value.longitude!]
-        if (!leafletMarker.current) {
-          leafletMarker.current = L.marker(ll, { icon: markerIcon, draggable: true }).addTo(map)
-          leafletMarker.current.on('dragend', () => {
-            const p = leafletMarker.current?.getLatLng()
-            if (p) void applyPointRef.current(p.lat, p.lng)
-          })
-        } else {
-          leafletMarker.current.setLatLng(ll)
-        }
-        map.setView(ll, Math.max(map.getZoom(), 15))
-      } else if (leafletMarker.current) {
-        leafletMarker.current.remove()
-        leafletMarker.current = null
-      }
-      window.setTimeout(() => map.invalidateSize(), 80)
-    }
 
     const setupGoogle = async () => {
       if (!mapEl.current || !config.browser_key) return
@@ -227,13 +178,9 @@ export default function LocationMapPicker({ value, onChange }: Props) {
       }
     }
 
-    if (config.provider === 'google' && config.browser_key) {
-      void setupGoogle().catch((e) => {
-        if (!cancelled) setErr(e instanceof Error ? e.message : 'Google Maps failed')
-      })
-    } else {
-      setupLeaflet()
-    }
+    void setupGoogle().catch((e) => {
+      if (!cancelled) setErr(e instanceof Error ? e.message : 'Google Maps failed')
+    })
 
     return () => {
       cancelled = true
@@ -241,9 +188,6 @@ export default function LocationMapPicker({ value, onChange }: Props) {
   }, [open, value.latitude, value.longitude, hasPin, config])
 
   useEffect(() => () => {
-    leafletMap.current?.remove()
-    leafletMap.current = null
-    leafletMarker.current = null
     gMarker.current?.setMap(null)
     gMarker.current = null
     gMap.current = null
@@ -276,17 +220,13 @@ export default function LocationMapPicker({ value, onChange }: Props) {
     setQuery('')
     setHits([])
     setErr('')
-    if (leafletMarker.current) {
-      leafletMarker.current.remove()
-      leafletMarker.current = null
-    }
     if (gMarker.current) {
       gMarker.current.setMap(null)
       gMarker.current = null
     }
   }
 
-  const usingGoogle = config?.provider === 'google'
+  const mapsReady = config?.provider === 'google' && Boolean(config.browser_key)
 
   return (
     <div className="map-location-picker">
@@ -297,7 +237,7 @@ export default function LocationMapPicker({ value, onChange }: Props) {
           onClick={() => setOpen((v) => !v)}
         >
           <i className={`fas ${open ? 'fa-chevron-up' : 'fa-map-marker-alt'}`} />{' '}
-          {open ? 'Hide map' : hasPin ? 'Edit map pin' : 'Choose on map'}
+          {open ? 'Hide map' : hasPin ? 'Edit map pin' : 'Choose on Google Maps'}
         </button>
         {hasPin ? (
           <button type="button" className="btn btn-link btn-sm" onClick={clear}>
@@ -317,57 +257,66 @@ export default function LocationMapPicker({ value, onChange }: Props) {
 
       {open ? (
         <div className="map-location-panel">
-          <p className="help-block" style={{ marginTop: 0 }}>
-            Search an address{usingGoogle ? ' (Google Maps)' : ' (OpenStreetMap)'} or click the map to drop a pin.
-            Drag the marker to adjust.
-          </p>
-          <div className="map-location-search">
-            <input
-              className="form-control"
-              placeholder="Search address or place…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void runSearch()
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn-theme btn-sm"
-              disabled={searchBusy}
-              onClick={() => { void runSearch() }}
-            >
-              {searchBusy ? 'Searching…' : 'Search'}
-            </button>
-          </div>
-          {hits.length > 0 ? (
-            <ul className="map-location-hits">
-              {hits.map((h) => (
-                <li key={h.place_id || `${h.lat},${h.lng}`}>
-                  <button
-                    type="button"
-                    onClick={() => { void applyPoint(h.lat, h.lng, h.address) }}
-                  >
-                    {h.address}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {err ? <p className="text-danger" style={{ margin: '6px 0 0', fontSize: 13 }}>{err}</p> : null}
-          {mapBusy ? <p className="help-block" style={{ marginBottom: 0 }}>Resolving address…</p> : null}
-          <div ref={mapEl} className="map-location-canvas" role="application" aria-label="Map location picker" />
-          {hasPin ? (
-            <div className="map-location-summary" style={{ marginTop: 10 }}>
-              <div className="map-location-summary-addr">{value.address}</div>
-              <div className="map-location-summary-coords text-muted">
-                Lat {Number(value.latitude).toFixed(6)}, Lng {Number(value.longitude).toFixed(6)}
+          {!config ? (
+            <p className="help-block" style={{ marginTop: 0 }}>Loading Google Maps…</p>
+          ) : !mapsReady ? (
+            <p className="text-danger" style={{ marginTop: 0 }}>
+              Google Maps is not configured. Set GOOGLE_MAPS_API_KEY on the server and restart.
+            </p>
+          ) : (
+            <>
+              <p className="help-block" style={{ marginTop: 0 }}>
+                Search an address with Google Maps or click the map to drop a pin. Drag the marker to adjust.
+              </p>
+              <div className="map-location-search">
+                <input
+                  className="form-control"
+                  placeholder="Search address or place…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void runSearch()
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-theme btn-sm"
+                  disabled={searchBusy}
+                  onClick={() => { void runSearch() }}
+                >
+                  {searchBusy ? 'Searching…' : 'Search'}
+                </button>
               </div>
-            </div>
-          ) : null}
+              {hits.length > 0 ? (
+                <ul className="map-location-hits">
+                  {hits.map((h) => (
+                    <li key={h.place_id || `${h.lat},${h.lng}`}>
+                      <button
+                        type="button"
+                        onClick={() => { void applyPoint(h.lat, h.lng, h.address) }}
+                      >
+                        {h.address}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {err ? <p className="text-danger" style={{ margin: '6px 0 0', fontSize: 13 }}>{err}</p> : null}
+              {mapBusy ? <p className="help-block" style={{ marginBottom: 0 }}>Resolving address…</p> : null}
+              <div ref={mapEl} className="map-location-canvas" role="application" aria-label="Google Maps location picker" />
+              {hasPin ? (
+                <div className="map-location-summary" style={{ marginTop: 10 }}>
+                  <div className="map-location-summary-addr">{value.address}</div>
+                  <div className="map-location-summary-coords text-muted">
+                    Lat {Number(value.latitude).toFixed(6)}, Lng {Number(value.longitude).toFixed(6)}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
     </div>

@@ -50,6 +50,7 @@ import {
 import RolesPermissions from './pages/settings/RolesPermissions'
 import SpaceManagement from './pages/spaces/SpaceManagement'
 import NotificationsSettings from './pages/settings/NotificationsSettings'
+import EmailLogs from './pages/settings/EmailLogs'
 import BatterySettings from './pages/settings/BatterySettings'
 import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset'
 import SsoCallback from './pages/SsoCallback'
@@ -224,6 +225,7 @@ export default function App() {
                 <Route path="/settings/battery" element={<RequireAdmin><BatterySettings /></RequireAdmin>} />
                 <Route path="/settings/roles" element={<RequireAdmin><RolesPermissions /></RequireAdmin>} />
                 <Route path="/settings/notifications" element={<RequireAdmin><NotificationsSettings /></RequireAdmin>} />
+                <Route path="/settings/email-logs" element={<RequireAdmin><EmailLogs /></RequireAdmin>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </RequireAuth>

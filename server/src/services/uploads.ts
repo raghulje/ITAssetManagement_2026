@@ -25,6 +25,7 @@ const dirs = [
   'private_uploads/battery_issues',
   'private_uploads/battery_close_proofs',
   'private_uploads/battery_recordings',
+  'private_uploads/asset_captures',
 ]
 
 for (const d of dirs) {
@@ -64,6 +65,19 @@ export function makeMultiUploader(subdir: string, field = 'files', maxCount = 8)
     storage: diskStorage(subdir),
     limits: { fileSize: 15 * 1024 * 1024 },
   }).array(field, maxCount)
+}
+
+/** Photos + 30s video from the QR capture page. */
+export function makeCaptureUploader(subdir: string, field = 'file') {
+  return multer({
+    storage: diskStorage(subdir),
+    limits: { fileSize: 100 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const mime = String(file.mimetype || '')
+      if (mime.startsWith('image/') || mime.startsWith('video/')) return cb(null, true)
+      cb(new Error('Only image or video files are allowed'))
+    },
+  }).single(field)
 }
 
 export async function recordUpload(opts: {

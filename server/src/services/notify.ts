@@ -95,12 +95,20 @@ async function logNotify(kind: string, itemType: string, itemId: number) {
   }
 }
 
-async function sendToMany(emails: string[], subject: string, html: string, text: string) {
+async function sendToMany(
+  emails: string[],
+  subject: string,
+  html: string,
+  text: string,
+  emailType?: string,
+  relatedType?: string,
+  relatedId?: number,
+) {
   const unique = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter((e) => e.includes('@')))]
   const results: { to: string; ok: boolean; error?: string }[] = []
   for (const to of unique) {
     try {
-      await sendMail({ to, subject, html, text })
+      await sendMail({ to, subject, html, text, emailType, relatedType, relatedId })
       results.push({ to, ok: true })
     } catch (e) {
       results.push({ to, ok: false, error: e instanceof Error ? e.message : String(e) })
@@ -139,7 +147,7 @@ export function notifyWorkflow(input: WorkflowNotifyInput) {
       })
 
       const ops = await resolveWorkflowRecipients()
-      await sendToMany(ops, input.subject, html, text)
+      await sendToMany(ops, input.subject, html, text, input.category, input.itemType, input.itemId)
 
       if (input.assigneeEmail && input.assigneeEmail.includes('@')) {
         const assigneeMail = brandedEmail({
@@ -155,6 +163,9 @@ export function notifyWorkflow(input: WorkflowNotifyInput) {
           input.subject,
           assigneeMail.html,
           assigneeMail.text,
+          input.category,
+          input.itemType,
+          input.itemId,
         )
       }
 

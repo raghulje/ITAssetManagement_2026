@@ -76,6 +76,8 @@ router.post('/:token/register', async (req, res) => {
   if (!b.company_id && !b.legal_entity_id) {
     return fail(res, 'company_id (or legal_entity_id) is required')
   }
+  const serial = String(b.serial || '').trim()
+  if (!serial) return fail(res, 'Serial number is required')
 
   const taken = await get<{ id: number }>(
     `SELECT id FROM assets WHERE asset_tag = ? AND deleted_at IS NULL`,
@@ -116,7 +118,7 @@ router.post('/:token/register', async (req, res) => {
   )
   vals.push(
     b.name || null,
-    b.serial || null,
+    serial,
     Number(b.model_id),
     Number(b.status_id),
     b.company_id ? Number(b.company_id) : null,

@@ -380,6 +380,7 @@ export function AdminHub() {
     { to: '/settings/battery', label: 'Battery Degradation', icon: 'fas fa-battery-half' },
     { to: '/settings/roles', label: 'Roles & permissions', icon: 'fas fa-user-shield-alt' },
     { to: '/settings/notifications', label: 'Notifications / emails', icon: 'fas fa-envelope' },
+    { to: '/settings/email-logs', label: 'Email logs', icon: 'fas fa-inbox' },
     { to: '/companies', label: 'Companies', icon: 'fas fa-building' },
     { to: '/fields', label: 'Custom Fields', icon: 'fas fa-list' },
     { to: '/statuslabels', label: 'Status Labels', icon: 'fas fa-flag' },

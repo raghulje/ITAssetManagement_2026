@@ -173,7 +173,7 @@ export async function runLicenseRenewalDigest(): Promise<LicenseDigestResult> {
     const subject = `[${site}] ${title} (${items.length})`
     for (const to of recipients) {
       try {
-        await sendMail({ to, subject, html, text })
+        await sendMail({ to, subject, html, text, emailType: 'license_renewal', relatedType: 'license' })
       } catch (e) {
         console.warn('[licenseAlerts] send failed', to, e instanceof Error ? e.message : e)
       }

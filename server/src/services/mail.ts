@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { insertEmailLog, type EmailLogStatus } from './emailLog.js'
 
 function smtpConfig() {
   const host = process.env.SMTP_HOST || 'smtp.zoho.in'
@@ -22,9 +23,40 @@ export function mailConfigured() {
   return Boolean(user && pass)
 }
 
-export async function sendMail(opts: { to: string; subject: string; text: string; html?: string }) {
+export function smtpAdminHint() {
+  const { host, port, user } = smtpConfig()
+  if (mailConfigured()) {
+    return `SMTP is configured via server environment: ${host}:${port} as ${user}.`
+  }
+  return 'SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in server/.env'
+}
+
+export type SendMailOpts = {
+  to: string
+  subject: string
+  text: string
+  html?: string
+  emailType?: string
+  relatedType?: string
+  relatedId?: number
+}
+
+export async function sendMail(opts: SendMailOpts) {
   const cfg = smtpConfig()
+  const logBase = {
+    emailType: opts.emailType || 'generic',
+    relatedType: opts.relatedType || null,
+    relatedId: opts.relatedId || null,
+    toAddresses: opts.to,
+    subject: opts.subject,
+  }
+
   if (!cfg.user || !cfg.pass) {
+    await insertEmailLog({
+      ...logBase,
+      status: 'skipped',
+      errorMessage: 'SMTP is not configured (SMTP_USER / SMTP_PASS)',
+    })
     throw new Error('SMTP is not configured (SMTP_USER / SMTP_PASS)')
   }
 
@@ -35,11 +67,43 @@ export async function sendMail(opts: { to: string; subject: string; text: string
     auth: { user: cfg.user, pass: cfg.pass },
   })
 
-  await transporter.sendMail({
-    from: cfg.from,
-    to: opts.to,
-    subject: opts.subject,
-    text: opts.text,
-    html: opts.html || opts.text.replace(/\n/g, '<br/>'),
-  })
+  try {
+    const info = await transporter.sendMail({
+      from: cfg.from,
+      to: opts.to,
+      subject: opts.subject,
+      text: opts.text,
+      html: opts.html || opts.text.replace(/\n/g, '<br/>'),
+    })
+    const accepted = (info.accepted || []).map((a) => String(a))
+    const rejected = (info.rejected || []).map((a) => String(a))
+    let status: EmailLogStatus = 'sent'
+    let errorMessage: string | null = null
+    if (rejected.length && !accepted.length) {
+      status = 'failed'
+      errorMessage = `Rejected: ${rejected.join(', ')}`
+    } else if (rejected.length) {
+      errorMessage = `Rejected: ${rejected.join(', ')}`
+    }
+    await insertEmailLog({
+      ...logBase,
+      status,
+      messageId: info.messageId || null,
+      errorMessage,
+      meta: {
+        accepted,
+        rejected,
+        response: info.response || '',
+      },
+    })
+    return info
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    await insertEmailLog({
+      ...logBase,
+      status: 'failed',
+      errorMessage: message,
+    })
+    throw e
+  }
 }
