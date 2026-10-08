@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { getStorageBase } from '../../api/baseUrl'
 import { api, ApiError, labelCodesApi, mastersApi, type SelectOption } from '../../api/client'
 import { AppSelect, Field } from '../../components/ui'
@@ -11,6 +11,7 @@ import { beginRefexOneSso } from '../../utils/loginNext'
 import QrAssetCapturePanel, {
   firstPackStatus,
   MIN_SIDE_PHOTOS,
+  stagedUploadMeta,
   uploadQrCapture,
   type StagedCapture,
 } from '../../components/QrAssetCapturePanel'
@@ -162,21 +163,7 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
       const failed: string[] = []
       for (const item of staged) {
         try {
-          await uploadQrCapture(token, item.file, item.kind, {
-            pos: item.latitude != null && item.longitude != null
-              ? {
-                latitude: item.latitude,
-                longitude: item.longitude,
-                accuracyM: item.accuracyM || 0,
-                altitude: null,
-                capturedAt: item.capturedAt ? new Date(item.capturedAt) : new Date(),
-                source: 'cached',
-              }
-              : null,
-            address: item.address,
-            locality: item.locality,
-            capturedAt: item.capturedAt,
-          })
+          await uploadQrCapture(token, item.file, item.kind, stagedUploadMeta(item))
         } catch {
           failed.push(item.kind)
         }
@@ -270,6 +257,7 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
         staged
         stagedItems={staged}
         onStagedChange={setStaged}
+        submitBusy={busy}
       />
       <div className="form-actions">
         <button type="submit" className="btn btn-theme" disabled={busy}>
@@ -469,7 +457,19 @@ export default function PublicAsset() {
         ) : null}
 
         {token ? (
-          <QrAssetCapturePanel token={token} assetTag={String(asset.asset_tag || token)} />
+          <>
+            {asset.id ? (
+              <p className="help-block">
+                After submit, photos and video appear on the asset record.{' '}
+                <Link to={`/hardware/${asset.id}?tab=captures`}>Open Captures tab</Link>
+              </p>
+            ) : null}
+            <QrAssetCapturePanel
+              token={token}
+              assetTag={String(asset.asset_tag || token)}
+              assetId={asset.id}
+            />
+          </>
         ) : null}
       </div>
     </div>

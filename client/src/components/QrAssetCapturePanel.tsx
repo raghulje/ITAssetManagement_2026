@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { getApiBase } from '../api/baseUrl'
 import { api, ApiError } from '../api/client'
 import AssetVideoCapture from './AssetVideoCapture'
@@ -126,39 +127,66 @@ export async function uploadQrCapture(
   if (!res.ok) throw new Error((data.messages || []).join(', ') || 'Upload failed')
 }
 
+export function stagedUploadMeta(item: StagedCapture) {
+  return {
+    pos: item.latitude != null && item.longitude != null
+      ? {
+        latitude: item.latitude,
+        longitude: item.longitude,
+        accuracyM: item.accuracyM || 0,
+        altitude: null as number | null,
+        capturedAt: item.capturedAt ? new Date(item.capturedAt) : new Date(),
+        source: 'cached' as const,
+      }
+      : null,
+    address: item.address,
+    locality: item.locality,
+    capturedAt: item.capturedAt,
+  }
+}
+
 type PhotoBucket = 'photo' | 'serial'
 
 type Props = {
   token: string
   assetTag: string
-  /** Stage files locally until the parent submits (blank-label first registration). */
+  assetId?: number
+  /** Stage files locally until the parent form submits (blank-label first registration). */
   staged?: boolean
   stagedItems?: StagedCapture[]
   onStagedChange?: (items: StagedCapture[]) => void
+  submitBusy?: boolean
 }
 
 export default function QrAssetCapturePanel({
   token,
   assetTag,
+  assetId,
   staged = false,
   stagedItems = [],
   onStagedChange,
+  submitBusy = false,
 }: Props) {
   const [rows, setRows] = useState<CaptureRow[]>([])
   const [previews, setPreviews] = useState<Record<number, string>>({})
+  const [localStaged, setLocalStaged] = useState<StagedCapture[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [webcamOpen, setWebcamOpen] = useState(false)
   const [videoOpen, setVideoOpen] = useState(false)
   const [photoBucket, setPhotoBucket] = useState<PhotoBucket>('photo')
   const [gps, setGps] = useState<PrecisePosition | null>(null)
   const blobUrls = useRef<string[]>([])
 
-  const liveItems = rows.map((r) => ({ kind: r.kind }))
-  const pack = firstPackStatus(staged ? stagedItems : liveItems)
-  const sideItems = staged ? stagedItems.filter((i) => i.kind === 'photo') : rows.filter((r) => r.kind === 'photo')
-  const serialItems = staged ? stagedItems.filter((i) => i.kind === 'serial') : rows.filter((r) => r.kind === 'serial')
-  const videoItems = staged ? stagedItems.filter((i) => i.kind === 'video') : rows.filter((r) => r.kind === 'video')
+  const pending = staged ? stagedItems : localStaged
+  const combined = [...rows.map((r) => ({ kind: r.kind })), ...pending.map((p) => ({ kind: p.kind }))]
+  const pack = firstPackStatus(combined)
+  const sideItems = [...rows.filter((r) => r.kind === 'photo'), ...pending.filter((i) => i.kind === 'photo')]
+  const serialItems = [...rows.filter((r) => r.kind === 'serial'), ...pending.filter((i) => i.kind === 'serial')]
+  const videoItems = [...rows.filter((r) => r.kind === 'video'), ...pending.filter((i) => i.kind === 'video')]
+  const working = busy || submitBusy
+  const canUploadSubmit = pack.complete && pending.length > 0
 
   const loadList = useCallback(async () => {
     if (staged) return
@@ -207,8 +235,14 @@ export default function QrAssetCapturePanel({
     blobUrls.current.forEach((u) => URL.revokeObjectURL(u))
   }, [])
 
+  function setPending(items: StagedCapture[]) {
+    if (staged) onStagedChange?.(items)
+    else setLocalStaged(items)
+  }
+
   function addStaged(item: StagedCapture) {
-    onStagedChange?.([...stagedItems, item])
+    setNotice('')
+    setPending([...pending, item])
   }
 
   async function handlePhoto(file: File, pos: PrecisePosition | null, kind: PhotoBucket) {
@@ -216,27 +250,18 @@ export default function QrAssetCapturePanel({
     setError('')
     try {
       const stamped = await stampCapturePhoto(file, pos, assetTag)
-      if (staged) {
-        addStaged({
-          localId: `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          kind,
-          file: stamped.file,
-          previewUrl: URL.createObjectURL(stamped.file),
-          latitude: stamped.pos?.latitude ?? null,
-          longitude: stamped.pos?.longitude ?? null,
-          accuracyM: stamped.pos?.accuracyM ?? null,
-          address: stamped.address,
-          locality: stamped.locality,
-          capturedAt: stamped.pos?.capturedAt.toISOString().slice(0, 19).replace('T', ' ') || null,
-        })
-        return
-      }
-      await uploadQrCapture(token, stamped.file, kind, {
-        pos: stamped.pos,
+      addStaged({
+        localId: `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        kind,
+        file: stamped.file,
+        previewUrl: URL.createObjectURL(stamped.file),
+        latitude: stamped.pos?.latitude ?? null,
+        longitude: stamped.pos?.longitude ?? null,
+        accuracyM: stamped.pos?.accuracyM ?? null,
         address: stamped.address,
         locality: stamped.locality,
+        capturedAt: stamped.pos?.capturedAt.toISOString().slice(0, 19).replace('T', ' ') || null,
       })
-      await loadList()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save photo')
     } finally {
@@ -248,21 +273,16 @@ export default function QrAssetCapturePanel({
     setBusy(true)
     setError('')
     try {
-      if (staged) {
-        addStaged({
-          localId: `video-${Date.now()}`,
-          kind: 'video',
-          file,
-          previewUrl: URL.createObjectURL(file),
-          latitude: gps?.latitude ?? null,
-          longitude: gps?.longitude ?? null,
-          accuracyM: gps?.accuracyM ?? null,
-          capturedAt: gps?.capturedAt.toISOString().slice(0, 19).replace('T', ' ') || null,
-        })
-        return
-      }
-      await uploadQrCapture(token, file, 'video', { pos: gps })
-      await loadList()
+      addStaged({
+        localId: `video-${Date.now()}`,
+        kind: 'video',
+        file,
+        previewUrl: URL.createObjectURL(file),
+        latitude: gps?.latitude ?? null,
+        longitude: gps?.longitude ?? null,
+        accuracyM: gps?.accuracyM ?? null,
+        capturedAt: gps?.capturedAt.toISOString().slice(0, 19).replace('T', ' ') || null,
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save video')
     } finally {
@@ -300,21 +320,68 @@ export default function QrAssetCapturePanel({
   }
 
   function removeStaged(localId: string) {
-    const gone = stagedItems.find((i) => i.localId === localId)
+    const gone = pending.find((i) => i.localId === localId)
     if (gone) URL.revokeObjectURL(gone.previewUrl)
-    onStagedChange?.(stagedItems.filter((i) => i.localId !== localId))
+    setPending(pending.filter((i) => i.localId !== localId))
+  }
+
+  async function submitPending() {
+    if (!pack.complete) {
+      setError(`Capture all sides (min ${MIN_SIDE_PHOTOS} photos), the serial number, and a 30-second video before submitting.`)
+      return
+    }
+    if (!pending.length) {
+      setError('Capture photos or video first, then tap Submit capture.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const failedIds: string[] = []
+    for (const item of pending) {
+      try {
+        await uploadQrCapture(token, item.file, item.kind, stagedUploadMeta(item))
+      } catch {
+        failedIds.push(item.localId)
+      }
+    }
+    if (!failedIds.length) {
+      pending.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+      setLocalStaged([])
+      setNotice('Submitted. Photos and video are stored on this asset.')
+    } else {
+      pending.filter((item) => !failedIds.includes(item.localId)).forEach((item) => URL.revokeObjectURL(item.previewUrl))
+      setLocalStaged(pending.filter((item) => failedIds.includes(item.localId)))
+      setError(`${failedIds.length} capture(s) failed to upload. Try Submit again.`)
+    }
+    try {
+      await loadList()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Submitted, but could not refresh the gallery')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const cameraLabel = photoBucket === 'serial'
     ? `${assetTag} · serial number`
     : `${assetTag} · all sides`
 
+  const submitHint = !pack.complete
+    ? `Finish the checklist (${MIN_SIDE_PHOTOS} sides + serial photo + 30s video), then submit.`
+    : pending.length
+      ? `${pending.length} capture(s) ready — tap Submit to store them on this asset.`
+      : 'Required captures are saved on this asset. Capture more and Submit to add them.'
+
   return (
     <section className="qr-capture-panel">
       <header className="qr-capture-panel__head">
         <div>
-          <h2>First-time field capture</h2>
-          <p>Capture all sides of the asset, photograph the serial number, and record a 30-second video. These are required to finish registration.</p>
+          <h2>{staged ? 'First-time field capture' : 'Asset captures'}</h2>
+          <p>
+            Capture all sides of the asset, photograph the serial number, and record a 30-second video.
+            Nothing is stored until you tap <strong>Submit</strong>.
+          </p>
         </div>
       </header>
 
@@ -330,21 +397,33 @@ export default function QrAssetCapturePanel({
         </li>
       </ul>
       {error ? <p className="text-danger">{error}</p> : null}
-      {busy ? <p className="help-block">Saving…</p> : null}
+      {notice ? (
+        <div className="callout callout-success qr-capture-notice">
+          <p>
+            {notice}
+            {assetId ? (
+              <>
+                {' '}
+                <Link to={`/hardware/${assetId}?tab=captures`}>Open asset → Captures</Link>
+              </>
+            ) : null}
+          </p>
+        </div>
+      ) : null}
+      {working ? <p className="help-block">{staged ? 'Saving…' : 'Submitting captures…'}</p> : null}
 
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">All sides ({pack.sides}/{MIN_SIDE_PHOTOS})</h3>
-          <button type="button" className="btn btn-theme btn-sm" disabled={busy} onClick={() => { void openCamera('photo') }}>
+          <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('photo') }}>
             <i className="fas fa-camera" /> Capture all sides
           </button>
         </div>
         <p className="help-block">Walk around the asset and take at least 4 GPS-stamped photos (front, back, and both sides).</p>
         <Gallery
-          staged={staged}
           items={sideItems}
           previews={previews}
-          busy={busy}
+          busy={working}
           empty="No side photos yet."
           onRemoveStaged={removeStaged}
           onRemoveLive={removeLive}
@@ -354,16 +433,15 @@ export default function QrAssetCapturePanel({
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">Serial number ({pack.serialOk ? '1/1' : '0/1'})</h3>
-          <button type="button" className="btn btn-theme btn-sm" disabled={busy} onClick={() => { void openCamera('serial') }}>
+          <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('serial') }}>
             <i className="fas fa-barcode" /> Capture serial no.
           </button>
         </div>
         <p className="help-block">Photograph the serial number sticker / label so it is readable. This is mandatory.</p>
         <Gallery
-          staged={staged}
           items={serialItems}
           previews={previews}
-          busy={busy}
+          busy={working}
           empty="No serial number photo yet."
           onRemoveStaged={removeStaged}
           onRemoveLive={removeLive}
@@ -373,21 +451,38 @@ export default function QrAssetCapturePanel({
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">Video ({pack.videos}/1)</h3>
-          <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={() => { void openVideo() }}>
+          <button type="button" className="btn btn-default btn-sm" disabled={working} onClick={() => { void openVideo() }}>
             <i className="fas fa-video" /> Record 30s video
           </button>
         </div>
         <p className="help-block">A 30-second walk-around video is mandatory for first-time registration.</p>
         <Gallery
-          staged={staged}
           items={videoItems}
           previews={previews}
-          busy={busy}
+          busy={working}
           empty="No video yet."
           video
           onRemoveStaged={removeStaged}
           onRemoveLive={removeLive}
         />
+      </div>
+
+      <div className="qr-capture-submit-bar">
+        <p>{submitHint}</p>
+        {staged ? (
+          <button type="submit" className="btn btn-theme btn-lg" disabled={working || !pack.complete}>
+            {working ? 'Saving…' : 'Submit registration'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-theme btn-lg"
+            disabled={working || !canUploadSubmit}
+            onClick={() => { void submitPending() }}
+          >
+            {working ? 'Submitting…' : 'Submit capture'}
+          </button>
+        )}
       </div>
 
       <AssetWebcamCapture
@@ -409,7 +504,6 @@ export default function QrAssetCapturePanel({
 }
 
 function Gallery({
-  staged,
   items,
   previews,
   busy,
@@ -418,7 +512,6 @@ function Gallery({
   onRemoveStaged,
   onRemoveLive,
 }: {
-  staged: boolean
   items: Array<StagedCapture | CaptureRow>
   previews: Record<number, string>
   busy: boolean
@@ -435,7 +528,7 @@ function Gallery({
         const live = !stagedItem ? item as CaptureRow : null
         const src = stagedItem ? stagedItem.previewUrl : (live ? previews[live.id] : '')
         const caption = stagedItem
-          ? (stagedItem.address || (stagedItem.latitude != null ? `${Number(stagedItem.latitude).toFixed(5)}, ${Number(stagedItem.longitude).toFixed(5)}` : 'Ready to submit'))
+          ? `Pending · ${stagedItem.address || (stagedItem.latitude != null ? `${Number(stagedItem.latitude).toFixed(5)}, ${Number(stagedItem.longitude).toFixed(5)}` : 'ready to submit')}`
           : (live?.address || live?.captured_at || 'Saved')
         return (
           <figure key={stagedItem?.localId || live?.id} className={`qr-capture-card${video ? ' qr-capture-card--video' : ''}`}>
@@ -445,7 +538,7 @@ function Gallery({
               <div className="qr-capture-card__ph">Loading…</div>
             )}
             <figcaption>
-              {caption}
+              <span>{caption}</span>
               <button
                 type="button"
                 className="btn btn-link btn-sm"

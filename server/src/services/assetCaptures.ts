@@ -81,7 +81,7 @@ export function normalizeCaptureKind(raw: string, mime = ''): CaptureKind {
   return 'photo'
 }
 
-export function presentCapture(row: AssetCaptureRow, token: string) {
+export function presentCapture(row: AssetCaptureRow, fileUrl: string) {
   return {
     id: row.id,
     kind: normalizeCaptureKind(row.capture_kind, row.mime_type || ''),
@@ -95,8 +95,16 @@ export function presentCapture(row: AssetCaptureRow, token: string) {
     address: row.address,
     locality_header: row.locality_header,
     created_at: row.created_at,
-    url: `/public/assets/${encodeURIComponent(token)}/captures/${row.id}/file`,
+    url: fileUrl,
   }
+}
+
+export function publicCaptureUrl(token: string, id: number) {
+  return `/public/assets/${encodeURIComponent(token)}/captures/${id}/file`
+}
+
+export function hardwareCaptureUrl(assetId: number, id: number) {
+  return `/hardware/${assetId}/captures/${id}/file`
 }
 
 export async function listAssetCaptures(assetId: number) {

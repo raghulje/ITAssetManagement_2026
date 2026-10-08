@@ -14,6 +14,7 @@ import {
   listAssetCaptures,
   normalizeCaptureKind,
   presentCapture,
+  publicCaptureUrl,
   softDeleteAssetCapture,
 } from '../services/assetCaptures.js'
 
@@ -215,7 +216,7 @@ router.get('/assets/:token/captures', authRequired, requireItAssetManager, async
   const asset = await findAssetByQrToken(token)
   if (!asset) return fail(res, 'Asset not found', 404)
   const rows = await listAssetCaptures(asset.id)
-  return okList(res, rows.map((r) => presentCapture(r, token)))
+  return okList(res, rows.map((r) => presentCapture(r, publicCaptureUrl(token, r.id))))
 })
 
 router.post('/assets/:token/captures', authRequired, requireItAssetManager, (req, res) => {
@@ -248,7 +249,7 @@ router.post('/assets/:token/captures', authRequired, requireItAssetManager, (req
         localityHeader: String(req.body?.locality_header || '').trim() || null,
       })
       const row = await getAssetCapture(id, asset.id)
-      return okMessage(res, 'Capture saved', row ? presentCapture(row, token) : { id }, 201)
+      return okMessage(res, 'Capture saved', row ? presentCapture(row, publicCaptureUrl(token, row.id)) : { id }, 201)
     } catch (e) {
       return fail(res, e instanceof Error ? e.message : 'Could not save capture', 500)
     }
