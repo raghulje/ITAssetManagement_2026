@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { authApi, setToken } from './client'
 import { domainScopeFromPermissions, type DomainCode, type DomainScope } from '../lib/domainScope'
 import { goToRefexOne } from '../utils/refexOneUrl'
+import { isItAssetManagerRole } from '../utils/loginNext'
 
 const ACTIVE_DOMAIN_KEY = 'refex_active_domain'
 
@@ -27,6 +28,7 @@ type User = {
   last_name: string
   email?: string
   name?: string
+  groups?: string[]
   permissions?: Record<string, unknown>
 }
 
@@ -36,6 +38,8 @@ type AuthCtx = {
   permissions: Record<string, unknown>
   /** Admin or Superuser role flag — Settings / Reports / HRMS Profile */
   isAdmin: boolean
+  /** Member of the IT Asset Manager permission group */
+  isItAssetManager: boolean
   domainScope: DomainScope
   /** Current IT / Admin workspace for Superuser (and anyone with both domains). */
   activeDomain: DomainCode
@@ -89,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     : {}
 
   const isAdmin = isTruthy(permissions.superuser) || isTruthy(permissions.admin)
+  const isItAssetManager = isItAssetManagerRole(user?.groups)
   const domainScope = domainScopeFromPermissions(permissions)
 
   useEffect(() => {
@@ -116,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     permissions,
     isAdmin,
+    isItAssetManager,
     domainScope,
     activeDomain,
     setActiveDomain,
@@ -143,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const u = await authApi.me()
       setUser(u as User)
     },
-  }), [user, loading, permissions, isAdmin, domainScope, activeDomain, setActiveDomain, can])
+  }), [user, loading, permissions, isAdmin, isItAssetManager, domainScope, activeDomain, setActiveDomain, can])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

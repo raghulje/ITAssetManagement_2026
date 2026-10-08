@@ -4291,7 +4291,7 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   border-radius: 10px;
 }
 
-/* OpenStreetMap / Leaflet asset pin picker */
+/* Google Maps asset pin picker */
 .map-location-picker {
   display: flex;
   flex-direction: column;
@@ -4368,11 +4368,302 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   border: 1px solid #dbe3ee;
   z-index: 0;
 }
-.map-location-canvas .leaflet-container {
+.map-location-canvas .leaflet-container,
+.map-location-canvas > div {
   height: 100%;
   width: 100%;
   border-radius: 10px;
-  font: inherit;
+}
+
+.qr-capture-panel {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #e2e9f2;
+}
+.qr-capture-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.qr-capture-panel__head h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.qr-capture-panel__head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+.qr-capture-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.qr-capture-req {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.qr-capture-req li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-size: 13px;
+  font-weight: 650;
+}
+.qr-capture-req li.is-done {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+.qr-capture-block {
+  margin-bottom: 16px;
+}
+.qr-capture-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.qr-capture-block__head .qr-capture-panel__sub {
+  margin: 0;
+}
+.qr-capture-panel__sub {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+.qr-capture-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+.qr-capture-gallery--video {
+  grid-template-columns: 1fr;
+}
+.qr-capture-card {
+  margin: 0;
+  border: 1px solid #e2e9f2;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0f172a;
+}
+.qr-capture-card img,
+.qr-capture-card video {
+  display: block;
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  background: #000;
+}
+.qr-capture-card--video video {
+  height: 220px;
+  object-fit: contain;
+}
+.qr-capture-card__ph {
+  height: 180px;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+  font-size: 12px;
+}
+.qr-capture-card figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: #fff;
+  font-size: 12px;
+  color: #475569;
+}
+
+.vc-webcam-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: rgba(15, 23, 42, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  backdrop-filter: blur(4px);
+}
+.vc-webcam-panel {
+  width: min(920px, 100%);
+  background: #0f172a;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  color: #e2e8f0;
+}
+.vc-webcam-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+.vc-webcam-head strong { display: block; font-size: 14px; color: #fff; }
+.vc-webcam-head span { display: block; font-size: 12px; color: #94a3b8; margin-top: 2px; }
+.vc-webcam-stage {
+  position: relative;
+  background: #000;
+  aspect-ratio: 16 / 10;
+  max-height: min(62vh, 560px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vc-webcam-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+.vc-webcam-video.is-mirrored { transform: scaleX(-1); }
+.vc-webcam-video.is-hidden { position: absolute; opacity: 0; pointer-events: none; }
+.vc-webcam-video.is-recording { box-shadow: inset 0 0 0 3px rgba(239, 68, 68, 0.85); }
+.vc-video-timer {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(127, 29, 29, 0.88);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.vc-video-timer__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #fca5a5;
+  animation: vc-rec-pulse 1s ease-in-out infinite;
+}
+@keyframes vc-rec-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+.vc-webcam-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.vc-webcam-preview--playback { object-fit: contain; background: #000; }
+.vc-native-video-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.vc-native-video-prompt {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+  color: #e2e8f0;
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+}
+.vc-native-video-prompt__icon { font-size: 2.5rem; color: #fb923c; }
+.vc-native-video-prompt p { margin: 0; line-height: 1.45; }
+.vc-native-video-prompt__sub { font-size: 0.92rem; color: #94a3b8; }
+.vc-native-video-prompt__busy { margin-top: 0.5rem; font-size: 0.9rem; color: #fbbf24; }
+.vc-webcam-review {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 14px 12px 8px;
+}
+.vc-review-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: #fff;
+}
+.vc-review-btn--discard { background: #64748b; }
+.vc-review-btn--more { background: #f4553b; width: 64px; height: 64px; font-size: 1.45rem; }
+.vc-review-btn--keep { background: #059669; }
+.vc-webcam-review .vc-webcam-hint { flex: 1 1 100%; margin: 4px 0 0; text-align: center; }
+.vc-webcam-hint { margin: 0; padding: 0 14px 12px; font-size: 12px; color: #94a3b8; }
+.vc-webcam-hud { position: absolute; left: 12px; right: 12px; bottom: 12px; pointer-events: none; }
+.vc-webcam-gps {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  font-size: 12px;
+  font-weight: 650;
+  color: #a7f3d0;
+}
+.vc-webcam-gps.is-missing { border-color: rgba(251, 146, 60, 0.55); color: #fdba74; }
+.vc-webcam-gps.is-locked { border-color: rgba(52, 211, 153, 0.45); }
+.vc-webcam-gps i { color: #fb923c; }
+.vc-webcam-gps em { font-style: normal; color: #94a3b8; font-weight: 600; }
+.vc-webcam-error {
+  position: absolute;
+  inset: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(127, 29, 29, 0.9);
+  color: #fecaca;
+  font-weight: 650;
+}
+.vc-webcam-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+.vc-webcam-shutter { min-width: 180px; font-weight: 700; }
+@media (max-width: 640px) {
+  .vc-webcam-stage { aspect-ratio: 3 / 4; max-height: 68vh; }
+  .vc-webcam-foot { flex-direction: column; align-items: stretch; }
+  .vc-webcam-shutter { width: 100%; }
 }
 
 /* ==========================================================================

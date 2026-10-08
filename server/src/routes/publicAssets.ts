@@ -1,12 +1,26 @@
 import { Router } from 'express'
+import path from 'node:path'
 import { get } from '../db/index.js'
-import { fail, okItem } from '../utils/response.js'
+import { authRequired } from '../middleware/auth.js'
+import { fail, okItem, okList, okMessage } from '../utils/response.js'
 import { ensureAssetQr, publicAssetPageUrl } from '../services/assetQr.js'
+import { requireItAssetManager } from '../services/permissions.js'
+import { makeCaptureUploader, storageRoot } from '../services/uploads.js'
+import {
+  captureDiskPath,
+  findAssetByQrToken,
+  getAssetCapture,
+  insertAssetCapture,
+  listAssetCaptures,
+  normalizeCaptureKind,
+  presentCapture,
+  softDeleteAssetCapture,
+} from '../services/assetCaptures.js'
 
 const router = Router()
 
-/** Public asset detail for QR scan — no auth. Lookup by permanent qr_token (or legacy numeric id). */
-router.get('/assets/:token', async (req, res) => {
+/** QR scan asset detail — JWT + IT Asset Manager only. Lookup by permanent qr_token (or legacy numeric id). */
+router.get('/assets/:token', authRequired, requireItAssetManager, async (req, res) => {
   const token = String(req.params.token || '').trim()
   if (!token) return fail(res, 'Token required', 400)
 
@@ -194,6 +208,73 @@ router.get('/assets/:token', async (req, res) => {
     qr_token: qrToken,
     qr_image_url: imagePath,
   })
+})
+
+router.get('/assets/:token/captures', authRequired, requireItAssetManager, async (req, res) => {
+  const token = String(req.params.token || '').trim()
+  const asset = await findAssetByQrToken(token)
+  if (!asset) return fail(res, 'Asset not found', 404)
+  const rows = await listAssetCaptures(asset.id)
+  return okList(res, rows.map((r) => presentCapture(r, token)))
+})
+
+router.post('/assets/:token/captures', authRequired, requireItAssetManager, (req, res) => {
+  const upload = makeCaptureUploader('private_uploads/asset_captures')
+  upload(req, res, async (err) => {
+    if (err) return fail(res, err.message)
+    if (!req.file) return fail(res, 'file required')
+    try {
+      const token = String(req.params.token || '').trim()
+      const asset = await findAssetByQrToken(token)
+      if (!asset) return fail(res, 'Register the asset before capturing photos or video', 404)
+      const mime = String(req.file.mimetype || '')
+      const kind = normalizeCaptureKind(String(req.body?.kind || ''), mime)
+      const rel = path.relative(storageRoot, req.file.path).replace(/\\/g, '/')
+      const lat = req.body?.latitude != null && req.body?.latitude !== '' ? Number(req.body.latitude) : null
+      const lng = req.body?.longitude != null && req.body?.longitude !== '' ? Number(req.body.longitude) : null
+      const id = await insertAssetCapture({
+        assetId: asset.id,
+        userId: req.user?.id,
+        storagePath: rel,
+        originalName: req.file.originalname,
+        mime,
+        size: req.file.size,
+        kind,
+        capturedAt: String(req.body?.captured_at || '').trim() || null,
+        latitude: Number.isFinite(lat as number) ? lat : null,
+        longitude: Number.isFinite(lng as number) ? lng : null,
+        accuracyM: req.body?.accuracy_m != null && req.body?.accuracy_m !== '' ? Number(req.body.accuracy_m) : null,
+        address: String(req.body?.address || '').trim() || null,
+        localityHeader: String(req.body?.locality_header || '').trim() || null,
+      })
+      const row = await getAssetCapture(id, asset.id)
+      return okMessage(res, 'Capture saved', row ? presentCapture(row, token) : { id }, 201)
+    } catch (e) {
+      return fail(res, e instanceof Error ? e.message : 'Could not save capture', 500)
+    }
+  })
+})
+
+router.get('/assets/:token/captures/:id/file', authRequired, requireItAssetManager, async (req, res) => {
+  const token = String(req.params.token || '').trim()
+  const asset = await findAssetByQrToken(token)
+  if (!asset) return fail(res, 'Asset not found', 404)
+  const row = await getAssetCapture(Number(req.params.id), asset.id)
+  if (!row) return fail(res, 'Capture not found', 404)
+  const abs = captureDiskPath(String((row as { storage_path: string }).storage_path))
+  if (!abs) return fail(res, 'File missing on disk', 404)
+  res.setHeader('Content-Type', String(row.mime_type || 'application/octet-stream'))
+  res.setHeader('Content-Disposition', `inline; filename="${row.original_name || 'capture'}"`)
+  return res.sendFile(abs)
+})
+
+router.delete('/assets/:token/captures/:id', authRequired, requireItAssetManager, async (req, res) => {
+  const token = String(req.params.token || '').trim()
+  const asset = await findAssetByQrToken(token)
+  if (!asset) return fail(res, 'Asset not found', 404)
+  const row = await softDeleteAssetCapture(Number(req.params.id), asset.id)
+  if (!row) return fail(res, 'Capture not found', 404)
+  return okMessage(res, 'Capture deleted')
 })
 
 export default router

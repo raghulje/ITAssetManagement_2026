@@ -36,8 +36,8 @@ describe('Wave 3 — Domain + People source contracts', () => {
     assert.match(src, /adminAssetManagerPerms/)
     assert.match(src, /domains\.it/)
     assert.match(src, /domains\.admin/)
-    assert.match(src, /withDomainPerms\(allModulePerms\(\{ notifyOps: true \}\), \['it'\]\)/)
-    assert.match(src, /withDomainPerms\(allModulePerms\(\{ notifyOps: true \}\), \['admin'\]\)/)
+    assert.match(src, /withDomainPerms\(allModulePerms\(\), \['it'\]\)/)
+    assert.match(src, /withDomainPerms\(allModulePerms\(\), \['admin'\]\)/)
   })
 
   it('hardware list/create/update enforce domain', () => {

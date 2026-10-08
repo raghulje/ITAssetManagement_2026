@@ -112,7 +112,7 @@ export function createApp() {
   app.use('/api/v1', authRouter)
   // SAML SSO (IdP → ACS POST is application/x-www-form-urlencoded; no JWT yet)
   app.use('/api/v1/auth/saml', samlRouter)
-  // Public QR scan + device agent (no session cookie)
+  // QR scan (JWT + IT Asset Manager) + device agent (API key)
   app.use('/api/v1/public', publicAssetsRouter)
   app.use('/api/v1/agent', agentRouter)
 

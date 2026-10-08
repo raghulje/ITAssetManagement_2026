@@ -91,11 +91,12 @@ export function viewerPerms(): Record<string, string> {
 export function itAssetManagerPerms(): Record<string, string> {
   // Full module access including settings.edit (print labels, masters, import)
   // Settings / Reports nav stay Admin-only via client isAdmin flag.
-  return withDomainPerms(allModulePerms({ notifyOps: true }), ['it'])
+  // notify.ops is NOT included — workflow emails are opt-in per user/role.
+  return withDomainPerms(allModulePerms(), ['it'])
 }
 
 export function adminAssetManagerPerms(): Record<string, string> {
-  return withDomainPerms(allModulePerms({ notifyOps: true }), ['admin'])
+  return withDomainPerms(allModulePerms(), ['admin'])
 }
 
 export function parsePerms(raw: unknown): Record<string, unknown> {
@@ -133,12 +134,47 @@ export function mergePermissions(...sets: Record<string, unknown>[]): Record<str
   return out
 }
 
+export const IT_ASSET_MANAGER_ROLE = 'IT Asset Manager'
+
 export async function getUserGroupIds(userId: number): Promise<number[]> {
   const rows = await all<{ group_id: number }>(
     `SELECT group_id FROM users_groups WHERE user_id = ?`,
     [userId],
   )
   return rows.map((r) => Number(r.group_id))
+}
+
+export async function getUserGroupNames(userId: number): Promise<string[]> {
+  const rows = await all<{ name: string }>(`
+    SELECT g.name
+    FROM permission_groups g
+    INNER JOIN users_groups ug ON ug.group_id = g.id
+    WHERE ug.user_id = ?
+    ORDER BY g.name
+  `, [userId])
+  return rows.map((r) => String(r.name))
+}
+
+export async function userHasRole(userId: number, roleName: string): Promise<boolean> {
+  const row = await get<{ n: number }>(`
+    SELECT COUNT(*) AS n
+    FROM users_groups ug
+    INNER JOIN permission_groups g ON g.id = ug.group_id
+    WHERE ug.user_id = ? AND LOWER(g.name) = LOWER(?)
+  `, [userId, roleName])
+  return Number(row?.n || 0) > 0
+}
+
+/** QR scan pages: session required and must be in the IT Asset Manager role. */
+export async function requireItAssetManager(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!req.user) return fail(res, 'Unauthorized', 401)
+    const ok = await userHasRole(req.user.id, IT_ASSET_MANAGER_ROLE)
+    if (!ok) return fail(res, 'Forbidden: IT Asset Manager role required', 403)
+    next()
+  } catch (err) {
+    next(err)
+  }
 }
 
 export async function syncUserPermissions(userId: number, extra?: Record<string, unknown>) {
@@ -178,8 +214,8 @@ export async function setUserGroups(userId: number, groupIds: number[]) {
 export async function ensureDefaultRoles() {
   const ts = now()
   const defaults: { name: string; permissions: Record<string, string> }[] = [
-    { name: 'Superusers', permissions: { superuser: '1', admin: '1', ...withDomainPerms(allModulePerms({ notifyOps: true }), ['it', 'admin']) } },
-    { name: 'Admin', permissions: { admin: '1', ...withDomainPerms(allModulePerms({ notifyOps: true }), ['it', 'admin']) } },
+    { name: 'Superusers', permissions: { superuser: '1', admin: '1', ...withDomainPerms(allModulePerms(), ['it', 'admin']) } },
+    { name: 'Admin', permissions: { admin: '1', ...withDomainPerms(allModulePerms(), ['it', 'admin']) } },
     { name: 'IT Asset Manager', permissions: itAssetManagerPerms() },
     { name: 'Admin Asset Manager', permissions: adminAssetManagerPerms() },
     { name: 'Viewer', permissions: viewerPerms() },
@@ -359,37 +395,34 @@ export async function listRoleRecipientEmails(roleName: string): Promise<string[
   return [...emails]
 }
 
+function looksLikeNotifyOps(raw: unknown) {
+  const text = typeof raw === 'string' ? raw : JSON.stringify(raw || '')
+  return /"notify\.ops"\s*:\s*(true|1|"1")/.test(text)
+}
+
+/** Only users/roles with the explicit “Receive ops emails” permission. */
 export async function listOpsRecipientEmails(): Promise<string[]> {
-  const rows = await all<{ email: string | null }>(`
-    SELECT DISTINCT u.email
+  const rows = await all<{ email: string | null; permissions: unknown }>(`
+    SELECT DISTINCT u.email, u.permissions
     FROM users u
     WHERE u.deleted_at IS NULL AND u.activated = 1 AND u.email IS NOT NULL AND u.email != ''
-      AND (
-        u.permissions LIKE '%"notify.ops"%'
-        OR u.permissions LIKE '%"superuser"%'
-        OR u.permissions LIKE '%"admin"%'
-      )
   `)
   const emails = new Set<string>()
   for (const r of rows) {
+    if (!looksLikeNotifyOps(r.permissions)) continue
     const e = String(r.email || '').trim().toLowerCase()
     if (e && e.includes('@')) emails.add(e)
   }
-  // Also pull from groups with notify.ops in case user.permissions not yet synced
-  const groupUsers = await all<{ email: string | null }>(`
-    SELECT DISTINCT u.email
+  const groupUsers = await all<{ email: string | null; permissions: unknown }>(`
+    SELECT DISTINCT u.email, g.permissions
     FROM users u
     INNER JOIN users_groups ug ON ug.user_id = u.id
     INNER JOIN permission_groups g ON g.id = ug.group_id
     WHERE u.deleted_at IS NULL AND u.activated = 1
       AND u.email IS NOT NULL AND u.email != ''
-      AND (
-        CAST(g.permissions AS CHAR) LIKE '%"notify.ops"%'
-        OR CAST(g.permissions AS CHAR) LIKE '%"superuser"%'
-        OR CAST(g.permissions AS CHAR) LIKE '%"admin"%'
-      )
   `)
   for (const r of groupUsers) {
+    if (!looksLikeNotifyOps(r.permissions)) continue
     const e = String(r.email || '').trim().toLowerCase()
     if (e && e.includes('@')) emails.add(e)
   }

@@ -332,7 +332,7 @@ export default function RolesPermissions() {
                   disabled={!canEdit}
                   onChange={() => toggle('notify.ops')}
                 />
-                {' '}Receive ops workflow emails (assign, maintenance, inventory alerts)
+                {' '}Receive ops workflow emails (only if Notifications also enables role-based ops mail)
               </label>
 
               <div className="roles-perm-head" style={{ marginTop: 16 }}>

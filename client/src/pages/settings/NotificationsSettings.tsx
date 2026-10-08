@@ -7,6 +7,7 @@ import { useToast } from '../../components/Toast'
 import { useAuth } from '../../api/AuthContext'
 
 type Category = { key: string; label: string }
+type AppUser = { id: number; name: string; email: string | null }
 type Snapshot = {
   smtp_configured: boolean
   smtp_hint: string
@@ -15,10 +16,12 @@ type Snapshot = {
     emails_enabled: boolean
     email_notifications: Record<string, boolean>
     extra_ops_emails: string
+    email_recipient_user_ids: number[]
     eol_to_it_asset_manager: boolean
     workflow_to_ops_roles: boolean
   }
   it_asset_managers: Array<{ id: number; name: string; email: string | null }>
+  app_users: AppUser[]
   resolved_ops_emails: string[]
   resolved_eol_emails: string[]
   categories: Category[]
@@ -36,8 +39,9 @@ const emptyCfg = {
     battery_calls: true,
   } as Record<string, boolean>,
   extra_ops_emails: '',
+  email_recipient_user_ids: [] as number[],
   eol_to_it_asset_manager: true,
-  workflow_to_ops_roles: true,
+  workflow_to_ops_roles: false,
 }
 
 export default function NotificationsSettings() {
@@ -56,6 +60,8 @@ export default function NotificationsSettings() {
   const [cfg, setCfg] = useState(emptyCfg)
   const [categories, setCategories] = useState<Category[]>([])
   const [itam, setItam] = useState<Snapshot['it_asset_managers']>([])
+  const [appUsers, setAppUsers] = useState<AppUser[]>([])
+  const [userQuery, setUserQuery] = useState('')
   const [resolvedOps, setResolvedOps] = useState<string[]>([])
   const [resolvedEol, setResolvedEol] = useState<string[]>([])
 
@@ -70,11 +76,15 @@ export default function NotificationsSettings() {
           emails_enabled: s.config?.emails_enabled === true,
           email_notifications: { ...emptyCfg.email_notifications, ...(s.config?.email_notifications || {}) },
           extra_ops_emails: String(s.config?.extra_ops_emails || ''),
+          email_recipient_user_ids: Array.isArray(s.config?.email_recipient_user_ids)
+            ? s.config.email_recipient_user_ids.map(Number).filter((n) => n > 0)
+            : [],
           eol_to_it_asset_manager: s.config?.eol_to_it_asset_manager !== false,
-          workflow_to_ops_roles: s.config?.workflow_to_ops_roles !== false,
+          workflow_to_ops_roles: s.config?.workflow_to_ops_roles === true,
         })
         setCategories(s.categories || [])
         setItam(s.it_asset_managers || [])
+        setAppUsers(s.app_users || [])
         setResolvedOps(s.resolved_ops_emails || [])
         setResolvedEol(s.resolved_eol_emails || [])
       })
@@ -98,6 +108,7 @@ export default function NotificationsSettings() {
           emails_enabled: cfg.emails_enabled,
           email_notifications: cfg.email_notifications,
           extra_ops_emails: cfg.extra_ops_emails,
+          email_recipient_user_ids: cfg.email_recipient_user_ids,
           eol_to_it_asset_manager: cfg.eol_to_it_asset_manager,
           workflow_to_ops_roles: cfg.workflow_to_ops_roles,
         },
@@ -107,6 +118,7 @@ export default function NotificationsSettings() {
         setResolvedOps(s.resolved_ops_emails || [])
         setResolvedEol(s.resolved_eol_emails || [])
         setItam(s.it_asset_managers || [])
+        setAppUsers(s.app_users || [])
       }
       setOkMsg('Notification settings saved')
       toast.success('Notification settings saved')
@@ -125,6 +137,13 @@ export default function NotificationsSettings() {
     <AppLayout title="Notifications" subtitle="Email recipients & alert categories (Biogas-style)" backTo="/settings">
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
       {okMsg ? <div className="callout callout-success"><p>{okMsg}</p></div> : null}
+      <div className="callout callout-info">
+        <p>
+          Workflow emails now go only to the app users you select below (plus extra addresses).
+          Admin / IT Asset Manager membership no longer emails the whole role.
+          Delivery and failures are recorded in <Link to="/settings/email-logs">Email logs</Link>.
+        </p>
+      </div>
 
       <div className="row">
         <div className="col-md-7">
@@ -152,8 +171,13 @@ export default function NotificationsSettings() {
                   {smtpHint}
                 </p>
                 <span className="help-block">
-                  Host/user/password live in <code>server/.env</code> (same pattern as Biogas SMTP tab, env-backed here).
+                  Host, user, and password live in <code>server/.env</code>:
+                  {' '}<code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASS</code>, <code>SMTP_FROM</code>.
+                  Default host is <code>smtp.zoho.in</code> port 465.
                 </span>
+                <p style={{ marginTop: 8 }}>
+                  <Link to="/settings/email-logs">View email delivery log →</Link>
+                </p>
               </Field>
 
               <Field label="Fallback alert email">
@@ -180,6 +204,54 @@ export default function NotificationsSettings() {
                 <span className="help-block">Comma or newline separated. Added on top of role-based recipients.</span>
               </Field>
 
+              <Field label="App users who receive emails">
+                <span className="help-block" style={{ marginTop: 0 }}>
+                  Only the people you tick here get asset create/delete, assign, and workflow emails.
+                  Granting a role (Admin / IT Asset Manager) no longer emails everyone in that role.
+                </span>
+                <input
+                  className="form-control"
+                  style={{ marginBottom: 8 }}
+                  placeholder="Search name or email"
+                  value={userQuery}
+                  onChange={(e) => setUserQuery(e.target.value)}
+                />
+                <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #d2d6de', padding: '8px 10px', background: '#fff' }}>
+                  {appUsers
+                    .filter((u) => {
+                      const q = userQuery.trim().toLowerCase()
+                      if (!q) return true
+                      return `${u.name} ${u.email || ''}`.toLowerCase().includes(q)
+                    })
+                    .map((u) => {
+                      const checked = cfg.email_recipient_user_ids.includes(u.id)
+                      return (
+                        <label key={u.id} className="checkbox" style={{ display: 'block', marginBottom: 4 }}>
+                          <input
+                            type="checkbox"
+                            disabled={!canEdit}
+                            checked={checked}
+                            onChange={(e) => setCfg((c) => ({
+                              ...c,
+                              email_recipient_user_ids: e.target.checked
+                                ? [...new Set([...c.email_recipient_user_ids, u.id])]
+                                : c.email_recipient_user_ids.filter((id) => id !== u.id),
+                            }))}
+                          />
+                          {' '}{u.name}
+                          {u.email ? <span className="text-muted"> — {u.email}</span> : <span className="text-muted"> — no email</span>}
+                        </label>
+                      )
+                    })}
+                  {appUsers.length === 0 ? <p className="text-muted" style={{ margin: 0 }}>No activated app users.</p> : null}
+                </div>
+                <p className="help-block">
+                  {cfg.email_recipient_user_ids.length} selected.
+                  You can also tick “Receive ops workflow emails” on a role under{' '}
+                  <Link to="/settings/roles">Roles & permissions</Link>.
+                </p>
+              </Field>
+
               <Field label="Recipient rules">
                 <label className="checkbox" style={{ display: 'block' }}>
                   <input
@@ -188,8 +260,12 @@ export default function NotificationsSettings() {
                     checked={cfg.workflow_to_ops_roles}
                     onChange={(e) => setCfg((c) => ({ ...c, workflow_to_ops_roles: e.target.checked }))}
                   />
-                  {' '}Send workflow emails to Admin / Superuser / roles with “Receive ops emails”
+                  {' '}Also email every app user whose role has “Receive ops emails”
                 </label>
+                <span className="help-block">
+                  Leave this off unless you really want that role permission to fan out mail.
+                  Admin / Superuser / IT Asset Manager no longer receive mail just because of the role.
+                </span>
                 <label className="checkbox" style={{ display: 'block' }}>
                   <input
                     type="checkbox"

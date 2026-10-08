@@ -1229,6 +1229,9 @@ batteryIssuesRouter.post('/', async (req, res) => {
         to,
         subject: `Battery degradation issue submitted — ${name}`,
         text: `A Battery Degradation issue was submitted.\n\nName: ${name}\nPhone: ${String(b.phone || '')}\nEmail: ${String(b.email || '')}\nCompany: ${String(b.company || '')}\n\nView: ${view}`,
+        emailType: 'battery_issue',
+        relatedType: 'battery_issue',
+        relatedId: result.insertId,
       })
     } catch (e) {
       console.warn('[battery-submit-email]', e instanceof Error ? e.message : e)

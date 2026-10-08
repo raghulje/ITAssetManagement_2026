@@ -242,6 +242,8 @@ describe('Wave 2.1 — Location regression contracts', () => {
 
   it('TEST 16 — public_qr_shows_location_name', () => {
     const pub = readServerSource('src/routes/publicAssets.ts')
+    assert.match(pub, /authRequired/)
+    assert.match(pub, /requireItAssetManager/)
     assert.match(pub, /loc\.name as location_name/)
     assert.match(pub, /rtd\.name as rtd_location_name/)
     assert.match(pub, /location: asset\.location_name \|\| asset\.rtd_location_name/)

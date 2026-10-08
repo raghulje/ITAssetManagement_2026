@@ -2,9 +2,7 @@ import { Router } from 'express'
 import { fail, okItem } from '../utils/response.js'
 
 /**
- * Geocoding + map provider.
- * - GOOGLE_MAPS_API_KEY set → Google Places / Geocoding (Maps-style addresses)
- * - otherwise OpenStreetMap Nominatim (no key)
+ * Geocoding + map provider — Google Maps when GOOGLE_MAPS_API_KEY is set.
  */
 export const geoRouter = Router()
 
@@ -262,12 +260,13 @@ async function resolveGoogleMapsAddress(lat: number, lng: number): Promise<Place
   }
 }
 
-/** Public map config for the picker (browser key is referrer-restricted). */
+/** Map config for the picker (browser key is referrer-restricted). */
 geoRouter.get('/config', (_req, res) => {
   const browserKey = googleBrowserKey()
+  const google = useGoogle() && Boolean(browserKey)
   return okItem(res, {
-    provider: useGoogle() && browserKey ? 'google' : 'osm',
-    browser_key: useGoogle() && browserKey ? browserKey : null,
+    provider: google ? 'google' : 'none',
+    browser_key: google ? browserKey : null,
   })
 })
 

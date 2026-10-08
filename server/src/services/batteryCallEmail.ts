@@ -187,7 +187,15 @@ export async function sendBatteryCallEndedEmail(input: BatteryCallEndedMail) {
   if (!mailConfigured()) return { sent: false, reason: 'smtp' as const }
   const mail = batteryCallEndedEmail(input)
   const to = [...recipients]
-  await sendMail({ to: to.join(', '), subject: mail.subject, html: mail.html, text: mail.text })
+  await sendMail({
+    to: to.join(', '),
+    subject: mail.subject,
+    html: mail.html,
+    text: mail.text,
+    emailType: 'battery_calls',
+    relatedType: 'battery_issue',
+    relatedId: input.issueId,
+  })
   return { sent: true as const, to: to.join(', ') }
 }
 

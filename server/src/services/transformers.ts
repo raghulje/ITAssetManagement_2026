@@ -3,6 +3,7 @@ import { nest } from '../utils/response.js'
 import { classifyAssetAge } from '../utils/period.js'
 import { publicAssetPageUrl } from './assetQr.js'
 import { allowedDomainCodes, domainJoinSql, domainPayload, domainRowCode, domainSelectFields, inventoryDomainColumnsReady, tableHasColumn } from './domainAuth.js'
+import { getUserGroupNames } from './permissions.js'
 
 export async function transformAsset(id: number) {
   const domainReady = await inventoryDomainColumnsReady()
@@ -153,6 +154,7 @@ export async function transformUser(id: number, opts?: { includeDeleted?: boolea
   `, [id])
   if (!u) return null
   const perms = typeof u.permissions === 'string' ? JSON.parse(u.permissions as string) : (u.permissions || {})
+  const groups = await getUserGroupNames(Number(u.id))
   return {
     id: u.id,
     avatar: null,
@@ -171,6 +173,7 @@ export async function transformUser(id: number, opts?: { includeDeleted?: boolea
     location: nest(u.location_id as number, u.location_name as string),
     department: nest(u.department_id as number, u.department_name as string),
     assets_count: u.assets_count,
+    groups,
     permissions: perms,
     domain_scope: {
       codes: allowedDomainCodes(perms as Record<string, unknown>),

@@ -94,6 +94,9 @@ router.post('/password/forgot', async (req, res) => {
     await sendMail({
       to: String(user.email),
       subject: 'Reset your Refex IT Asset password',
+      emailType: 'password_reset',
+      relatedType: 'user',
+      relatedId: Number(user.id),
       text: [
         `Hi ${name},`,
         '',
