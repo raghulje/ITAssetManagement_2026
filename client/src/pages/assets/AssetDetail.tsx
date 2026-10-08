@@ -8,8 +8,10 @@ import { formatINR } from '../../utils/money'
 import { formatAppDateTime } from '../../lib/datetime'
 import AssetRecordHero from './detail/AssetRecordHero'
 import AssetOverviewTab from './detail/AssetOverviewTab'
+import AssetCapturesTab, { normalizeCaptureRows } from './detail/AssetCapturesTab'
+import type { CaptureRow } from '../../components/QrAssetCapturePanel'
 
-type TabId = 'overview' | 'attachments' | 'history' | 'agent' | 'maintenance'
+type TabId = 'overview' | 'attachments' | 'history' | 'agent' | 'maintenance' | 'captures'
 
 type AgentStatus = {
   registered?: boolean
@@ -60,13 +62,14 @@ export default function AssetDetail() {
   const { id } = useParams()
   const [params] = useSearchParams()
   const [asset, setAsset] = useState<Record<string, unknown> | null>(null)
-  const [tab, setTab] = useState<TabId>('overview')
+  const [tab, setTab] = useState<TabId>(() => (params.get('tab') === 'captures' ? 'captures' : 'overview'))
   const [history, setHistory] = useState<Record<string, unknown>[]>([])
   const [maintenances, setMaintenances] = useState<Record<string, unknown>[]>([])
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null)
   const [agentBusy, setAgentBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [receivedImages, setReceivedImages] = useState<Record<string, unknown>[]>([])
+  const [captures, setCaptures] = useState<CaptureRow[]>([])
   const [loading, setLoading] = useState(true)
   const assignRef = useRef<HTMLElement | null>(null)
 
@@ -102,9 +105,16 @@ export default function AssetDetail() {
     api<{ rows: Record<string, unknown>[] }>(`/hardware/${id}/files`)
       .then((r) => setReceivedImages((r.rows || []).filter((f) => String(f.kind) === 'received')))
       .catch(() => setReceivedImages([]))
+    hardwareApi.captures(id)
+      .then((r) => setCaptures(normalizeCaptureRows(r.rows || [])))
+      .catch(() => setCaptures([]))
     loadAgent()
   }
   useEffect(() => { load() }, [id])
+
+  useEffect(() => {
+    if (params.get('tab') === 'captures') setTab('captures')
+  }, [params])
 
   useEffect(() => {
     if (tab !== 'agent' || !id) return
@@ -232,6 +242,7 @@ export default function AssetDetail() {
 
   const tabs: Array<{ id: TabId; label: string; count?: number }> = [
     { id: 'overview', label: 'Overview' },
+    { id: 'captures', label: 'Captures', count: captures.length || undefined },
     { id: 'maintenance', label: 'Maintenance', count: maintenances.length },
     { id: 'agent', label: 'Agent' },
     { id: 'attachments', label: 'Documents' },
@@ -282,8 +293,13 @@ export default function AssetDetail() {
               if (action === 'history') setTab('history')
               if (action === 'maintenance') setTab('maintenance')
               if (action === 'agent') setTab('agent')
+              if (action === 'captures') setTab('captures')
             }}
           />
+        ) : null}
+
+        {tab === 'captures' && id ? (
+          <AssetCapturesTab assetId={id} rows={captures} />
         ) : null}
 
         {tab === 'maintenance' ? (

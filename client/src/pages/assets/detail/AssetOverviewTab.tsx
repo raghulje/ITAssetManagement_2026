@@ -1,6 +1,7 @@
 import type { RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  Camera,
   History,
   Printer,
   QrCode,
@@ -22,7 +23,7 @@ type Props = {
   agentBusy?: boolean
   onPrintLabel: () => void
   onAgentScan: () => void
-  onQuick: (action: 'history' | 'maintenance' | 'agent') => void
+  onQuick: (action: 'history' | 'maintenance' | 'agent' | 'captures') => void
 }
 
 export default function AssetOverviewTab({
@@ -155,6 +156,9 @@ export default function AssetOverviewTab({
             </button>
             <button type="button" disabled={agentBusy || !agentRegistered} onClick={onAgentScan}>
               <Satellite /> {agentBusy ? 'Requesting scan…' : agentLabel || 'Run agent scan'}
+            </button>
+            <button type="button" onClick={() => onQuick('captures')}>
+              <Camera /> View captures
             </button>
             <button type="button" onClick={() => onQuick('history')}>
               <History /> View activity log

@@ -20,6 +20,13 @@ import {
   tableHasColumn,
 } from '../services/domainAuth.js'
 import { requireActiveEmployee } from '../services/employeeStatus.js'
+import {
+  captureDiskPath,
+  getAssetCapture,
+  hardwareCaptureUrl,
+  listAssetCaptures,
+  presentCapture,
+} from '../services/assetCaptures.js'
 
 const router = Router()
 
@@ -495,6 +502,25 @@ router.get('/:id', async (req, res) => {
   const asset = await transformAsset(scoped.id)
   if (!asset) return fail(res, 'Asset not found', 404)
   return okItem(res, asset)
+})
+
+router.get('/:id/captures', async (req, res) => {
+  const scoped = await requireAssetDomain(req, res, Number(req.params.id))
+  if (!scoped) return
+  const rows = await listAssetCaptures(scoped.id)
+  return okList(res, rows.map((r) => presentCapture(r, hardwareCaptureUrl(scoped.id, r.id))))
+})
+
+router.get('/:id/captures/:cid/file', async (req, res) => {
+  const scoped = await requireAssetDomain(req, res, Number(req.params.id))
+  if (!scoped) return
+  const row = await getAssetCapture(Number(req.params.cid), scoped.id)
+  if (!row) return fail(res, 'Capture not found', 404)
+  const abs = captureDiskPath(String((row as { storage_path: string }).storage_path))
+  if (!abs) return fail(res, 'File missing on disk', 404)
+  res.setHeader('Content-Type', String(row.mime_type || 'application/octet-stream'))
+  res.setHeader('Content-Disposition', `inline; filename="${row.original_name || 'capture'}"`)
+  return res.sendFile(abs)
 })
 
 router.get('/:id/history', async (req, res) => {
