@@ -20,8 +20,10 @@ import {
   tableHasColumn,
 } from '../services/domainAuth.js'
 import { requireActiveEmployee } from '../services/employeeStatus.js'
+import { requireItAssetManager } from '../services/permissions.js'
 import {
   captureDiskPath,
+  deregisterAssetCaptures,
   getAssetCapture,
   hardwareCaptureUrl,
   listAssetCaptures,
@@ -507,14 +509,31 @@ router.get('/:id', async (req, res) => {
 router.get('/:id/captures', async (req, res) => {
   const scoped = await requireAssetDomain(req, res, Number(req.params.id))
   if (!scoped) return
-  const rows = await listAssetCaptures(scoped.id)
+  const archived = String(req.query.archived || '') === '1' || String(req.query.history || '') === '1'
+  const rows = await listAssetCaptures(scoped.id, { archived })
   return okList(res, rows.map((r) => presentCapture(r, hardwareCaptureUrl(scoped.id, r.id))))
+})
+
+router.delete('/:id/captures', requireItAssetManager, async (req, res) => {
+  const scoped = await requireAssetDomain(req, res, Number(req.params.id))
+  if (!scoped) return
+  const result = await deregisterAssetCaptures(scoped.id)
+  if (!result.removed) return fail(res, 'No current captures to deregister')
+  await logAction({
+    userId: req.user?.id,
+    actionType: 'deregistered',
+    itemType: 'asset',
+    itemId: scoped.id,
+    note: 'Field captures deregistered for recapture at a new location',
+    meta: { photos_removed: result.removed, source: 'asset' },
+  })
+  return okMessage(res, 'Captures deregistered. Recapture at the new location and Submit.', result)
 })
 
 router.get('/:id/captures/:cid/file', async (req, res) => {
   const scoped = await requireAssetDomain(req, res, Number(req.params.id))
   if (!scoped) return
-  const row = await getAssetCapture(Number(req.params.cid), scoped.id)
+  const row = await getAssetCapture(Number(req.params.cid), scoped.id, { includeDeleted: true })
   if (!row) return fail(res, 'Capture not found', 404)
   const abs = captureDiskPath(String((row as { storage_path: string }).storage_path))
   if (!abs) return fail(res, 'File missing on disk', 404)

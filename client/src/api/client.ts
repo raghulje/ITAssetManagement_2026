@@ -123,7 +123,15 @@ export const hardwareApi = {
   // Audit feature — UI routes commented out; keep API helper for later
   audit: (id: number | string, body: unknown) => api(`/hardware/${id}/audit`, { method: 'POST', json: body }),
   history: (id: number | string) => api<ApiList<Record<string, unknown>>>(`/hardware/${id}/history`),
-  captures: (id: number | string) => api<ApiList<Record<string, unknown>>>(`/hardware/${id}/captures`),
+  captures: (id: number | string, opts?: { archived?: boolean }) =>
+    api<ApiList<Record<string, unknown>>>(
+      `/hardware/${id}/captures${opts?.archived ? '?archived=1' : ''}`,
+    ),
+  deregisterCaptures: (id: number | string) =>
+    api<{ status: string; messages?: string[]; payload?: { removed: number } }>(
+      `/hardware/${id}/captures`,
+      { method: 'DELETE' },
+    ),
   maintenances: (id: number | string) =>
     api<ApiList<Record<string, unknown>>>(`/maintenances?asset_id=${encodeURIComponent(String(id))}`),
   agentStatus: (id: number | string) => api<Record<string, unknown>>(`/hardware/${id}/agent`),

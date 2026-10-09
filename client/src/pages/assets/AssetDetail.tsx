@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import AppLayout from '../../layout/AppLayout'
 import AssetAttachments from '../../components/AssetAttachments'
 import { api, hardwareApi } from '../../api/client'
+import { useAuth } from '../../api/AuthContext'
 import { assetImageSrc } from '../../api/baseUrl'
 import { formatINR } from '../../utils/money'
 import { formatAppDateTime } from '../../lib/datetime'
@@ -61,6 +62,7 @@ type AgentStatus = {
 export default function AssetDetail() {
   const { id } = useParams()
   const [params] = useSearchParams()
+  const { isItAssetManager } = useAuth()
   const [asset, setAsset] = useState<Record<string, unknown> | null>(null)
   const [tab, setTab] = useState<TabId>(() => (params.get('tab') === 'captures' ? 'captures' : 'overview'))
   const [history, setHistory] = useState<Record<string, unknown>[]>([])
@@ -184,6 +186,7 @@ export default function AssetDetail() {
     if (action === 'replace_in') return 'Replaced (in)'
     if (action === 'maintenance') return 'Maintenance'
     if (action === 'maintenance_update') return 'Maintenance updated'
+    if (action === 'deregistered') return 'Captures deregistered'
     return action
   }
 
@@ -299,7 +302,13 @@ export default function AssetDetail() {
         ) : null}
 
         {tab === 'captures' && id ? (
-          <AssetCapturesTab assetId={id} rows={captures} />
+          <AssetCapturesTab
+            assetId={id}
+            rows={captures}
+            qrToken={typeof a.qr_token === 'string' ? a.qr_token : null}
+            canDeregister={isItAssetManager}
+            onDeregistered={() => load()}
+          />
         ) : null}
 
         {tab === 'maintenance' ? (

@@ -19,8 +19,12 @@ export type CaptureRow = {
   latitude?: number | null
   longitude?: number | null
   address?: string | null
+  deleted_at?: string | null
   url: string
 }
+
+export const DEREGISTER_CONFIRM =
+  'Re-capture this asset at its latest location?\n\nCurrent photos and video move to history. Capture all sides, the serial number, and a 30-second video at the new site, then Submit.'
 
 export type StagedCapture = {
   localId: string
@@ -363,15 +367,38 @@ export default function QrAssetCapturePanel({
     }
   }
 
+  async function deregisterCaptures() {
+    if (!rows.length) return
+    if (!window.confirm(DEREGISTER_CONFIRM)) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      await api(`/public/assets/${encodeURIComponent(token)}/captures`, { method: 'DELETE' })
+      pending.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+      setLocalStaged([])
+      await loadList()
+      setNotice('Ready to re-capture. Take new photos and video at this location, then tap Submit.')
+    } catch (e) {
+      setError(e instanceof ApiError || e instanceof Error ? e.message : 'Deregister failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const cameraLabel = photoBucket === 'serial'
     ? `${assetTag} · serial number`
     : `${assetTag} · all sides`
 
-  const submitHint = !pack.complete
+  const savedComplete = !staged && rows.length > 0 && pending.length === 0 && pack.complete
+  const canDeregister = !staged && rows.length > 0
+  const submitHint = staged && !pack.complete
     ? `Finish the checklist (${MIN_SIDE_PHOTOS} sides + serial photo + 30s video), then submit.`
-    : pending.length
-      ? `${pending.length} capture(s) ready — tap Submit to store them on this asset.`
-      : 'Required captures are saved on this asset. Capture more and Submit to add them.'
+    : !pack.complete
+      ? `Finish the checklist (${MIN_SIDE_PHOTOS} sides + serial photo + 30s video), then submit.`
+      : pending.length
+        ? `${pending.length} capture(s) ready — tap Submit to store them on this asset.`
+        : 'These photos and video are saved for the current location. If the asset moved, re-capture at the latest site.'
 
   return (
     <section className="qr-capture-panel">
@@ -379,8 +406,8 @@ export default function QrAssetCapturePanel({
         <div>
           <h2>{staged ? 'First-time field capture' : 'Asset captures'}</h2>
           <p>
-            Capture all sides of the asset, photograph the serial number, and record a 30-second video.
-            Nothing is stored until you tap <strong>Submit</strong>.
+            Capture all sides, the serial number, and a 30-second video. Nothing is stored until you tap{' '}
+            <strong>Submit</strong>. If the asset later moves, use <strong>Re-capture latest location</strong>.
           </p>
         </div>
       </header>
@@ -469,20 +496,36 @@ export default function QrAssetCapturePanel({
 
       <div className="qr-capture-submit-bar">
         <p>{submitHint}</p>
-        {staged ? (
-          <button type="submit" className="btn btn-theme btn-lg" disabled={working || !pack.complete}>
-            {working ? 'Saving…' : 'Submit registration'}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn btn-theme btn-lg"
-            disabled={working || !canUploadSubmit}
-            onClick={() => { void submitPending() }}
-          >
-            {working ? 'Submitting…' : 'Submit capture'}
-          </button>
-        )}
+        <div className="qr-capture-submit-bar__actions">
+          {canDeregister ? (
+            <button
+              type="button"
+              className={`btn btn-lg${savedComplete ? ' qr-capture-submit-bar__recapture' : ' btn-default'}`}
+              disabled={working}
+              onClick={() => { void deregisterCaptures() }}
+            >
+              {working ? 'Working…' : 'Re-capture latest location'}
+            </button>
+          ) : null}
+          {staged ? (
+            <button type="submit" className="btn btn-theme btn-lg" disabled={working || !pack.complete}>
+              {working ? 'Saving…' : 'Submit registration'}
+            </button>
+          ) : canUploadSubmit ? (
+            <button
+              type="button"
+              className="btn btn-theme btn-lg"
+              disabled={working}
+              onClick={() => { void submitPending() }}
+            >
+              {working ? 'Submitting…' : 'Submit capture'}
+            </button>
+          ) : !savedComplete ? (
+            <button type="button" className="btn btn-theme btn-lg" disabled>
+              Submit capture
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <AssetWebcamCapture
@@ -548,7 +591,7 @@ function Gallery({
                   else if (live) void onRemoveLive(live.id)
                 }}
               >
-                Delete
+                Remove
               </button>
             </figcaption>
           </figure>
