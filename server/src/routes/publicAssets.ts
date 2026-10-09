@@ -8,6 +8,7 @@ import { requireItAssetManager } from '../services/permissions.js'
 import { makeCaptureUploader, storageRoot } from '../services/uploads.js'
 import {
   captureDiskPath,
+  deregisterAssetCaptures,
   findAssetByQrToken,
   getAssetCapture,
   insertAssetCapture,
@@ -17,6 +18,7 @@ import {
   publicCaptureUrl,
   softDeleteAssetCapture,
 } from '../services/assetCaptures.js'
+import { logAction } from '../services/actionLog.js'
 
 const router = Router()
 
@@ -256,11 +258,28 @@ router.post('/assets/:token/captures', authRequired, requireItAssetManager, (req
   })
 })
 
+router.delete('/assets/:token/captures', authRequired, requireItAssetManager, async (req, res) => {
+  const token = String(req.params.token || '').trim()
+  const asset = await findAssetByQrToken(token)
+  if (!asset) return fail(res, 'Asset not found', 404)
+  const result = await deregisterAssetCaptures(asset.id)
+  if (!result.removed) return fail(res, 'No current captures to deregister')
+  await logAction({
+    userId: req.user?.id,
+    actionType: 'deregistered',
+    itemType: 'asset',
+    itemId: asset.id,
+    note: 'Field captures deregistered for recapture at a new location',
+    meta: { photos_removed: result.removed, source: 'qr' },
+  })
+  return okMessage(res, 'Captures deregistered. Recapture at the new location and Submit.', result)
+})
+
 router.get('/assets/:token/captures/:id/file', authRequired, requireItAssetManager, async (req, res) => {
   const token = String(req.params.token || '').trim()
   const asset = await findAssetByQrToken(token)
   if (!asset) return fail(res, 'Asset not found', 404)
-  const row = await getAssetCapture(Number(req.params.id), asset.id)
+  const row = await getAssetCapture(Number(req.params.id), asset.id, { includeDeleted: true })
   if (!row) return fail(res, 'Capture not found', 404)
   const abs = captureDiskPath(String((row as { storage_path: string }).storage_path))
   if (!abs) return fail(res, 'File missing on disk', 404)

@@ -4495,10 +4495,8 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   bottom: 12px;
   z-index: 8;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 8px;
   padding: 14px 16px;
   border-radius: 12px;
@@ -4508,20 +4506,50 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
 }
 .qr-capture-submit-bar p {
   margin: 0;
-  flex: 1 1 220px;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
+  letter-spacing: 0;
 }
 .qr-capture-submit-bar .btn {
-  min-width: 180px;
+  width: 100%;
+  min-height: 48px;
   font-weight: 800;
+  letter-spacing: 0;
   background: #fff;
   color: #0f766e;
   border-color: #fff;
 }
 .qr-capture-submit-bar .btn:disabled {
-  opacity: 0.65;
+  opacity: 0.55;
+  color: #0f766e;
+}
+.qr-capture-submit-bar__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.qr-capture-submit-bar .btn-default {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+.qr-capture-submit-bar__recapture {
+  background: #fff !important;
+  color: #9a3412 !important;
+  border-color: #fff !important;
+}
+.qr-capture-card figcaption,
+.qr-capture-card figcaption .btn,
+.qr-capture-block__head .btn,
+.qr-capture-panel__sub {
+  letter-spacing: 0;
+}
+.qr-capture-history {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e9f2;
 }
 
 .vc-webcam-overlay {

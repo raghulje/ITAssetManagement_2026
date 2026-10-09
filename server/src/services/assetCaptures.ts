@@ -70,6 +70,7 @@ export type AssetCaptureRow = {
   address: string | null
   locality_header: string | null
   created_at: string | null
+  deleted_at?: string | null
 }
 
 export type CaptureKind = 'photo' | 'serial' | 'video'
@@ -95,6 +96,7 @@ export function presentCapture(row: AssetCaptureRow, fileUrl: string) {
     address: row.address,
     locality_header: row.locality_header,
     created_at: row.created_at,
+    deleted_at: row.deleted_at || null,
     url: fileUrl,
   }
 }
@@ -107,15 +109,31 @@ export function hardwareCaptureUrl(assetId: number, id: number) {
   return `/hardware/${assetId}/captures/${id}/file`
 }
 
-export async function listAssetCaptures(assetId: number) {
+export async function listAssetCaptures(assetId: number, opts?: { archived?: boolean }) {
   await ensureAssetCapturesTable()
+  const archived = Boolean(opts?.archived)
   return all<AssetCaptureRow>(`
     SELECT id, asset_id, capture_kind, original_name, mime_type, file_size,
-      captured_at, latitude, longitude, accuracy_m, address, locality_header, created_at
+      captured_at, latitude, longitude, accuracy_m, address, locality_header, created_at, deleted_at
     FROM asset_captures
-    WHERE asset_id = ? AND deleted_at IS NULL
-    ORDER BY id DESC
+    WHERE asset_id = ? AND ${archived ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL'}
+    ORDER BY ${archived ? 'deleted_at DESC, id DESC' : 'id DESC'}
   `, [assetId])
+}
+
+/** Soft-delete the current pack so ITAM can recapture at a new location. Files stay on disk for history. */
+export async function deregisterAssetCaptures(assetId: number) {
+  await ensureAssetCapturesTable()
+  const rows = await all<{ id: number }>(`
+    SELECT id FROM asset_captures WHERE asset_id = ? AND deleted_at IS NULL
+  `, [assetId])
+  if (!rows.length) return { removed: 0, deregistered_at: null as string | null }
+  const ts = now()
+  await run(`
+    UPDATE asset_captures SET deleted_at = ?, updated_at = ?
+    WHERE asset_id = ? AND deleted_at IS NULL
+  `, [ts, ts, assetId])
+  return { removed: rows.length, deregistered_at: ts }
 }
 
 export async function insertAssetCapture(opts: {
@@ -161,13 +179,14 @@ export async function insertAssetCapture(opts: {
   return Number(info.insertId)
 }
 
-export async function getAssetCapture(id: number, assetId: number) {
+export async function getAssetCapture(id: number, assetId: number, opts?: { includeDeleted?: boolean }) {
   await ensureAssetCapturesTable()
+  const del = opts?.includeDeleted ? '' : ' AND deleted_at IS NULL'
   return get<AssetCaptureRow & { storage_path: string }>(`
     SELECT id, asset_id, capture_kind, original_name, mime_type, file_size, storage_path,
-      captured_at, latitude, longitude, accuracy_m, address, locality_header, created_at
+      captured_at, latitude, longitude, accuracy_m, address, locality_header, created_at, deleted_at
     FROM asset_captures
-    WHERE id = ? AND asset_id = ? AND deleted_at IS NULL
+    WHERE id = ? AND asset_id = ?${del}
   `, [id, assetId])
 }
 
