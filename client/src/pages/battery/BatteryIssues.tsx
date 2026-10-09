@@ -49,6 +49,13 @@ const CALL_PENDING_OPTIONS: Array<{ limit: BatteryCallQueueLimit; label: string;
   { limit: 'all', label: 'Call all', hint: 'Every pending contact with a phone number' },
 ]
 
+const CALL_INCOMPLETE_OPTIONS: Array<{ limit: BatteryCallQueueLimit; label: string; hint: string }> = [
+  { limit: 15, label: 'Call first 15', hint: 'Oldest 15 not properly answered contacts' },
+  { limit: 30, label: 'Call first 30', hint: 'Oldest 30 not properly answered contacts' },
+  { limit: 50, label: 'Call first 50', hint: 'Oldest 50 not properly answered contacts' },
+  { limit: 'all', label: 'Call all', hint: 'Everyone who picked up but did not finish both answers' },
+]
+
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Open' },
   { value: 'in_progress', label: 'In Progress' },
@@ -161,7 +168,9 @@ export function BatteryIssuesList() {
   const [refreshJob, setRefreshJob] = useState<BatterySyncAll | null>(null)
   const queueActive = Boolean(queue?.running)
   const [callMenuOpen, setCallMenuOpen] = useState(false)
+  const [incompleteMenuOpen, setIncompleteMenuOpen] = useState(false)
   const callMenuRef = useRef<HTMLDivElement | null>(null)
+  const incompleteMenuRef = useRef<HTMLDivElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const pageSize = 15
   const cardFilterOn = Boolean(callFilter || reportFilter || otherTypeFilter)
@@ -245,31 +254,37 @@ export function BatteryIssuesList() {
   }, [refreshJob?.running, refreshingAll])
 
   useEffect(() => {
-    if (!callMenuOpen) return
+    if (!callMenuOpen && !incompleteMenuOpen) return
     const onDoc = (ev: MouseEvent) => {
       if (!callMenuRef.current?.contains(ev.target as Node)) setCallMenuOpen(false)
+      if (!incompleteMenuRef.current?.contains(ev.target as Node)) setIncompleteMenuOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
-  }, [callMenuOpen])
+  }, [callMenuOpen, incompleteMenuOpen])
 
-  const startQueue = async (limit: BatteryCallQueueLimit) => {
-    const pending = Number(stats?.yet_to_call || 0)
-    const count = limit === 'all' ? pending : Math.min(limit, pending)
+  const startQueue = async (limit: BatteryCallQueueLimit, scope: 'pending' | 'incomplete' = 'pending') => {
+    const pool = Number(scope === 'incomplete' ? stats?.incomplete : stats?.yet_to_call) || 0
+    const count = limit === 'all' ? pool : Math.min(limit, pool)
+    const kind = scope === 'incomplete' ? 'not properly answered contact' : 'pending contact'
     if (!count) {
-      toast.error('No pending contacts with a phone number')
+      toast.error(scope === 'incomplete'
+        ? 'No not-properly-answered contacts with a phone number'
+        : 'No pending contacts with a phone number')
       return
     }
     const who = limit === 'all'
-      ? `all ${count} pending contact${count === 1 ? '' : 's'}`
-      : `the first ${count} pending contact${count === 1 ? '' : 's'}`
-    if (!window.confirm(
-      `Call ${who}, one after another?\n\nIgnored or rejected numbers in this batch are retried after 30 minutes, up to 3 calls. Other pending contacts stay until you start another batch.`,
-    )) return
+      ? `all ${count} ${kind}${count === 1 ? '' : 's'}`
+      : `the first ${count} ${kind}${count === 1 ? '' : 's'}`
+    const detail = scope === 'incomplete'
+      ? 'These people picked up but did not finish both answers. A new call is placed, one after another.'
+      : 'Ignored or rejected numbers in this batch are retried after 30 minutes, up to 3 calls. Other pending contacts stay until you start another batch.'
+    if (!window.confirm(`Call ${who}, one after another?\n\n${detail}`)) return
     setCallMenuOpen(false)
+    setIncompleteMenuOpen(false)
     setStartingQueue(true)
     try {
-      const res = await batteryIssuesApi.startQueue(limit)
+      const res = await batteryIssuesApi.startQueue(limit, scope)
       if (res.payload) setQueue(res.payload)
       toast.success(res.messages?.[0] || 'Call queue started')
       load()
@@ -299,7 +314,7 @@ export function BatteryIssuesList() {
 
   const controlQueue = async (action: 'pause' | 'resume' | 'stop') => {
     const confirmStop = action === 'stop'
-      ? window.confirm('Stop calling pending contacts? Already placed calls stay. Remaining numbers are not called until you start Call pending again.')
+      ? window.confirm('Stop this call batch? Already placed calls stay. Remaining numbers are not called until you start again.')
       : true
     if (!confirmStop) return
     setQueueBusy(true)
@@ -414,7 +429,7 @@ export function BatteryIssuesList() {
         title="Survey answers"
         cards={[
           { filter: 'answered_both', label: 'Answered both', value: stats?.answered_both ?? '—', icon: 'fas fa-clipboard-check', color: 'bg-teal', hint: 'Battery yes + other only + no issues + both' },
-          { filter: 'incomplete', label: 'Not answered', value: stats?.incomplete ?? '—', icon: 'fas fa-comment-slash', color: 'bg-orange', hint: 'Picked up, then cut the call or answered only one question' },
+          { filter: 'incomplete', label: 'Not Properly Answered', value: stats?.incomplete ?? '—', icon: 'fas fa-comment-slash', color: 'bg-orange', hint: 'Picked up, then cut the call or answered only one question' },
         ].map((c) => ({
           label: c.label,
           value: c.value,
@@ -464,7 +479,10 @@ export function BatteryIssuesList() {
                     type="button"
                     className="btn btn-theme btn-sm"
                     disabled={startingQueue || queueActive || !stats?.yet_to_call}
-                    onClick={() => setCallMenuOpen((open) => !open)}
+                    onClick={() => {
+                      setIncompleteMenuOpen(false)
+                      setCallMenuOpen((open) => !open)
+                    }}
                   >
                     <i className="fas fa-phone-volume" /> {startingQueue ? 'Starting…' : 'Call pending'}
                     {' '}<i className="fas fa-caret-down" />
@@ -475,7 +493,36 @@ export function BatteryIssuesList() {
                         key={String(opt.limit)}
                         type="button"
                         disabled={startingQueue || queueActive || !stats?.yet_to_call}
-                        onClick={() => { void startQueue(opt.limit) }}
+                        onClick={() => { void startQueue(opt.limit, 'pending') }}
+                      >
+                        {opt.label}
+                        <span className="text-muted" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>
+                          {opt.hint}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className={`dropdown ${incompleteMenuOpen ? 'open' : ''}`} ref={incompleteMenuRef}>
+                  <button
+                    type="button"
+                    className="btn btn-warning btn-sm"
+                    disabled={startingQueue || queueActive || !stats?.incomplete}
+                    onClick={() => {
+                      setCallMenuOpen(false)
+                      setIncompleteMenuOpen((open) => !open)
+                    }}
+                  >
+                    <i className="fas fa-phone-volume" /> {startingQueue ? 'Starting…' : 'Call not properly answered'}
+                    {' '}<i className="fas fa-caret-down" />
+                  </button>
+                  <div className="dropdown-menu">
+                    {CALL_INCOMPLETE_OPTIONS.map((opt) => (
+                      <button
+                        key={String(opt.limit)}
+                        type="button"
+                        disabled={startingQueue || queueActive || !stats?.incomplete}
+                        onClick={() => { void startQueue(opt.limit, 'incomplete') }}
                       >
                         {opt.label}
                         <span className="text-muted" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>
