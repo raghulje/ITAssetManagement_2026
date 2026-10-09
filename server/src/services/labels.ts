@@ -1,21 +1,20 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import PDFDocument from 'pdfkit'
+import { createCanvas, GlobalFonts, loadImage, type SKRSContext2D } from '@napi-rs/canvas'
 import { get, all } from '../db/index.js'
 import { ensureAssetQr, markLabelPrinted } from './assetQr.js'
 import { storageRoot, recordUpload } from './uploads.js'
 import { now } from '../db/index.js'
 import { allowedDomainCodes, canAccessDomainId, loadAssetDomains, tableHasColumn } from './domainAuth.js'
 
-/** Compact sticker with boxed safe zone. Slightly wider so long company names fit. */
-const LABEL_W = 148
-const LABEL_H = 65
-/** Empty ring outside the border — printers often clip this zone. */
-const OUTER = 5
-/** Gap between border stroke and content. */
-const INNER = 5
-/** Extra left inset (left edge clips most often). */
-const LEFT_EXTRA = 4
+/** Printer sticker. PNG is 600 DPI so the file prints at this physical size. */
+export const LABEL_WIDTH_MM = 36
+export const LABEL_HEIGHT_MM = 30
+const LABEL_DPI = 600
+
+function mmToPx(mm: number) {
+  return (mm / 25.4) * LABEL_DPI
+}
 
 type AssetLabel = {
   id: number
@@ -40,71 +39,150 @@ async function loadAssets(idsOrTags: (string | number)[]) {
   return [...map.values()]
 }
 
-/** Draw one line that never wraps (shrink font, then truncate). */
-function drawFitLine(
-  doc: PDFKit.PDFDocument,
-  text: string,
-  x: number,
-  y: number,
-  maxW: number,
-  opts: { font: string; size: number; minSize?: number; color?: string },
-) {
-  const raw = String(text || '').trim()
-  if (!raw) return
-  const minSize = opts.minSize ?? 5
-  let size = opts.size
-  doc.font(opts.font).fillColor(opts.color || '#000')
-  while (size > minSize) {
-    doc.fontSize(size)
-    if (doc.widthOfString(raw) <= maxW) break
-    size -= 0.5
+let fontsReady = false
+
+function ensureLabelFonts() {
+  if (fontsReady) return
+  const candidates: Array<[string, string]> = [
+    ['C:\\Windows\\Fonts\\arialbd.ttf', 'LabelSansBold'],
+    ['C:\\Windows\\Fonts\\arial.ttf', 'LabelSans'],
+    ['/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf', 'LabelSansBold'],
+    ['/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', 'LabelSans'],
+    ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'LabelSansBold'],
+    ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 'LabelSans'],
+  ]
+  for (const [file, family] of candidates) {
+    if (!fs.existsSync(file) || GlobalFonts.has(family)) continue
+    GlobalFonts.registerFromPath(file, family)
   }
-  doc.fontSize(size)
-  let out = raw
-  if (doc.widthOfString(out) > maxW) {
-    while (out.length > 1 && doc.widthOfString(`${out}…`) > maxW) {
-      out = out.slice(0, -1)
+  fontsReady = true
+}
+
+function fontFamily(bold: boolean) {
+  if (bold && GlobalFonts.has('LabelSansBold')) return 'LabelSansBold'
+  if (GlobalFonts.has('LabelSans')) return 'LabelSans'
+  return 'Arial'
+}
+
+function ellipsize(ctx: SKRSContext2D, text: string, maxW: number) {
+  if (ctx.measureText(text).width <= maxW) return text
+  let out = text
+  while (out.length > 1 && ctx.measureText(`${out}…`).width > maxW) out = out.slice(0, -1)
+  return `${out}…`
+}
+
+function wrapLines(ctx: SKRSContext2D, text: string, maxW: number, maxLines: number) {
+  const words = String(text || '—').trim().split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let cur = ''
+  let i = 0
+  while (i < words.length && lines.length < maxLines) {
+    const next = cur ? `${cur} ${words[i]}` : words[i]
+    if (ctx.measureText(next).width <= maxW) {
+      cur = next
+      i += 1
+      continue
     }
-    out = `${out}…`
+    if (cur) {
+      lines.push(cur)
+      cur = ''
+      continue
+    }
+    lines.push(ellipsize(ctx, words[i], maxW))
+    i += 1
+    cur = ''
   }
-  doc.text(out, x, y, { width: maxW, height: size + 2, lineBreak: false, ellipsis: true })
+  if (cur && lines.length < maxLines) lines.push(cur)
+  if (i < words.length && lines.length) {
+    lines[lines.length - 1] = ellipsize(ctx, lines[lines.length - 1].replace(/…$/, ''), maxW)
+  }
+  return lines
 }
 
-/** Company name: wrap up to maxLines so full name is visible. */
-function drawWrappedText(
-  doc: PDFKit.PDFDocument,
-  text: string,
-  x: number,
-  y: number,
-  maxW: number,
-  maxH: number,
-  opts: { font: string; size: number; minSize?: number; color?: string; maxLines?: number },
-) {
-  const raw = String(text || '').trim()
-  if (!raw) return
-  const maxLines = opts.maxLines ?? 3
-  const minSize = opts.minSize ?? 4.5
-  let size = opts.size
-  doc.font(opts.font).fillColor(opts.color || '#111')
-
-  const fits = (s: number) => {
-    doc.fontSize(s)
-    const h = doc.heightOfString(raw, { width: maxW, lineGap: 0 })
-    return h <= Math.min(maxH, s * 1.2 * maxLines + 1)
-  }
-
-  while (size > minSize && !fits(size)) size -= 0.5
-  doc.fontSize(size)
-  doc.text(raw, x, y, {
-    width: maxW,
-    height: Math.min(maxH, size * 1.25 * maxLines + 2),
-    lineGap: 0.5,
-    ellipsis: true,
-  })
+/** PNG pHYs chunk so viewers that honor DPI print this at the sticker size. */
+function withPngDpi(png: Buffer, dpi: number) {
+  const ppm = Math.round(dpi / 0.0254)
+  const data = Buffer.alloc(9)
+  data.writeUInt32BE(ppm, 0)
+  data.writeUInt32BE(ppm, 4)
+  data.writeUInt8(1, 8)
+  const type = Buffer.from('pHYs')
+  const crcBuf = Buffer.alloc(4)
+  crcBuf.writeUInt32BE(pngCrc32(Buffer.concat([type, data])), 0)
+  const len = Buffer.alloc(4)
+  len.writeUInt32BE(9, 0)
+  const ihdrLen = png.readUInt32BE(8)
+  const insertAt = 8 + 8 + ihdrLen + 4
+  return Buffer.concat([png.subarray(0, insertAt), len, type, data, crcBuf, png.subarray(insertAt)])
 }
 
-/** Compact QR + asset tag + company only. */
-export async function generateLabelsPdf(
+function pngCrc32(buf: Buffer) {
+  let c = ~0
+  for (let i = 0; i < buf.length; i++) {
+    c ^= buf[i]
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1))
+  }
+  return ~c >>> 0
+}
+
+export async function renderAssetLabelPng(asset: AssetLabel, qrPngPath: string | null) {
+  ensureLabelFonts()
+  const w = Math.round(mmToPx(LABEL_WIDTH_MM))
+  const h = Math.round(mmToPx(LABEL_HEIGHT_MM))
+  const canvas = createCanvas(w, h)
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, w, h)
+
+  const stroke = Math.max(2, mmToPx(0.22))
+  ctx.strokeStyle = '#000000'
+  ctx.lineWidth = stroke
+  const edge = stroke / 2 + 1
+  ctx.strokeRect(edge, edge, w - edge * 2, h - edge * 2)
+
+  const pad = mmToPx(1.15)
+  const inner = edge + pad
+  const innerW = w - inner * 2
+  const innerH = h - inner * 2
+  const tagPx = Math.round(mmToPx(2.15))
+  const companyPx = Math.round(mmToPx(1.6))
+  const textH = tagPx * 1.2 + companyPx * 1.15 * 2
+  const gap = mmToPx(0.55)
+  const qrSize = Math.floor(Math.min(innerW, Math.max(mmToPx(14), innerH - textH - gap)))
+  const blockH = qrSize + gap + textH
+  const qrX = inner + (innerW - qrSize) / 2
+  const qrY = inner + Math.max(0, (innerH - blockH) / 2)
+
+  if (qrPngPath && fs.existsSync(qrPngPath)) {
+    const img = await loadImage(qrPngPath)
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(img, qrX, qrY, qrSize, qrSize)
+  }
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.fillStyle = '#000000'
+  let y = qrY + qrSize + gap
+  ctx.font = `${tagPx}px ${fontFamily(true)}`
+  ctx.fillText(ellipsize(ctx, asset.asset_tag, innerW), w / 2, y)
+  y += tagPx * 1.15
+
+  ctx.fillStyle = '#111111'
+  ctx.font = `${companyPx}px ${fontFamily(false)}`
+  for (const line of wrapLines(ctx, asset.company_name ? String(asset.company_name) : '—', innerW, 2)) {
+    ctx.fillText(line, w / 2, y)
+    y += companyPx * 1.15
+  }
+
+  return withPngDpi(canvas.toBuffer('image/png'), LABEL_DPI)
+}
+
+function safeFilePart(tag: string) {
+  return tag.replace(/[^\w.-]+/g, '_') || 'asset'
+}
+
+/** High-resolution PNG sticker: QR, asset tag, and company. One label is 36 × 30 mm. */
+export async function generateLabels(
   assetTagsOrIds: (string | number)[],
   opts?: { userId?: number; persist?: boolean; permissions?: Record<string, unknown> },
 ) {
@@ -116,93 +194,50 @@ export async function generateLabelsPdf(
   }
   if (!assets.length) throw new Error('No assets found for labels')
 
-  const pageSize: [number, number] = [LABEL_W, LABEL_H]
-  const doc = new PDFDocument({ size: pageSize, margin: 0 })
-  const chunks: Buffer[] = []
-  doc.on('data', (c) => chunks.push(c))
-
-  const done = new Promise<Buffer>((resolve) => {
-    doc.on('end', () => resolve(Buffer.concat(chunks)))
-  })
-
   const qrMeta: Array<{ asset_tag: string; public_url: string; qr_token: string }> = []
+  const tiles: Buffer[] = []
 
-  for (let i = 0; i < assets.length; i++) {
-    const a = assets[i]
-    if (i > 0) doc.addPage({ size: pageSize, margin: 0 })
-
+  for (const a of assets) {
     const qr = await ensureAssetQr(a.id, { refreshImage: true })
     qrMeta.push({ asset_tag: a.asset_tag, public_url: qr.public_url, qr_token: qr.qr_token })
-
-    // Full boxed border — cut/print outside this box; content stays inside
-    const boxX = OUTER
-    const boxY = OUTER
-    const boxW = LABEL_W - OUTER * 2
-    const boxH = LABEL_H - OUTER * 2
-    doc.save()
-    doc.lineWidth(0.75).strokeColor('#000')
-      .rect(boxX, boxY, boxW, boxH)
-      .stroke()
-    doc.restore()
-
-    const contentLeft = boxX + INNER + LEFT_EXTRA
-    const contentRight = boxX + boxW - INNER
-    const contentTop = boxY + INNER
-    const contentBottom = boxY + boxH - INNER
-    const contentH = contentBottom - contentTop
-
-    // Slightly smaller QR → wider text column for full company names
-    const qrSize = Math.min(32, contentH)
-    const qrX = contentLeft
-    const qrY = contentTop + (contentH - qrSize) / 2
-    const gap = 4
-    const textX = qrX + qrSize + gap
-    const textW = Math.max(40, contentRight - textX)
-    const tagH = 10
-    let textY = contentTop + 4
-
-    try {
-      const pngPath = path.join(storageRoot, qr.qr_image_path)
-      if (fs.existsSync(pngPath)) {
-        doc.image(pngPath, qrX, qrY, { width: qrSize, height: qrSize })
-      }
-    } catch { /* ignore */ }
-
-    drawFitLine(doc, a.asset_tag, textX, textY, textW, {
-      font: 'Helvetica-Bold',
-      size: 6.5,
-      minSize: 4.5,
-    })
-    textY += tagH
-
-    const companyMaxH = contentBottom - textY
-    drawWrappedText(doc, a.company_name ? String(a.company_name) : '—', textX, textY, textW, companyMaxH, {
-      font: 'Helvetica',
-      size: 5.5,
-      minSize: 4.5,
-      color: '#111',
-      maxLines: 3,
-    })
-
+    const pngPath = path.join(storageRoot, qr.qr_image_path)
+    tiles.push(await renderAssetLabelPng(a, pngPath))
     await markLabelPrinted(a.id)
   }
 
-  doc.end()
-  const pdf = await done
+  const tileW = Math.round(mmToPx(LABEL_WIDTH_MM))
+  const tileH = Math.round(mmToPx(LABEL_HEIGHT_MM))
+  let png = tiles[0]
+  if (tiles.length > 1) {
+    const sheet = createCanvas(tileW, tileH * tiles.length)
+    const ctx = sheet.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, sheet.width, sheet.height)
+    for (let i = 0; i < tiles.length; i++) {
+      const img = await loadImage(tiles[i])
+      ctx.drawImage(img, 0, i * tileH, tileW, tileH)
+    }
+    png = withPngDpi(sheet.toBuffer('image/png'), LABEL_DPI)
+  }
+
+  const filename = assets.length === 1
+    ? `print-label-${safeFilePart(assets[0].asset_tag)}.png`
+    : `print-labels-${assets.length}.png`
 
   if (opts?.persist !== false && assets.length === 1) {
     const a = assets[0]
     const dir = path.join(storageRoot, 'private_uploads/assets')
     fs.mkdirSync(dir, { recursive: true })
-    const filename = `label-${a.asset_tag}-${Date.now()}.pdf`
-    const diskPath = path.join(dir, filename)
-    fs.writeFileSync(diskPath, pdf)
+    const stored = `label-${safeFilePart(a.asset_tag)}-${Date.now()}.png`
+    const diskPath = path.join(dir, stored)
+    fs.writeFileSync(diskPath, png)
     await recordUpload({
       type: 'asset',
       id: a.id,
-      filename,
-      original: `Print-Label-${a.asset_tag}.pdf`,
-      mime: 'application/pdf',
+      filename: stored,
+      original: filename,
+      mime: 'image/png',
+      size: png.length,
       diskPath,
       kind: 'label',
       userId: opts?.userId,
@@ -210,7 +245,12 @@ export async function generateLabelsPdf(
   }
 
   return {
-    pdf_base64: pdf.toString('base64'),
+    image_base64: png.toString('base64'),
+    mime: 'image/png',
+    filename,
+    width_mm: LABEL_WIDTH_MM,
+    height_mm: LABEL_HEIGHT_MM * assets.length,
+    dpi: LABEL_DPI,
     count: assets.length,
     assets: assets.map((a) => a.asset_tag),
     qr: qrMeta,
@@ -221,5 +261,5 @@ export async function generateLabelsPdf(
 export async function generateSingleLabel(assetId: number, opts?: { userId?: number }) {
   const a = await get<{ asset_tag: string }>(`SELECT asset_tag FROM assets WHERE id=? AND deleted_at IS NULL`, [assetId])
   if (!a) throw new Error('Asset not found')
-  return generateLabelsPdf([a.asset_tag], opts)
+  return generateLabels([a.asset_tag], opts)
 }

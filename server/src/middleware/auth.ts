@@ -29,13 +29,24 @@ export function signToken(user: { id: number; username: string }) {
   return jwt.sign({ sub: user.id, username: user.username }, secret(), { expiresIn: '7d' })
 }
 
-export async function authRequired(req: Request, res: Response, next: NextFunction) {
+function bearerOrQueryToken(req: Request) {
   const header = req.headers.authorization
-  if (!header?.startsWith('Bearer ')) {
+  if (header?.startsWith('Bearer ')) return header.slice(7)
+  // <img>/<video> cannot send Authorization; GET file routes accept access_token.
+  if (req.method === 'GET') {
+    const q = req.query.access_token
+    if (typeof q === 'string' && q.trim()) return q.trim()
+  }
+  return ''
+}
+
+export async function authRequired(req: Request, res: Response, next: NextFunction) {
+  const token = bearerOrQueryToken(req)
+  if (!token) {
     return fail(res, 'Unauthorized', 401)
   }
   try {
-    const decoded = jwt.verify(header.slice(7), secret()) as unknown as { sub: number }
+    const decoded = jwt.verify(token, secret()) as unknown as { sub: number }
     const row = await get<AuthUser>(`
       SELECT id, username, first_name, last_name, email, company_id, permissions, activated
       FROM users WHERE id = ? AND deleted_at IS NULL

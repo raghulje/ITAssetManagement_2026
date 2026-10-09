@@ -16,6 +16,7 @@ import {
   normalizeCaptureKind,
   presentCapture,
   publicCaptureUrl,
+  sendCaptureFile,
   softDeleteAssetCapture,
 } from '../services/assetCaptures.js'
 import { logAction } from '../services/actionLog.js'
@@ -283,9 +284,7 @@ router.get('/assets/:token/captures/:id/file', authRequired, requireItAssetManag
   if (!row) return fail(res, 'Capture not found', 404)
   const abs = captureDiskPath(String((row as { storage_path: string }).storage_path))
   if (!abs) return fail(res, 'File missing on disk', 404)
-  res.setHeader('Content-Type', String(row.mime_type || 'application/octet-stream'))
-  res.setHeader('Content-Disposition', `inline; filename="${row.original_name || 'capture'}"`)
-  return res.sendFile(abs)
+  return sendCaptureFile(res, abs, row)
 })
 
 router.delete('/assets/:token/captures/:id', authRequired, requireItAssetManager, async (req, res) => {

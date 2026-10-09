@@ -126,27 +126,29 @@ export default function AssetDetail() {
 
   const printLabel = async () => {
     try {
-      const res = await api<{ pdf_base64: string }>(`/labels/hardware/${id}`, { method: 'POST', json: {} })
-      const b64 = (res as { payload?: { pdf_base64: string }; pdf_base64?: string }).payload?.pdf_base64
-        || (res as { pdf_base64?: string }).pdf_base64
-      if (!b64) throw new Error('No PDF returned')
+      const res = await api<{
+        payload?: { image_base64?: string; filename?: string; mime?: string }
+        image_base64?: string
+        filename?: string
+        mime?: string
+      }>(`/labels/hardware/${id}`, { method: 'POST', json: {} })
+      const body = res.payload?.image_base64 ? res.payload : res
+      const b64 = body.image_base64
+      if (!b64) throw new Error('No label image returned')
       const binary = atob(b64)
       const bytes = new Uint8Array(binary.length)
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-      const blob = new Blob([bytes], { type: 'application/pdf' })
+      const blob = new Blob([bytes], { type: body.mime || 'image/png' })
       const url = URL.createObjectURL(blob)
-      const opened = window.open(url, '_blank')
-      if (!opened) {
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `print-label-${id}.pdf`
-        a.rel = 'noopener'
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-      }
+      const a = document.createElement('a')
+      a.href = url
+      a.download = body.filename || `print-label-${id}.png`
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
-      setMsg('Print label generated — QR is permanent for this asset')
+      setMsg('Label downloaded as a 36 × 30 mm PNG. Print it at actual size (100%).')
       load()
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Print label failed')

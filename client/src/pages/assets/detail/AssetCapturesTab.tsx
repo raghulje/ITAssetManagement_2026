@@ -1,19 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getApiBase } from '../../../api/baseUrl'
 import { hardwareApi } from '../../../api/client'
 import { formatAppDateTime } from '../../../lib/datetime'
+import { authorizedMediaUrl } from '../../../lib/authorizedMedia'
 import type { CaptureKind, CaptureRow } from '../../../components/QrAssetCapturePanel'
 import {
   DEREGISTER_CONFIRM,
   MIN_SIDE_PHOTOS,
   firstPackStatus,
 } from '../../../components/QrAssetCapturePanel'
-
-function authHeaders(): Record<string, string> {
-  const t = localStorage.getItem('refex_token')
-  return t ? { Authorization: `Bearer ${t}` } : {}
-}
+import {
+  CaptureLightbox,
+  CaptureThumb,
+  type CaptureMediaItem,
+} from '../../../components/CaptureMediaPreview'
 
 type Props = {
   assetId: number | string
@@ -30,11 +30,10 @@ export default function AssetCapturesTab({
   canDeregister,
   onDeregistered,
 }: Props) {
-  const [previews, setPreviews] = useState<Record<number, string>>({})
   const [archived, setArchived] = useState<CaptureRow[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const blobUrls = useRef<string[]>([])
+  const [viewer, setViewer] = useState<{ items: CaptureMediaItem[]; index: number } | null>(null)
   const pack = firstPackStatus(rows)
   const photos = rows.filter((r) => r.kind === 'photo')
   const serials = rows.filter((r) => r.kind === 'serial')
@@ -46,40 +45,6 @@ export default function AssetCapturesTab({
       .then((r) => setArchived(normalizeCaptureRows(r.rows || [])))
       .catch(() => setArchived([]))
   }, [assetId, rows])
-
-  useEffect(() => {
-    let cancelled = false
-    blobUrls.current.forEach((u) => URL.revokeObjectURL(u))
-    blobUrls.current = []
-    const next: Record<number, string> = {}
-    const allRows = [...rows, ...archived]
-    void (async () => {
-      for (const row of allRows) {
-        try {
-          const res = await fetch(`${getApiBase()}${row.url}`, { headers: authHeaders() })
-          if (!res.ok) continue
-          const blob = await res.blob()
-          const url = URL.createObjectURL(blob)
-          blobUrls.current.push(url)
-          if (cancelled) {
-            URL.revokeObjectURL(url)
-            continue
-          }
-          next[row.id] = url
-        } catch {
-          /* skip */
-        }
-      }
-      if (!cancelled) setPreviews(next)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [rows, archived, assetId])
-
-  useEffect(() => () => {
-    blobUrls.current.forEach((u) => URL.revokeObjectURL(u))
-  }, [])
 
   async function deregister() {
     if (!window.confirm(DEREGISTER_CONFIRM)) return
@@ -136,9 +101,9 @@ export default function AssetCapturesTab({
             <li className={pack.serialOk ? 'is-done' : ''}>Serial number photo — {pack.serialOk ? 'yes' : 'missing'}</li>
             <li className={pack.videoOk ? 'is-done' : ''}>30-second video — {pack.videoOk ? 'yes' : 'missing'}</li>
           </ul>
-          <CaptureGroup title={`All sides (${photos.length})`} items={photos} previews={previews} />
-          <CaptureGroup title={`Serial number (${serials.length})`} items={serials} previews={previews} />
-          <CaptureGroup title={`Video (${videos.length})`} items={videos} previews={previews} video />
+          <CaptureGroup title={`All sides (${photos.length})`} items={photos} onOpen={setViewer} />
+          <CaptureGroup title={`Serial number (${serials.length})`} items={serials} onOpen={setViewer} />
+          <CaptureGroup title={`Video (${videos.length})`} items={videos} onOpen={setViewer} video />
         </>
       )}
 
@@ -151,26 +116,48 @@ export default function AssetCapturesTab({
                 Deregistered {formatAppDateTime(group.at)}
                 {group.address ? ` · ${group.address}` : ''}
               </p>
-              <CaptureGroup title={`Pack (${group.rows.length})`} items={group.rows} previews={previews} />
+              <CaptureGroup title={`Pack (${group.rows.length})`} items={group.rows} onOpen={setViewer} />
             </section>
           ))}
         </div>
+      ) : null}
+
+      {viewer ? (
+        <CaptureLightbox
+          items={viewer.items}
+          index={viewer.index}
+          onClose={() => setViewer(null)}
+          onIndex={(index) => setViewer({ ...viewer, index })}
+        />
       ) : null}
     </div>
   )
 }
 
+function toMediaItems(items: CaptureRow[]): CaptureMediaItem[] {
+  return items.map((row) => ({
+    key: String(row.id),
+    src: authorizedMediaUrl(row.url),
+    isVideo: row.kind === 'video' || String(row.mime_type || '').startsWith('video/'),
+    caption: row.address || formatAppDateTime(row.captured_at),
+    coords: row.latitude != null && row.longitude != null
+      ? `${Number(row.latitude).toFixed(5)}, ${Number(row.longitude).toFixed(5)}`
+      : null,
+  }))
+}
+
 function CaptureGroup({
   title,
   items,
-  previews,
   video,
+  onOpen,
 }: {
   title: string
   items: CaptureRow[]
-  previews: Record<number, string>
   video?: boolean
+  onOpen: (next: { items: CaptureMediaItem[]; index: number }) => void
 }) {
+  const media = useMemo(() => toMediaItems(items), [items])
   return (
     <div className="qr-capture-block">
       <h3 className="qr-capture-panel__sub">{title}</h3>
@@ -178,26 +165,15 @@ function CaptureGroup({
         <p className="text-muted">None yet.</p>
       ) : (
         <div className={`qr-capture-gallery${video ? ' qr-capture-gallery--video' : ''}`}>
-          {items.map((row) => {
-            const src = previews[row.id]
-            const caption = row.address || formatAppDateTime(row.captured_at)
-            const vid = row.kind === 'video'
-            return (
-              <figure key={row.id} className={`qr-capture-card${vid ? ' qr-capture-card--video' : ''}`}>
-                {src ? (
-                  vid ? <video src={src} controls playsInline preload="metadata" /> : <img src={src} alt="" />
-                ) : (
-                  <div className="qr-capture-card__ph">Loading…</div>
-                )}
-                <figcaption>
-                  <span>{caption}</span>
-                  {row.latitude != null && row.longitude != null ? (
-                    <span>{Number(row.latitude).toFixed(5)}, {Number(row.longitude).toFixed(5)}</span>
-                  ) : null}
-                </figcaption>
-              </figure>
-            )
-          })}
+          {media.map((item, index) => (
+            <figure key={item.key} className={`qr-capture-card${item.isVideo ? ' qr-capture-card--video' : ''}`}>
+              <CaptureThumb item={item} onOpen={() => onOpen({ items: media, index })} />
+              <figcaption>
+                <span>{item.caption}</span>
+                {item.coords ? <span>{item.coords}</span> : null}
+              </figcaption>
+            </figure>
+          ))}
         </div>
       )}
     </div>
