@@ -7,6 +7,7 @@ import { useAuth } from '../../api/AuthContext'
 import { assetImageSrc } from '../../api/baseUrl'
 import { formatINR } from '../../utils/money'
 import { formatAppDateTime } from '../../lib/datetime'
+import { openBlankLabelPreview, showLabelPrintPreview } from '../../lib/printLabelPreview'
 import AssetRecordHero from './detail/AssetRecordHero'
 import AssetOverviewTab from './detail/AssetOverviewTab'
 import AssetCapturesTab, { normalizeCaptureRows } from './detail/AssetCapturesTab'
@@ -125,6 +126,11 @@ export default function AssetDetail() {
   }, [tab, id])
 
   const printLabel = async () => {
+    const preview = openBlankLabelPreview()
+    if (!preview) {
+      setMsg('Allow pop-ups so the print preview can open.')
+      return
+    }
     try {
       const res = await api<{
         payload?: { image_base64?: string; filename?: string; mime?: string }
@@ -135,22 +141,11 @@ export default function AssetDetail() {
       const body = res.payload?.image_base64 ? res.payload : res
       const b64 = body.image_base64
       if (!b64) throw new Error('No label image returned')
-      const binary = atob(b64)
-      const bytes = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-      const blob = new Blob([bytes], { type: body.mime || 'image/png' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = body.filename || `print-label-${id}.png`
-      a.rel = 'noopener'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
-      setMsg('Label downloaded as a 36 × 30 mm PNG. Print it at actual size (100%).')
+      showLabelPrintPreview(preview, b64, body.mime || 'image/png')
+      setMsg('Print preview opened. Choose the printer in that window.')
       load()
     } catch (e) {
+      preview.close()
       setMsg(e instanceof Error ? e.message : 'Print label failed')
     }
   }
