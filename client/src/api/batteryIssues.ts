@@ -137,10 +137,10 @@ export const batteryIssuesApi = {
     api<ApiList<BatteryIssue>>(`/battery-issues${qs(params)}`),
   stats: () => api<BatteryCallStats>('/battery-issues/stats'),
   queueStatus: () => api<BatteryCallQueue>('/battery-issues/call-queue'),
-  startQueue: (limit: BatteryCallQueueLimit = 'all') =>
+  startQueue: (limit: BatteryCallQueueLimit = 'all', scope: 'pending' | 'incomplete' = 'pending') =>
     api<{ status: string; messages: string[]; payload: BatteryCallQueue }>('/battery-issues/call-queue', {
       method: 'POST',
-      json: { limit },
+      json: { limit, scope },
     }),
   pauseQueue: () =>
     api<{ status: string; messages: string[]; payload: BatteryCallQueue }>('/battery-issues/call-queue/pause', {

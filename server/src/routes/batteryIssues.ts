@@ -722,9 +722,11 @@ batteryIssuesRouter.get('/call-queue', async (_req, res) => {
 batteryIssuesRouter.post('/call-queue', async (req, res) => {
   try {
     const { startPendingCallQueue } = await import('../services/batteryCallQueue.js')
+    const body = (req.body || {}) as { limit?: unknown; scope?: unknown }
     const status = await startPendingCallQueue({
       userId: req.user?.id ?? null,
-      limit: (req.body as { limit?: unknown } | undefined)?.limit,
+      limit: body.limit,
+      scope: body.scope === 'incomplete' ? 'incomplete' : 'pending',
     })
     return okMessage(res, status.message || 'Call queue started', status)
   } catch (e) {

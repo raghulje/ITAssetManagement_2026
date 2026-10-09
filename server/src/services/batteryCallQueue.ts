@@ -101,10 +101,20 @@ function haltForCredits(err: unknown) {
   }
 }
 
+export type CallQueueScope = 'pending' | 'incomplete'
+
+const INCOMPLETE_ANSWER_SQL = `
+  latest.outcome = 'completed'
+  AND (
+    IFNULL(i.battery_issue_confirmed, '') NOT IN ('yes', 'no')
+    OR IFNULL(i.other_issue_reported, '') NOT IN ('yes', 'no')
+  )`
+
 export async function startPendingCallQueue(opts?: {
   userId?: number | null
   gapMs?: number
   limit?: unknown
+  scope?: CallQueueScope
 }) {
   if (state.running) {
     throw new Error(state.paused
@@ -112,19 +122,50 @@ export async function startPendingCallQueue(opts?: {
       : 'A call queue is already running')
   }
   const limit = parseCallQueueLimit(opts?.limit)
-  const pending = await all<{ id: number; name: string; phone: string }>(`
-    SELECT i.id, i.name, i.phone
-    FROM battery_degradation_issues i
-    WHERE i.deleted_at IS NULL
-      AND i.phone IS NOT NULL AND TRIM(i.phone) != '' AND i.phone != '-'
-      AND NOT EXISTS (
-        SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = i.id
-      )
-    ORDER BY i.id ASC
-    ${limit === 'all' ? '' : 'LIMIT ?'}
-  `, limit === 'all' ? [] : [limit])
+  const scope: CallQueueScope = opts?.scope === 'incomplete' ? 'incomplete' : 'pending'
+  const pending = scope === 'incomplete'
+    ? await all<{ id: number; name: string; phone: string }>(`
+      SELECT i.id, i.name, i.phone
+      FROM battery_degradation_issues i
+      INNER JOIN (
+        SELECT c.issue_id,
+          CASE
+            WHEN c.call_result IN ('completed', 'attended', 'ended', 'success') THEN 'completed'
+            WHEN c.call_result = 'rejected' THEN 'rejected'
+            WHEN c.call_result = 'ignored' THEN 'ignored'
+            ELSE 'calling'
+          END AS outcome
+        FROM battery_degradation_calls c
+        INNER JOIN (
+          SELECT issue_id, MAX(id) AS max_id
+          FROM battery_degradation_calls
+          GROUP BY issue_id
+        ) t ON t.max_id = c.id
+      ) latest ON latest.issue_id = i.id
+      WHERE i.deleted_at IS NULL
+        AND i.phone IS NOT NULL AND TRIM(i.phone) != '' AND i.phone != '-'
+        AND ${INCOMPLETE_ANSWER_SQL}
+      ORDER BY i.id ASC
+      ${limit === 'all' ? '' : 'LIMIT ?'}
+    `, limit === 'all' ? [] : [limit])
+    : await all<{ id: number; name: string; phone: string }>(`
+      SELECT i.id, i.name, i.phone
+      FROM battery_degradation_issues i
+      WHERE i.deleted_at IS NULL
+        AND i.phone IS NOT NULL AND TRIM(i.phone) != '' AND i.phone != '-'
+        AND NOT EXISTS (
+          SELECT 1 FROM battery_degradation_calls c WHERE c.issue_id = i.id
+        )
+      ORDER BY i.id ASC
+      ${limit === 'all' ? '' : 'LIMIT ?'}
+    `, limit === 'all' ? [] : [limit])
   if (!pending.length) {
-    state = { ...idle, message: 'No pending contacts with a phone number' }
+    state = {
+      ...idle,
+      message: scope === 'incomplete'
+        ? 'No not-properly-answered contacts with a phone number'
+        : 'No pending contacts with a phone number',
+    }
     return getCallQueueStatus()
   }
 
@@ -132,9 +173,10 @@ export async function startPendingCallQueue(opts?: {
   stopRequested = false
   pauseRequested = false
   const ts = now()
+  const who = scope === 'incomplete' ? 'not properly answered contact' : 'pending contact'
   const batchLabel = limit === 'all'
-    ? `all ${pending.length} pending contact${pending.length === 1 ? '' : 's'}`
-    : `the first ${pending.length} pending contact${pending.length === 1 ? '' : 's'}`
+    ? `all ${pending.length} ${who}${pending.length === 1 ? '' : 's'}`
+    : `the first ${pending.length} ${who}${pending.length === 1 ? '' : 's'}`
   state = {
     running: true,
     paused: false,
