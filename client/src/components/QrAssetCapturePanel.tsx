@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getApiBase } from '../api/baseUrl'
 import { api, ApiError } from '../api/client'
 import AssetVideoCapture from './AssetVideoCapture'
 import AssetWebcamCapture from './AssetWebcamCapture'
+import { authorizedMediaUrl } from '../lib/authorizedMedia'
 import { readGpsFromImageFile } from '../lib/imageGps'
 import { requestLocationAccess, type PrecisePosition } from '../lib/preciseLocation'
 import { fetchGpsStaticMapUrl, stampGpsOnImage } from '../lib/stampGpsOnImage'
+import { CaptureLightbox, CaptureThumb, type CaptureMediaItem } from './CaptureMediaPreview'
 
 export type CaptureKind = 'photo' | 'serial' | 'video'
 
@@ -172,7 +174,6 @@ export default function QrAssetCapturePanel({
   submitBusy = false,
 }: Props) {
   const [rows, setRows] = useState<CaptureRow[]>([])
-  const [previews, setPreviews] = useState<Record<number, string>>({})
   const [localStaged, setLocalStaged] = useState<StagedCapture[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -181,7 +182,7 @@ export default function QrAssetCapturePanel({
   const [videoOpen, setVideoOpen] = useState(false)
   const [photoBucket, setPhotoBucket] = useState<PhotoBucket>('photo')
   const [gps, setGps] = useState<PrecisePosition | null>(null)
-  const blobUrls = useRef<string[]>([])
+  const [viewer, setViewer] = useState<{ items: CaptureMediaItem[]; index: number } | null>(null)
 
   const pending = staged ? stagedItems : localStaged
   const combined = [...rows.map((r) => ({ kind: r.kind })), ...pending.map((p) => ({ kind: p.kind }))]
@@ -204,40 +205,6 @@ export default function QrAssetCapturePanel({
   useEffect(() => {
     void loadList().catch((e: Error) => setError(e.message || 'Could not load captures'))
   }, [loadList])
-
-  useEffect(() => {
-    if (staged) return
-    let cancelled = false
-    blobUrls.current.forEach((u) => URL.revokeObjectURL(u))
-    blobUrls.current = []
-    const next: Record<number, string> = {}
-    void (async () => {
-      for (const row of rows) {
-        try {
-          const res = await fetch(`${getApiBase()}${row.url}`, { headers: authHeaders() })
-          if (!res.ok) continue
-          const blob = await res.blob()
-          const url = URL.createObjectURL(blob)
-          blobUrls.current.push(url)
-          if (cancelled) {
-            URL.revokeObjectURL(url)
-            continue
-          }
-          next[row.id] = url
-        } catch {
-          /* skip */
-        }
-      }
-      if (!cancelled) setPreviews(next)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [rows, staged])
-
-  useEffect(() => () => {
-    blobUrls.current.forEach((u) => URL.revokeObjectURL(u))
-  }, [])
 
   function setPending(items: StagedCapture[]) {
     if (staged) onStagedChange?.(items)
@@ -451,12 +418,12 @@ export default function QrAssetCapturePanel({
         <p className="help-block">Walk around the asset and take at least 4 GPS-stamped photos (front, back, and both sides).</p>
         <Gallery
           items={sideItems}
-          previews={previews}
           busy={working}
           empty="No side photos yet."
           hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
           onRemoveLive={removeLive}
+          onOpen={setViewer}
         />
       </div>
 
@@ -472,12 +439,12 @@ export default function QrAssetCapturePanel({
         <p className="help-block">Photograph the serial number sticker / label so it is readable. This is mandatory.</p>
         <Gallery
           items={serialItems}
-          previews={previews}
           busy={working}
           empty="No serial number photo yet."
           hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
           onRemoveLive={removeLive}
+          onOpen={setViewer}
         />
       </div>
 
@@ -493,13 +460,13 @@ export default function QrAssetCapturePanel({
         <p className="help-block">A 30-second walk-around video is mandatory for first-time registration.</p>
         <Gallery
           items={videoItems}
-          previews={previews}
           busy={working}
           empty="No video yet."
           video
           hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
           onRemoveLive={removeLive}
+          onOpen={setViewer}
         />
       </div>
 
@@ -551,54 +518,73 @@ export default function QrAssetCapturePanel({
         onClose={() => setVideoOpen(false)}
         onCapture={(file) => { void handleVideo(file) }}
       />
+      {viewer ? (
+        <CaptureLightbox
+          items={viewer.items}
+          index={viewer.index}
+          onClose={() => setViewer(null)}
+          onIndex={(index) => setViewer({ ...viewer, index })}
+        />
+      ) : null}
     </section>
   )
 }
 
+function galleryMedia(items: Array<StagedCapture | CaptureRow>, video?: boolean): CaptureMediaItem[] {
+  return items.map((item) => {
+    const stagedItem = 'localId' in item ? item as StagedCapture : null
+    const live = !stagedItem ? item as CaptureRow : null
+    const src = stagedItem ? stagedItem.previewUrl : authorizedMediaUrl(live?.url)
+    return {
+      key: String(stagedItem?.localId || live?.id || src),
+      src,
+      isVideo: Boolean(video || live?.kind === 'video'),
+      caption: stagedItem
+        ? `Pending · ${stagedItem.address || (stagedItem.latitude != null ? `${Number(stagedItem.latitude).toFixed(5)}, ${Number(stagedItem.longitude).toFixed(5)}` : 'ready to submit')}`
+        : (live?.address || live?.captured_at || 'Saved'),
+    }
+  })
+}
+
 function Gallery({
   items,
-  previews,
   busy,
   empty,
   video,
   hideRemove,
   onRemoveStaged,
   onRemoveLive,
+  onOpen,
 }: {
   items: Array<StagedCapture | CaptureRow>
-  previews: Record<number, string>
   busy: boolean
   empty: string
   video?: boolean
   hideRemove?: boolean
   onRemoveStaged: (id: string) => void
   onRemoveLive: (id: number) => void
+  onOpen: (next: { items: CaptureMediaItem[]; index: number }) => void
 }) {
   if (!items.length) return <p className="text-muted">{empty}</p>
+  const media = galleryMedia(items, video)
   return (
     <div className={`qr-capture-gallery${video ? ' qr-capture-gallery--video' : ''}`}>
-      {items.map((item) => {
+      {items.map((item, index) => {
         const stagedItem = 'localId' in item ? item as StagedCapture : null
         const live = !stagedItem ? item as CaptureRow : null
-        const src = stagedItem ? stagedItem.previewUrl : (live ? previews[live.id] : '')
-        const caption = stagedItem
-          ? `Pending · ${stagedItem.address || (stagedItem.latitude != null ? `${Number(stagedItem.latitude).toFixed(5)}, ${Number(stagedItem.longitude).toFixed(5)}` : 'ready to submit')}`
-          : (live?.address || live?.captured_at || 'Saved')
+        const mediaItem = media[index]
         return (
-          <figure key={stagedItem?.localId || live?.id} className={`qr-capture-card${video ? ' qr-capture-card--video' : ''}`}>
-            {src ? (
-              video ? <video src={src} controls playsInline preload="metadata" /> : <img src={src} alt="" />
-            ) : (
-              <div className="qr-capture-card__ph">Loading…</div>
-            )}
+          <figure key={mediaItem.key} className={`qr-capture-card${video ? ' qr-capture-card--video' : ''}`}>
+            <CaptureThumb item={mediaItem} onOpen={() => onOpen({ items: media, index })} />
             <figcaption>
-              <span>{caption}</span>
+              <span>{mediaItem.caption}</span>
               {hideRemove ? null : (
                 <button
                   type="button"
                   className="btn btn-link btn-sm"
                   disabled={busy}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation()
                     if (stagedItem) onRemoveStaged(stagedItem.localId)
                     else if (live) void onRemoveLive(live.id)
                   }}

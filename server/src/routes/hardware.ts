@@ -28,6 +28,7 @@ import {
   hardwareCaptureUrl,
   listAssetCaptures,
   presentCapture,
+  sendCaptureFile,
 } from '../services/assetCaptures.js'
 
 const router = Router()
@@ -537,9 +538,7 @@ router.get('/:id/captures/:cid/file', async (req, res) => {
   if (!row) return fail(res, 'Capture not found', 404)
   const abs = captureDiskPath(String((row as { storage_path: string }).storage_path))
   if (!abs) return fail(res, 'File missing on disk', 404)
-  res.setHeader('Content-Type', String(row.mime_type || 'application/octet-stream'))
-  res.setHeader('Content-Disposition', `inline; filename="${row.original_name || 'capture'}"`)
-  return res.sendFile(abs)
+  return sendCaptureFile(res, abs, row)
 })
 
 router.get('/:id/history', async (req, res) => {

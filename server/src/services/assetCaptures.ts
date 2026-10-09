@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import type { Response } from 'express'
 import { all, get, run, now } from '../db/index.js'
 import { absolutePath, storageRoot } from './uploads.js'
 
@@ -205,4 +206,17 @@ export function captureDiskPath(rel: string) {
   }
   if (!fs.existsSync(abs)) return null
   return abs
+}
+
+export function sendCaptureFile(
+  res: Response,
+  abs: string,
+  row: { mime_type?: string | null; original_name?: string | null },
+) {
+  res.setHeader('Content-Type', String(row.mime_type || 'application/octet-stream'))
+  res.setHeader('Content-Disposition', `inline; filename="${row.original_name || 'capture'}"`)
+  res.setHeader('Cache-Control', 'private, max-age=86400')
+  res.setHeader('Accept-Ranges', 'bytes')
+  res.setHeader('Referrer-Policy', 'no-referrer')
+  return res.sendFile(abs)
 }

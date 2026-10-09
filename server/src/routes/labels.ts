@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { fail, okItem, okMessage } from '../utils/response.js'
-import { generateLabelsPdf, generateSingleLabel } from '../services/labels.js'
+import { generateLabels, generateSingleLabel, LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from '../services/labels.js'
 import { assertRecordDomainAccess, loadItemDomain } from '../services/domainAuth.js'
 
 const router = Router()
@@ -9,10 +9,10 @@ router.get('/templates', (_req, res) => {
   return okItem(res, {
     rows: [
       {
-        name: 'Compact 2.05x0.9',
-        unit: 'in',
-        width: 2.05,
-        height: 0.9,
+        name: '36x30 mm',
+        unit: 'mm',
+        width: LABEL_WIDTH_MM,
+        height: LABEL_HEIGHT_MM,
         support_1d_barcode: false,
         support_2d_barcode: true,
         fields: ['asset_tag', 'company'],
@@ -21,12 +21,12 @@ router.get('/templates', (_req, res) => {
   })
 })
 
-/** POST { asset_tags: string[] } → { pdf_base64, count } */
+/** POST { asset_tags: string[] } → PNG sticker(s), 36 × 30 mm at 600 DPI */
 router.post('/', async (req, res) => {
   const tags = req.body?.asset_tags || req.body?.assets || []
   if (!Array.isArray(tags) || !tags.length) return fail(res, 'asset_tags array required')
   try {
-    const result = await generateLabelsPdf(tags, { userId: req.user?.id, permissions: req.user?.permissions })
+    const result = await generateLabels(tags, { userId: req.user?.id, permissions: req.user?.permissions })
     return okItem(res, result)
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Label generation failed'
@@ -41,9 +41,9 @@ router.get('/hardware/:id', async (req, res) => {
   try {
     const result = await generateSingleLabel(Number(req.params.id), { userId: req.user?.id })
     if (req.query.download === '1') {
-      const buf = Buffer.from(result.pdf_base64, 'base64')
-      res.setHeader('Content-Type', 'application/pdf')
-      res.setHeader('Content-Disposition', `attachment; filename="print-label-${req.params.id}.pdf"`)
+      const buf = Buffer.from(result.image_base64, 'base64')
+      res.setHeader('Content-Type', result.mime)
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`)
       return res.send(buf)
     }
     return okItem(res, result)
