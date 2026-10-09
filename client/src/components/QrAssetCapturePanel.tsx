@@ -390,15 +390,15 @@ export default function QrAssetCapturePanel({
     ? `${assetTag} · serial number`
     : `${assetTag} · all sides`
 
-  const savedComplete = !staged && rows.length > 0 && pending.length === 0 && pack.complete
-  const canDeregister = !staged && rows.length > 0
-  const submitHint = staged && !pack.complete
-    ? `Finish the checklist (${MIN_SIDE_PHOTOS} sides + serial photo + 30s video), then submit.`
+  const savedOnAsset = !staged && rows.length > 0 && pending.length === 0
+  const showSubmit = staged
+    ? pack.complete
+    : canUploadSubmit
+  const submitHint = savedOnAsset
+    ? 'Current photos and video are saved for this location.'
     : !pack.complete
       ? `Finish the checklist (${MIN_SIDE_PHOTOS} sides + serial photo + 30s video), then submit.`
-      : pending.length
-        ? `${pending.length} capture(s) ready — tap Submit to store them on this asset.`
-        : 'These photos and video are saved for the current location. If the asset moved, re-capture at the latest site.'
+      : `${pending.length} capture(s) ready — tap Submit to store them on this asset.`
 
   return (
     <section className="qr-capture-panel">
@@ -442,9 +442,11 @@ export default function QrAssetCapturePanel({
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">All sides ({pack.sides}/{MIN_SIDE_PHOTOS})</h3>
-          <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('photo') }}>
-            <i className="fas fa-camera" /> Capture all sides
-          </button>
+          {savedOnAsset ? null : (
+            <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('photo') }}>
+              <i className="fas fa-camera" /> Capture all sides
+            </button>
+          )}
         </div>
         <p className="help-block">Walk around the asset and take at least 4 GPS-stamped photos (front, back, and both sides).</p>
         <Gallery
@@ -452,6 +454,7 @@ export default function QrAssetCapturePanel({
           previews={previews}
           busy={working}
           empty="No side photos yet."
+          hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
           onRemoveLive={removeLive}
         />
@@ -460,9 +463,11 @@ export default function QrAssetCapturePanel({
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">Serial number ({pack.serialOk ? '1/1' : '0/1'})</h3>
-          <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('serial') }}>
-            <i className="fas fa-barcode" /> Capture serial no.
-          </button>
+          {savedOnAsset ? null : (
+            <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('serial') }}>
+              <i className="fas fa-barcode" /> Capture serial no.
+            </button>
+          )}
         </div>
         <p className="help-block">Photograph the serial number sticker / label so it is readable. This is mandatory.</p>
         <Gallery
@@ -470,6 +475,7 @@ export default function QrAssetCapturePanel({
           previews={previews}
           busy={working}
           empty="No serial number photo yet."
+          hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
           onRemoveLive={removeLive}
         />
@@ -478,9 +484,11 @@ export default function QrAssetCapturePanel({
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">Video ({pack.videos}/1)</h3>
-          <button type="button" className="btn btn-default btn-sm" disabled={working} onClick={() => { void openVideo() }}>
-            <i className="fas fa-video" /> Record 30s video
-          </button>
+          {savedOnAsset ? null : (
+            <button type="button" className="btn btn-default btn-sm" disabled={working} onClick={() => { void openVideo() }}>
+              <i className="fas fa-video" /> Record 30s video
+            </button>
+          )}
         </div>
         <p className="help-block">A 30-second walk-around video is mandatory for first-time registration.</p>
         <Gallery
@@ -489,44 +497,45 @@ export default function QrAssetCapturePanel({
           busy={working}
           empty="No video yet."
           video
+          hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
           onRemoveLive={removeLive}
         />
       </div>
 
-      <div className="qr-capture-submit-bar">
-        <p>{submitHint}</p>
-        <div className="qr-capture-submit-bar__actions">
-          {canDeregister ? (
-            <button
-              type="button"
-              className={`btn btn-lg${savedComplete ? ' qr-capture-submit-bar__recapture' : ' btn-default'}`}
-              disabled={working}
-              onClick={() => { void deregisterCaptures() }}
-            >
-              {working ? 'Working…' : 'Re-capture latest location'}
-            </button>
-          ) : null}
+      {savedOnAsset ? (
+        <div className="qr-capture-saved-bar">
+          <p>{submitHint} If the asset moved, start a new pack at the latest site.</p>
+          <button
+            type="button"
+            className="qr-capture-recapture-btn"
+            disabled={working}
+            onClick={() => { void deregisterCaptures() }}
+          >
+            {working ? 'Working…' : 'Re-capture latest location'}
+          </button>
+        </div>
+      ) : showSubmit ? (
+        <div className="qr-capture-submit-bar">
+          <p>{submitHint}</p>
           {staged ? (
-            <button type="submit" className="btn btn-theme btn-lg" disabled={working || !pack.complete}>
+            <button type="submit" className="qr-capture-submit-btn" disabled={working}>
               {working ? 'Saving…' : 'Submit registration'}
             </button>
-          ) : canUploadSubmit ? (
+          ) : (
             <button
               type="button"
-              className="btn btn-theme btn-lg"
+              className="qr-capture-submit-btn"
               disabled={working}
               onClick={() => { void submitPending() }}
             >
               {working ? 'Submitting…' : 'Submit capture'}
             </button>
-          ) : !savedComplete ? (
-            <button type="button" className="btn btn-theme btn-lg" disabled>
-              Submit capture
-            </button>
-          ) : null}
+          )}
         </div>
-      </div>
+      ) : (
+        <p className="qr-capture-submit-wait">{submitHint}</p>
+      )}
 
       <AssetWebcamCapture
         open={webcamOpen}
@@ -552,6 +561,7 @@ function Gallery({
   busy,
   empty,
   video,
+  hideRemove,
   onRemoveStaged,
   onRemoveLive,
 }: {
@@ -560,6 +570,7 @@ function Gallery({
   busy: boolean
   empty: string
   video?: boolean
+  hideRemove?: boolean
   onRemoveStaged: (id: string) => void
   onRemoveLive: (id: number) => void
 }) {
@@ -582,17 +593,19 @@ function Gallery({
             )}
             <figcaption>
               <span>{caption}</span>
-              <button
-                type="button"
-                className="btn btn-link btn-sm"
-                disabled={busy}
-                onClick={() => {
-                  if (stagedItem) onRemoveStaged(stagedItem.localId)
-                  else if (live) void onRemoveLive(live.id)
-                }}
-              >
-                Remove
-              </button>
+              {hideRemove ? null : (
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm"
+                  disabled={busy}
+                  onClick={() => {
+                    if (stagedItem) onRemoveStaged(stagedItem.localId)
+                    else if (live) void onRemoveLive(live.id)
+                  }}
+                >
+                  Remove
+                </button>
+              )}
             </figcaption>
           </figure>
         )
