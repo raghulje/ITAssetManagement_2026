@@ -3,9 +3,8 @@ export type LabelPrintSheet = {
   lines: string[]
 }
 
-/** Match the Brother driver: 360 dpi, so the file is 36 mm by 22 mm at actual size. */
-const LABEL_DPI = 360
-const PX_PER_MM = LABEL_DPI / 25.4
+/** 300 dpi. High enough for a sharp 12 mm QR, small enough to print quickly. */
+const PX_PER_MM = 300 / 25.4
 
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -31,6 +30,10 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   if (current) lines.push(current)
   return lines.slice(0, 3)
 }
+
+const MM_TO_PT = 72 / 25.4
+const PAGE_W_PT = 36 * MM_TO_PT
+const PAGE_H_PT = 22 * MM_TO_PT
 
 /**
  * One Brother label: 36 mm across the tape, 22 mm along it.
@@ -82,78 +85,117 @@ async function renderLabelCanvas(label: LabelPrintSheet) {
   return strip
 }
 
-function crc32(bytes: Uint8Array) {
-  let c = 0xffffffff
-  for (const b of bytes) {
-    c ^= b
-    for (let i = 0; i < 8; i++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1))
+function concatBytes(parts: Uint8Array[]) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let offset = 0
+  for (const part of parts) {
+    out.set(part, offset)
+    offset += part.length
   }
-  return (c ^ 0xffffffff) >>> 0
-}
-
-function pngChunk(type: string, data: Uint8Array) {
-  const typeBytes = new TextEncoder().encode(type)
-  const crcInput = new Uint8Array(4 + data.length)
-  crcInput.set(typeBytes, 0)
-  crcInput.set(data, 4)
-  const out = new Uint8Array(12 + data.length)
-  new DataView(out.buffer).setUint32(0, data.length)
-  out.set(typeBytes, 4)
-  out.set(data, 8)
-  new DataView(out.buffer).setUint32(8 + data.length, crc32(crcInput))
   return out
 }
 
-/** Tell Windows the picture is 36 mm by 22 mm, which a browser print dialog ignores. */
-function pngWithDpi(png: Uint8Array, dpi: number) {
-  const perMeter = Math.round(dpi / 0.0254)
-  const data = new Uint8Array(9)
-  const view = new DataView(data.buffer)
-  view.setUint32(0, perMeter)
-  view.setUint32(4, perMeter)
-  data[8] = 1
-  const phys = pngChunk('pHYs', data)
-  const ihdrEnd = 33
-  const out = new Uint8Array(png.length + phys.length)
-  out.set(png.subarray(0, ihdrEnd), 0)
-  out.set(phys, ihdrEnd)
-  out.set(png.subarray(ihdrEnd), ihdrEnd + phys.length)
-  return out
+async function deflateBytes(data: Uint8Array) {
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream('deflate'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
-function canvasToPng(canvas: HTMLCanvasElement) {
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(async (blob) => {
-      if (!blob) {
-        reject(new Error('Could not create the label image'))
-        return
-      }
-      const bytes = new Uint8Array(await blob.arrayBuffer())
-      resolve(new Blob([pngWithDpi(bytes, LABEL_DPI)], { type: 'image/png' }))
-    }, 'image/png')
+/** One PDF page per label. The page box is the sticker, so the printer cannot add a blank sheet. */
+async function buildLabelsPdf(canvases: HTMLCanvasElement[]) {
+  const enc = new TextEncoder()
+  const images = await Promise.all(canvases.map(async (canvas) => {
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Could not read the label')
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+    const rgb = new Uint8Array(canvas.width * canvas.height * 3)
+    for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
+      rgb[j] = pixels[i]
+      rgb[j + 1] = pixels[i + 1]
+      rgb[j + 2] = pixels[i + 2]
+    }
+    return { w: canvas.width, h: canvas.height, bytes: await deflateBytes(rgb) }
+  }))
+
+  const count = images.length
+  const kids = images.map((_, i) => `${3 + i * 3} 0 R`).join(' ')
+  const pieces: Uint8Array[] = []
+  const objectOffsets: number[] = []
+  let cursor = 0
+  const add = (text: string, binary?: Uint8Array) => {
+    if (/^\d+ 0 obj/.test(text)) objectOffsets.push(cursor)
+    const encoded = enc.encode(text)
+    pieces.push(encoded)
+    cursor += encoded.length
+    if (binary) {
+      pieces.push(binary)
+      cursor += binary.length
+    }
+  }
+
+  add('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n')
+  add(`2 0 obj\n<< /Type /Pages /Count ${count} /Kids [${kids}] >>\nendobj\n`)
+
+  images.forEach((image, i) => {
+    const pageId = 3 + i * 3
+    const contentId = pageId + 1
+    const imageId = pageId + 2
+    const commands = `q ${PAGE_W_PT.toFixed(2)} 0 0 ${(-PAGE_H_PT).toFixed(2)} 0 ${PAGE_H_PT.toFixed(2)} cm /Im${i} Do Q\n`
+    add(
+      `${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W_PT.toFixed(2)} ${PAGE_H_PT.toFixed(2)}] /CropBox [0 0 ${PAGE_W_PT.toFixed(2)} ${PAGE_H_PT.toFixed(2)}] /Contents ${contentId} 0 R /Resources << /XObject << /Im${i} ${imageId} 0 R >> >> >>\nendobj\n`,
+    )
+    add(`${contentId} 0 obj\n<< /Length ${commands.length} >>\nstream\n${commands}endstream\nendobj\n`)
+    add(
+      `${imageId} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${image.w} /Height ${image.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${image.bytes.length} >>\nstream\n`,
+      image.bytes,
+    )
+    add('\nendstream\nendobj\n')
   })
+
+  const header = enc.encode('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n')
+  const offsets = objectOffsets.map((offset) => offset + header.length)
+  const startxref = header.length + cursor
+  let xref = `xref\n0 ${offsets.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets) xref += `${String(offset).padStart(10, '0')} 00000 n \n`
+  xref += `trailer\n<< /Size ${offsets.length + 1} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF`
+  return new Blob([header, concatBytes(pieces), enc.encode(xref)], { type: 'application/pdf' })
 }
 
-function labelFileName(label: LabelPrintSheet, index: number) {
-  const raw = String(label.lines[1] || label.lines[0] || `label-${index + 1}`).trim()
-  const safe = raw.replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').slice(0, 60) || `label-${index + 1}`
-  return `${safe}.png`
+/** Open this from the print click, before any await, so the browser allows the window. */
+export function openLabelPrintWindow() {
+  return window.open('', 'asset-label-print', 'width=420,height=260')
 }
 
-function saveBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500)
+function printPdf(pdf: Blob, preview: Window) {
+  const url = URL.createObjectURL(pdf)
+  const finish = () => {
+    if (!preview.closed) preview.close()
+    URL.revokeObjectURL(url)
+    window.focus()
+  }
+  preview.addEventListener('afterprint', finish)
+  preview.location.href = url
+  window.setTimeout(() => {
+    try {
+      preview.focus()
+      preview.print()
+    } catch {
+      window.setTimeout(() => {
+        try {
+          preview.focus()
+          preview.print()
+        } catch {
+          /* The PDF viewer opens the dialog once it has loaded. */
+        }
+      }, 800)
+    }
+    window.setTimeout(finish, 120000)
+  }, 700)
 }
 
-/** Save each sticker as a picture. Photos prints that file at 3.6 cm by 2.2 cm. */
-export async function printAssetLabels(labels: LabelPrintSheet[]) {
+/** Print one PDF page per Brother label, then leave the user on the asset page. */
+export async function printAssetLabels(labels: LabelPrintSheet[], preview?: Window | null) {
+  const target = preview && !preview.closed ? preview : openLabelPrintWindow()
+  if (!target) throw new Error('Allow pop-ups to print the label')
   const canvases = await Promise.all(labels.map((label) => renderLabelCanvas(label)))
-  const files = await Promise.all(canvases.map((canvas) => canvasToPng(canvas)))
-  files.forEach((file, index) => saveBlob(file, labelFileName(labels[index], index)))
+  printPdf(await buildLabelsPdf(canvases), target)
 }
