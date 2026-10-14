@@ -3,141 +3,152 @@ export type LabelPrintSheet = {
   lines: string[]
 }
 
-/** ~600 dpi. One sheet is 22mm wide. The picture is 33mm tall so it stays inside a 36mm page. */
-const PX_PER_MM = 24
-const LABEL_WIDTH_MM = 22
-const LABEL_HEIGHT_MM = 33
-
-function mm(value: number) {
-  return Math.round(value * PX_PER_MM)
+function esc(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
-function loadImage(src: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('Could not draw the QR code'))
-    img.src = src
-  })
-}
+/** Brother PT-P900W page from tasks/test.html. */
+function labelHtml(labels: LabelPrintSheet[]) {
+  const sheets = labels.map((label) => {
+    const src = `data:image/png;base64,${label.qr_base64}`
+    const rows = label.lines
+      .filter((line) => String(line || '').trim())
+      .map((line, index) => `<div class="text-row${index === 0 ? ' is-model' : ''}">${esc(line)}</div>`)
+      .join('')
+    return `<div class="label">
+      <div class="label-content">
+        <div class="qr-section">
+          <img src="${src}" alt="Asset QR Code" />
+        </div>
+        <div class="text-section">${rows}</div>
+      </div>
+    </div>`
+  }).join('')
 
-function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
-  const words = text.split(/\s+/).filter(Boolean)
-  const lines: string[] = []
-  let current = ''
-  for (const word of words) {
-    const trial = current ? `${current} ${word}` : word
-    if (current && ctx.measureText(trial).width > maxWidth) {
-      lines.push(current)
-      current = word
-    } else {
-      current = trial
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Brother PT-P900W Asset Tag</title>
+  <style>
+    @page {
+      size: 22mm 36mm;
+      margin: 0;
     }
-  }
-  if (current) lines.push(current)
-  return lines
-}
-
-async function renderLabel(label: LabelPrintSheet) {
-  const width = mm(LABEL_WIDTH_MM)
-  const height = mm(LABEL_HEIGHT_MM)
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Could not draw the label')
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, width, height)
-
-  const qrSize = mm(10)
-  const qrX = Math.round((width - qrSize) / 2)
-  const qrY = height - mm(3.2) - qrSize
-  const qr = await loadImage(`data:image/png;base64,${label.qr_base64}`)
-  ctx.drawImage(qr, qrX, qrY, qrSize, qrSize)
-
-  const lines = label.lines.map((line) => String(line || '').trim()).filter(Boolean)
-  const fontPx = Math.round((7 / 72) * 25.4 * PX_PER_MM)
-  ctx.fillStyle = '#000000'
-  ctx.font = `700 ${fontPx}px Arial, sans-serif`
-  ctx.textBaseline = 'top'
-
-  const textTop = mm(2.4)
-  const textBottom = qrY - mm(1.4)
-  const textLeft = mm(3.2)
-  const textSpan = Math.max(mm(8), textBottom - textTop)
-  const lineGap = Math.round(fontPx * 1.28)
-
-  ctx.save()
-  ctx.translate(textLeft, textBottom)
-  ctx.rotate(-Math.PI / 2)
-  const drawn = lines.flatMap((line) => wrapLines(ctx, line, textSpan))
-  const widest = drawn.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0)
-  const x0 = Math.max(0, (textSpan - widest) / 2)
-  drawn.forEach((line, index) => {
-    ctx.fillText(line, x0, index * lineGap)
-  })
-  ctx.restore()
-
-  return canvas.toDataURL('image/png')
-}
-
-const PRINT_STYLE = `
-@page { size: 22mm 36mm; margin: 0 !important; }
-@media screen {
-  #qr-label-print { display: none !important; }
-}
-@media print {
-  html, body {
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-    height: auto !important;
-    overflow: hidden !important;
-  }
-  body > *:not(#qr-label-print) { display: none !important; }
-  #qr-label-print {
-    display: block !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: ${LABEL_WIDTH_MM}mm !important;
-    overflow: hidden !important;
-  }
-  #qr-label-print img {
-    display: block !important;
-    width: ${LABEL_WIDTH_MM}mm !important;
-    height: ${LABEL_HEIGHT_MM}mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-    break-after: avoid !important;
-    page-break-after: avoid !important;
-  }
-}
-`
-
-/** Print one label from this page. The picture is shorter than the sheet, so no blank page is added. */
-export async function printAssetLabels(labels: LabelPrintSheet[]) {
-  const imageUrls = await Promise.all(labels.map(renderLabel))
-  const host = document.createElement('div')
-  host.id = 'qr-label-print'
-  host.innerHTML = imageUrls.map((src) => `<img alt="" src="${src}" />`).join('')
-  const style = document.createElement('style')
-  style.textContent = PRINT_STYLE
-  document.head.appendChild(style)
-  document.body.appendChild(host)
-
-  await new Promise<void>((resolve) => {
-    let done = false
-    const finish = () => {
-      if (done) return
-      done = true
-      host.remove()
-      style.remove()
-      resolve()
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 22mm;
+      height: 36mm;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
     }
-    window.addEventListener('afterprint', finish, { once: true })
-    window.print()
-    finish()
-  })
+    .label {
+      position: relative;
+      width: 22mm;
+      height: 36mm;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+    }
+    .label-content {
+      position: absolute;
+      top: 0;
+      width: 36mm;
+      height: 22mm;
+      transform-origin: top left;
+      transform: translateY(36mm) rotate(-90deg);
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 1mm;
+      padding: 1mm;
+    }
+    .qr-section {
+      width: 12mm;
+      height: 12mm;
+      flex: 0 0 12mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-section img {
+      display: block;
+      width: 12mm;
+      height: 12mm;
+      object-fit: contain;
+    }
+    .text-section {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 1.2mm;
+      overflow: hidden;
+    }
+    .text-row {
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      font-size: 7pt;
+      font-weight: bold;
+      line-height: 1.1;
+      color: #000;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: clip;
+    }
+    .text-row.is-model {
+      white-space: normal;
+      overflow-wrap: break-word;
+      text-overflow: unset;
+    }
+    @media print {
+      html, body, .label {
+        margin: 0;
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>${sheets}</body>
+</html>`
+}
+
+/** Print the Brother label document. It stays until the print dialog closes. */
+export function printAssetLabels(labels: LabelPrintSheet[]) {
+  const frame = document.createElement('iframe')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.style.cssText = 'position:fixed;width:22mm;height:36mm;border:0;left:0;top:0;'
+  document.body.appendChild(frame)
+  const doc = frame.contentDocument
+  const win = frame.contentWindow
+  if (!doc || !win) {
+    frame.remove()
+    throw new Error('Could not open the print dialog')
+  }
+  doc.open()
+  doc.write(labelHtml(labels))
+  doc.close()
+
+  const cleanup = () => {
+    frame.remove()
+    window.focus()
+  }
+  const go = () => {
+    win.addEventListener('afterprint', cleanup, { once: true })
+    win.focus()
+    win.print()
+  }
+  const img = doc.querySelector('img')
+  if (!img || img.complete) go()
+  else img.addEventListener('load', go, { once: true })
 }
