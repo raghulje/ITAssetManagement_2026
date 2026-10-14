@@ -13,19 +13,16 @@ export const LABEL_HEIGHT_MM = 36
 type AssetLabel = {
   id: number
   asset_tag: string
+  serial?: string | null
   asset_name?: string | null
-  company_name?: string | null
-  assigned_name?: string | null
   model_name?: string | null
-  category_name?: string | null
-  manufacturer_name?: string | null
   domain_id?: number | null
 }
 
 export type PrintedLabel = {
   asset_tag: string
   qr_base64: string
-  lines: [string, string, string]
+  lines: string[]
 }
 
 async function loadAssets(idsOrTags: (string | number)[]) {
@@ -34,28 +31,11 @@ async function loadAssets(idsOrTags: (string | number)[]) {
   const placeholders = tags.map(() => '?').join(',')
   const ready = await tableHasColumn('assets', 'domain_id')
   const rows = await all<AssetLabel>(`
-    SELECT a.id, a.asset_tag, a.name as asset_name, c.name as company_name,
-      m.name as model_name, cat.name as category_name, mf.name as manufacturer_name,
-      ${ready ? 'a.domain_id' : 'CAST(NULL AS UNSIGNED) as domain_id'},
-      CASE
-        WHEN a.assigned_type = 'user' THEN (SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to)
-        WHEN a.assigned_type = 'employee' THEN (
-          SELECT CONCAT(first_name, ' ', last_name) FROM employees WHERE id = a.assigned_to
-        )
-        WHEN a.assigned_type = 'location' THEN (SELECT name FROM locations WHERE id = a.assigned_to)
-        WHEN a.assigned_type = 'asset' THEN (SELECT CONCAT(asset_tag, ' ', COALESCE(name,'')) FROM assets WHERE id = a.assigned_to)
-        WHEN a.assigned_to IS NOT NULL THEN COALESCE(
-          (SELECT CONCAT(first_name, ' ', last_name) FROM employees WHERE id = a.assigned_to AND deleted_at IS NULL),
-          (SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to AND deleted_at IS NULL),
-          (SELECT name FROM locations WHERE id = a.assigned_to)
-        )
-        ELSE NULL
-      END as assigned_name
+    SELECT a.id, a.asset_tag, a.serial, a.name as asset_name,
+      m.name as model_name,
+      ${ready ? 'a.domain_id' : 'CAST(NULL AS UNSIGNED) as domain_id'}
     FROM assets a
-    LEFT JOIN companies c ON c.id = a.company_id
     LEFT JOIN models m ON m.id = a.model_id
-    LEFT JOIN categories cat ON cat.id = m.category_id
-    LEFT JOIN manufacturers mf ON mf.id = m.manufacturer_id
     WHERE a.deleted_at IS NULL AND (a.asset_tag IN (${placeholders}) OR CAST(a.id AS CHAR) IN (${placeholders}))
   `, [...tags, ...tags])
   const map = new Map<number, AssetLabel>()
@@ -63,23 +43,15 @@ async function loadAssets(idsOrTags: (string | number)[]) {
   return [...map.values()]
 }
 
-function holderName(raw: string | null | undefined) {
-  return String(raw || '').replace(/\s+/g, ' ').trim()
+function productLine(asset: AssetLabel) {
+  return String(asset.model_name || '').trim() || String(asset.asset_name || '').trim()
 }
 
-function deviceLine(asset: AssetLabel) {
-  const category = String(asset.category_name || '').trim()
-  const brand = String(asset.manufacturer_name || '').trim()
-  const model = String(asset.model_name || '').trim()
-  if (category && brand) return `${category} ${brand}`.replace(/\s+/g, ' ').trim()
-  return model || category || brand || String(asset.asset_name || '').trim()
-}
-
-function labelLines(asset: AssetLabel): [string, string, string] {
+function labelLines(asset: AssetLabel): string[] {
+  const serial = String(asset.serial || '').trim()
   return [
-    holderName(asset.assigned_name) || '—',
-    `ASSET: ${asset.asset_tag}`,
-    deviceLine(asset) || '—',
+    productLine(asset) || '—',
+    serial || asset.asset_tag,
   ]
 }
 
@@ -87,7 +59,7 @@ function safeFilePart(tag: string) {
   return tag.replace(/[^\w.-]+/g, '_') || 'asset'
 }
 
-/** Brother PT-P900W sticker data: QR plus the three label lines. */
+/** Brother PT-P900W sticker data: QR, model, and serial. */
 export async function generateLabels(
   assetTagsOrIds: (string | number)[],
   opts?: { userId?: number; persist?: boolean; permissions?: Record<string, unknown> },
