@@ -24,6 +24,8 @@ export function useFloatingStyle(
     estimatedHeight?: number
     maxWidth?: number
     align?: 'start' | 'end'
+    /** Cap the menu height. Defaults to 280 so compact selects stay short. */
+    maxHeight?: number
   },
 ) {
   const [style, setStyle] = useState<CSSProperties>({})
@@ -58,7 +60,8 @@ export function useFloatingStyle(
       const spaceAbove = rect.top - gap
       const openUp = spaceBelow < estimated && spaceAbove > spaceBelow
       const avail = Math.max(0, openUp ? spaceAbove : spaceBelow)
-      const maxH = Math.min(280, Math.max(avail || 160, 96))
+      const heightCap = opts?.maxHeight ?? 280
+      const maxH = Math.min(heightCap, Math.max(avail || 160, 96))
 
       const maxW = Math.min(opts?.maxWidth ?? 420, vw - pad * 2)
       const floor = opts?.minWidth ?? (opts?.matchTriggerWidth === false ? 280 : 160)
@@ -125,7 +128,7 @@ export function useFloatingStyle(
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onResize)
     }
-  }, [open, triggerRef, menuRef, opts?.estimatedHeight, opts?.minWidth, opts?.matchTriggerWidth, opts?.maxWidth, opts?.align])
+  }, [open, triggerRef, menuRef, opts?.estimatedHeight, opts?.minWidth, opts?.matchTriggerWidth, opts?.maxWidth, opts?.align, opts?.maxHeight])
 
   return { style, placement }
 }
