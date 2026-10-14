@@ -24,7 +24,10 @@ export function openBlankLabelPreview() {
 export function showLabelPrintPreview(preview: Window, labels: LabelPrintSheet[]) {
   const sheets = labels.map((label) => {
     const src = `data:image/png;base64,${label.qr_base64}`
-    const rows = label.lines.filter((line) => String(line || '').trim()).map((line) => `<div class="text-row">${esc(line)}</div>`).join('')
+    const rows = label.lines
+      .filter((line) => String(line || '').trim())
+      .map((line, index) => `<div class="text-row${index === 0 ? ' is-model' : ''}">${esc(line)}</div>`)
+      .join('')
     return `<div class="label">
       <div class="label-content">
         <div class="qr-section">
@@ -68,6 +71,7 @@ export function showLabelPrintPreview(preview: Window, labels: LabelPrintSheet[]
     .label-content {
       position: absolute;
       top: 0;
+      left: 0;
       width: 36mm;
       height: 22mm;
       transform-origin: top left;
@@ -109,11 +113,15 @@ export function showLabelPrintPreview(preview: Window, labels: LabelPrintSheet[]
       font-family: Arial, sans-serif;
       font-size: 7pt;
       font-weight: bold;
-      line-height: 1.1;
+      line-height: 1.15;
       color: #000;
       white-space: nowrap;
       overflow: hidden;
-      text-overflow: clip;
+    }
+    .text-row.is-model {
+      white-space: normal;
+      overflow: visible;
+      overflow-wrap: break-word;
     }
     .toolbar {
       display: none;
@@ -161,23 +169,31 @@ export function showLabelPrintPreview(preview: Window, labels: LabelPrintSheet[]
     @media print {
       .toolbar { display: none !important; }
       html, body {
-        margin: 0;
-        padding: 0;
+        margin: 0 !important;
+        padding: 0 !important;
         background: #fff;
+        width: 22mm !important;
+        height: auto !important;
+        overflow: hidden;
+      }
+      .sheets {
         width: 22mm;
-        height: auto;
-        overflow: visible;
       }
       .label {
+        width: 22mm;
+        height: 36mm;
+        overflow: hidden !important;
         transform: none !important;
         margin: 0 !important;
         box-shadow: none !important;
-        page-break-after: always;
-        break-after: page;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        break-after: avoid;
+        page-break-after: avoid;
       }
-      .label:last-child {
-        page-break-after: auto;
-        break-after: auto;
+      .label:not(:last-child) {
+        break-after: page;
+        page-break-after: always;
       }
     }
   </style>
@@ -187,7 +203,7 @@ export function showLabelPrintPreview(preview: Window, labels: LabelPrintSheet[]
     <p>Brother PT-P900W label, 22 × 36 mm. Choose the printer, then print at actual size.</p>
     <button type="button" onclick="window.print()">Print</button>
   </div>
-  ${sheets}
+  <div class="sheets">${sheets}</div>
   <script>
     const img = document.querySelector('.qr-section img');
     function openPrint() { window.focus(); window.print(); }
