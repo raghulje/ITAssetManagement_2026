@@ -11,7 +11,6 @@ function esc(value: string) {
     .replace(/"/g, '&quot;')
 }
 
-/** Brother PT-P900W page from tasks/test.html. */
 function labelHtml(labels: LabelPrintSheet[]) {
   const sheets = labels.map((label) => {
     const src = `data:image/png;base64,${label.qr_base64}`
@@ -19,136 +18,130 @@ function labelHtml(labels: LabelPrintSheet[]) {
       .filter((line) => String(line || '').trim())
       .map((line, index) => `<div class="text-row${index === 0 ? ' is-model' : ''}">${esc(line)}</div>`)
       .join('')
-    return `<div class="label">
-      <div class="label-content">
-        <div class="qr-section">
-          <img src="${src}" alt="Asset QR Code" />
-        </div>
-        <div class="text-section">${rows}</div>
-      </div>
-    </div>`
+    return `<section class="label">
+      <div class="copy">${rows}</div>
+      <div class="qr"><img src="${src}" alt="" /></div>
+    </section>`
   }).join('')
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Brother PT-P900W Asset Tag</title>
+  <title>Asset label</title>
   <style>
-    @page {
-      size: 22mm 36mm;
-      margin: 0;
-    }
+    @page { size: 22mm 36mm; margin: 0; }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
       padding: 0;
       width: 22mm;
+      background: #fff;
+    }
+    body.single {
       height: 36mm;
       overflow: hidden;
-      font-family: Arial, sans-serif;
     }
     .label {
-      position: relative;
       width: 22mm;
       height: 36mm;
+      max-width: 22mm;
       overflow: hidden;
-      margin: 0;
-      padding: 0;
-    }
-    .label-content {
-      position: absolute;
-      top: 0;
-      width: 36mm;
-      height: 22mm;
-      transform-origin: top left;
-      transform: translateY(36mm) rotate(-90deg);
       display: flex;
-      flex-direction: row;
+      flex-direction: column;
       align-items: center;
-      gap: 1mm;
+      justify-content: flex-end;
+      gap: 0.8mm;
       padding: 1mm;
+      background: #fff;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      break-after: avoid;
+      page-break-after: avoid;
     }
-    .qr-section {
-      width: 12mm;
-      height: 12mm;
-      flex: 0 0 12mm;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .label:not(:last-of-type) {
+      break-after: page;
+      page-break-after: always;
     }
-    .qr-section img {
-      display: block;
-      width: 12mm;
-      height: 12mm;
-      object-fit: contain;
-    }
-    .text-section {
-      flex: 1;
-      min-width: 0;
+    .copy {
+      flex: 1 1 auto;
+      min-height: 0;
+      width: 20mm;
+      max-width: 20mm;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: flex-start;
-      gap: 1.2mm;
+      gap: 0.7mm;
+      writing-mode: sideways-lr;
       overflow: hidden;
     }
     .text-row {
-      width: 100%;
       margin: 0;
-      padding: 0;
+      max-width: 100%;
       font-family: Arial, sans-serif;
       font-size: 7pt;
-      font-weight: bold;
-      line-height: 1.1;
+      font-weight: 700;
+      line-height: 1.15;
       color: #000;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: clip;
     }
     .text-row.is-model {
       white-space: normal;
       overflow-wrap: break-word;
-      text-overflow: unset;
     }
-    @media print {
-      html, body, .label {
-        margin: 0;
-        padding: 0;
-      }
+    .qr {
+      width: 12mm;
+      height: 12mm;
+      flex: 0 0 12mm;
+    }
+    .qr img {
+      display: block;
+      width: 12mm;
+      height: 12mm;
     }
   </style>
 </head>
-<body>${sheets}</body>
+<body class="${labels.length === 1 ? 'single' : ''}">${sheets}</body>
 </html>`
 }
 
-/** Print the Brother label document. It stays until the print dialog closes. */
+/** Print Brother PT-P900W labels from the current page, then leave the user there. */
 export function printAssetLabels(labels: LabelPrintSheet[]) {
-  const frame = document.createElement('iframe')
-  frame.setAttribute('aria-hidden', 'true')
-  frame.style.cssText = 'position:fixed;width:22mm;height:36mm;border:0;left:0;top:0;'
-  document.body.appendChild(frame)
-  const doc = frame.contentDocument
-  const win = frame.contentWindow
-  if (!doc || !win) {
-    frame.remove()
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('title', 'Asset label print')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;left:-240mm;top:0;width:22mm;height:36mm;border:0;opacity:1;'
+  document.body.appendChild(iframe)
+
+  const doc = iframe.contentDocument
+  const frame = iframe.contentWindow
+  if (!doc || !frame) {
+    iframe.remove()
     throw new Error('Could not open the print dialog')
   }
+
   doc.open()
   doc.write(labelHtml(labels))
   doc.close()
 
-  const cleanup = () => {
-    frame.remove()
+  let closed = false
+  const finish = () => {
+    if (closed) return
+    closed = true
+    window.setTimeout(() => iframe.remove(), 250)
     window.focus()
   }
-  const go = () => {
-    win.addEventListener('afterprint', cleanup, { once: true })
-    win.focus()
-    win.print()
+
+  frame.addEventListener('afterprint', finish)
+
+  const start = () => {
+    frame.focus()
+    frame.print()
+    window.setTimeout(finish, 120000)
   }
+
   const img = doc.querySelector('img')
-  if (!img || img.complete) go()
-  else img.addEventListener('load', go, { once: true })
+  if (img && !img.complete) img.addEventListener('load', start, { once: true })
+  else window.setTimeout(start, 50)
 }
