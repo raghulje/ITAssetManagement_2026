@@ -163,6 +163,8 @@ const SECTION_TABS: Record<SectionKey, SectionTab[]> = {
     { to: '/locations', label: 'Locations', isActive: (p) => p.startsWith('/locations') },
     { to: '/suppliers', label: 'Suppliers / Vendors', isActive: (p) => p.startsWith('/suppliers') },
     { to: '/models', label: 'Asset Models', isActive: (p) => p.startsWith('/models') },
+    { to: '/asset-types', label: 'Asset types', isActive: (p) => p.startsWith('/asset-types') },
+    { to: '/manufacturers', label: 'Manufacturers', isActive: (p) => p.startsWith('/manufacturers') },
   ],
   settings: [
     { to: '/settings', label: 'General', isActive: (p) => p === '/settings' },
@@ -172,7 +174,6 @@ const SECTION_TABS: Record<SectionKey, SectionTab[]> = {
     { to: '/settings/email-logs', label: 'Email logs', isActive: (p) => p.startsWith('/settings/email-logs') },
     { to: '/categories', label: 'Categories', isActive: (p) => p.startsWith('/categories') },
     { to: '/statuslabels', label: 'Status Labels', isActive: (p) => p.startsWith('/statuslabels') },
-    { to: '/manufacturers', label: 'Manufacturers', isActive: (p) => p.startsWith('/manufacturers') },
     { to: '/fields', label: 'Custom Fields', isActive: (p) => p.startsWith('/fields') },
     { to: '/depreciations', label: 'Depreciation', isActive: (p) => p.startsWith('/depreciations') },
   ],
@@ -202,12 +203,13 @@ function resolveSection(pathname: string, search = ''): SectionKey | null {
     || pathname.startsWith('/locations')
     || pathname.startsWith('/suppliers')
     || pathname.startsWith('/models')
+    || pathname.startsWith('/asset-types')
+    || pathname.startsWith('/manufacturers')
   ) return 'masters'
   if (
     pathname.startsWith('/settings')
     || pathname.startsWith('/categories')
     || pathname.startsWith('/statuslabels')
-    || pathname.startsWith('/manufacturers')
     || pathname.startsWith('/fields')
     || pathname.startsWith('/depreciations')
   ) return 'settings'
@@ -241,6 +243,8 @@ function shouldShowSectionTabs(pathname: string): boolean {
     /^\/locations\/?$/,
     /^\/suppliers\/?$/,
     /^\/models\/?$/,
+    /^\/asset-types\/?$/,
+    /^\/manufacturers\/?$/,
     /^\/settings\/?$/,
     /^\/settings\/battery\/?$/,
     /^\/settings\/roles\/?$/,
@@ -248,7 +252,6 @@ function shouldShowSectionTabs(pathname: string): boolean {
     /^\/settings\/email-logs\/?$/,
     /^\/categories\/?$/,
     /^\/statuslabels\/?$/,
-    /^\/manufacturers\/?$/,
     /^\/fields\/?$/,
     /^\/depreciations\/?$/,
   ]

@@ -7,6 +7,7 @@ import {
   Pencil,
   Printer,
   Tag,
+  ArrowRightLeft,
   UserMinus,
   UserPlus,
   Wrench,
@@ -97,6 +98,9 @@ export default function AssetRecordHero({
               <UserMinus size={15} /> Unassign
             </Link>
           ) : null}
+          <Link to={`/hardware/${asset.id}/transfer${returnQs}`} className="btn vad-btn-transfer">
+            <ArrowRightLeft size={15} /> Transfer
+          </Link>
           <Link to={`/hardware/${asset.id}/edit${returnQs}`} className="btn vad-btn-edit">
             <Pencil size={15} /> Edit asset
           </Link>
@@ -130,6 +134,10 @@ export default function AssetRecordHero({
             <span className="vad-chip">
               <Monitor size={14} />
               {modelLabel !== '—' ? modelLabel : 'No model'}
+            </span>
+            <span className="vad-chip">
+              <Tag size={14} />
+              {nestName(asset.manufacturer)}
             </span>
             <span className="vad-chip">
               <MapPin size={14} />

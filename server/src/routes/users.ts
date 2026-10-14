@@ -694,6 +694,11 @@ mastersRouter.use('/categories', (() => {
       sql += ` AND name LIKE ?`
       params.push(`%${q}%`)
     }
+    const categoryType = String(req.query.category_type || '').trim()
+    if (categoryType) {
+      sql += ' AND category_type = ?'
+      params.push(categoryType)
+    }
     sql += ' ORDER BY id DESC'
     const limit = Math.min(Number(req.query.limit) || 50, 500)
     const offset = Number(req.query.offset) || 0

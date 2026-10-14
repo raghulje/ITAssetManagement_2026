@@ -30,6 +30,7 @@ type FormState = {
   old_asset_tag: string
   serial: string
   category_id: string
+  manufacturer_id: string
   model_id: string
   status_id: string
   rtd_location_id: string
@@ -65,6 +66,7 @@ const empty: FormState = {
   old_asset_tag: '',
   serial: '',
   category_id: '',
+  manufacturer_id: '',
   model_id: '',
   status_id: '',
   rtd_location_id: '',
@@ -140,7 +142,9 @@ export default function AssetForm() {
   const [departments, setDepartments] = useState<SelectOption[]>([])
   const [locations, setLocations] = useState<SelectOption[]>([])
   const [assetTypes, setAssetTypes] = useState<SelectOption[]>([])
+  const [manufacturers, setManufacturers] = useState<SelectOption[]>([])
   const [models, setModels] = useState<SelectOption[]>([])
+  const [loadedOfficeId, setLoadedOfficeId] = useState('')
   const [statuses, setStatuses] = useState<SelectOption[]>([])
   const [suppliers, setSuppliers] = useState<SelectOption[]>([])
 
@@ -153,14 +157,16 @@ export default function AssetForm() {
       mastersApi.departments(),
       mastersApi.locations(),
       mastersApi.assetTypes(undefined, form.domain || defaultDomainCode(domainScope)),
+      mastersApi.manufacturers(),
       mastersApi.statuslabels(),
       mastersApi.suppliers(),
     ])
-      .then(([c, d, l, types, s, sup]) => {
+      .then(([c, d, l, types, mfr, s, sup]) => {
         setCompanies(c.results || [])
         setDepartments(d.results || [])
         setLocations(l.results || [])
         setAssetTypes(types.results || [])
+        setManufacturers(mfr.results || [])
         setStatuses(s.results || [])
         setSuppliers(sup.results || [])
         if (!isEdit) {
@@ -236,6 +242,7 @@ export default function AssetForm() {
           old_asset_tag: String(a.old_asset_tag || ''),
           serial: String(a.serial || ''),
           category_id: nestId(a.category),
+          manufacturer_id: nestId(a.manufacturer),
           model_id: nestId(a.model),
           status_id: nestId(a.status),
           rtd_location_id: nestId(a.rtd_location) || nestId(a.location),
@@ -262,6 +269,7 @@ export default function AssetForm() {
           material: String((a.domain_attrs as Record<string, string> | null)?.material || ''),
           spec_condition: String((a.domain_attrs as Record<string, string> | null)?.condition || ''),
         })
+        setLoadedOfficeId(nestId(a.rtd_location) || nestId(a.location))
         setImagePath(a.image ? String(a.image) : null)
         setImageUrl(a.image_url ? String(a.image_url) : null)
       })
@@ -430,8 +438,8 @@ export default function AssetForm() {
 
   const submit = async () => {
     setError('')
-    if (!form.category_id || !form.model_id || !form.status_id) {
-      setError('Asset type, model, and status are required')
+    if (!form.category_id || !form.manufacturer_id || !form.model_id || !form.status_id) {
+      setError('Asset type, manufacturer, model, and status are required')
       setTab('details')
       return
     }
@@ -456,13 +464,19 @@ export default function AssetForm() {
       const body: Record<string, unknown> = {
         serial: form.serial || null,
         category_id: form.category_id ? Number(form.category_id) : null,
+        manufacturer_id: form.manufacturer_id ? Number(form.manufacturer_id) : null,
         model_id: Number(form.model_id),
         status_id: Number(form.status_id),
         company_id: form.company_id ? Number(form.company_id) : null,
         legal_entity_id: form.legal_entity_id ? Number(form.legal_entity_id) : null,
         department_id: form.department_id ? Number(form.department_id) : null,
         rtd_location_id: form.rtd_location_id ? Number(form.rtd_location_id) : null,
-        location_id: form.rtd_location_id ? Number(form.rtd_location_id) : null,
+        ...(!isEdit || form.rtd_location_id !== loadedOfficeId
+          ? {
+              location_id: form.rtd_location_id ? Number(form.rtd_location_id) : null,
+              location_text: null,
+            }
+          : {}),
         map_latitude: form.map_latitude ? Number(form.map_latitude) : null,
         map_longitude: form.map_longitude ? Number(form.map_longitude) : null,
         map_address: form.map_address.trim() || null,
@@ -663,13 +677,29 @@ export default function AssetForm() {
             onOptionsChange={setAssetTypes}
             allowEmpty={false}
             emptyLabel="Select type…"
-            help="Laptop, Desktop, Tablet, Mobile, Monitor, Printer, …"
+            help="Laptop, Desktop, Landline phone… Add types under Masters → Asset types."
             create={async (name) => {
               const res = await mastersApi.createCategory({
                 name,
                 category_type: 'asset',
                 domain: form.domain || defaultDomainCode(domainScope),
               })
+              return masterPayloadId(res, name)
+            }}
+          />
+
+          <MasterSelect
+            label="Manufacturer"
+            required
+            value={form.manufacturer_id}
+            options={manufacturers}
+            onChange={(v) => set('manufacturer_id', v)}
+            onOptionsChange={setManufacturers}
+            allowEmpty={false}
+            emptyLabel="Select manufacturer…"
+            help="Who made it — HP, Lenovo, Apple, BEETEL… Add more under Masters → Manufacturers."
+            create={async (name) => {
+              const res = await mastersApi.createManufacturer({ name })
               return masterPayloadId(res, name)
             }}
           />
@@ -755,6 +785,7 @@ export default function AssetForm() {
               const res = await mastersApi.createModel({
                 name,
                 category_id: Number(form.category_id),
+                manufacturer_id: form.manufacturer_id ? Number(form.manufacturer_id) : null,
               })
               return masterPayloadId(res, name)
             }}

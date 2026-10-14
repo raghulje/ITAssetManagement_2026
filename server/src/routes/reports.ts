@@ -990,6 +990,31 @@ settingsRouter.put('/battery', async (req, res) => {
   return okMessage(res, 'Battery Degradation settings saved', saved)
 })
 
+settingsRouter.post('/migrate-14102026', async (req, res) => {
+  try {
+    const { runNamedSchemaMigrations } = await import('../services/schemaMigrate.js')
+    const result = await runNamedSchemaMigrations(['058_asset_place_and_manufacturer'])
+    await logAction({
+      userId: req.user?.id,
+      actionType: 'migrate_14102026',
+      itemType: 'settings',
+      itemId: 1,
+      note: `Asset place/manufacturer migration applied ${result.applied.length}; skipped ${result.skipped.length}`,
+      meta: result,
+    })
+    const applied = result.applied.length ? result.applied.join(', ') : 'none'
+    return okMessage(
+      res,
+      result.applied.length
+        ? `migrate-14102026 applied: ${applied}.`
+        : 'migrate-14102026 is already applied on this server.',
+      result,
+    )
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'migrate-14102026 failed', 500)
+  }
+})
+
 settingsRouter.post('/run-battery-recordings-migration', async (req, res) => {
   try {
     const { runNamedSchemaMigrations } = await import('../services/schemaMigrate.js')

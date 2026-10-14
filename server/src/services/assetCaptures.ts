@@ -74,11 +74,12 @@ export type AssetCaptureRow = {
   deleted_at?: string | null
 }
 
-export type CaptureKind = 'photo' | 'serial' | 'video'
+export type CaptureKind = 'photo' | 'serial' | 'license' | 'video'
 
 export function normalizeCaptureKind(raw: string, mime = ''): CaptureKind {
   const kind = String(raw || '').toLowerCase()
   if (kind === 'serial') return 'serial'
+  if (kind === 'license' || kind === 'license_key') return 'license'
   if (kind === 'video' || String(mime).startsWith('video/')) return 'video'
   return 'photo'
 }

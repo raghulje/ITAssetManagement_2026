@@ -141,8 +141,12 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
       setError('A photo of the serial number is required')
       return
     }
+    if (!pack.licenseOk) {
+      setError('A photo of the Windows/Apple license key is required')
+      return
+    }
     if (!pack.videoOk) {
-      setError('A 30-second video is required')
+      setError('A 10-second video is required')
       return
     }
     setBusy(true)
@@ -188,7 +192,7 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
     <form className="form-horizontal" onSubmit={(e) => { void submit(e) }}>
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
       <p className="help-block">
-        First-time registration: enter the serial number, capture all sides (min {MIN_SIDE_PHOTOS} photos), photograph the serial, and record a 30-second video. Submit stores everything on this asset.
+        First-time registration: enter the serial number, capture all sides (min {MIN_SIDE_PHOTOS} photos), photograph the serial and the Windows/Apple license key, and record a 10-second video. Submit stores everything on this asset.
       </p>
       <DomainSelect value={domain} onChange={setDomain} allowed={domainScope.codes} required />
       <Field label="Company" required>

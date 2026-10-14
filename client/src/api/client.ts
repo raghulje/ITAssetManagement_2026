@@ -118,6 +118,7 @@ export const hardwareApi = {
   remove: (id: number | string) => api(`/hardware/${id}`, { method: 'DELETE' }),
   checkout: (id: number | string, body: unknown) => api(`/hardware/${id}/checkout`, { method: 'POST', json: body }),
   checkin: (id: number | string, body: unknown) => api(`/hardware/${id}/checkin`, { method: 'POST', json: body }),
+  transfer: (id: number | string, body: unknown) => api(`/hardware/${id}/transfer`, { method: 'POST', json: body }),
   replace: (id: number | string, body: { new_asset_id: number; reason: string }) =>
     api(`/hardware/${id}/replace`, { method: 'POST', json: body }),
   // Audit feature — UI routes commented out; keep API helper for later

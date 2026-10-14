@@ -7,11 +7,13 @@ import { getUserGroupNames } from './permissions.js'
 
 export async function transformAsset(id: number) {
   const domainReady = await inventoryDomainColumnsReady()
+  const hasAssetMfg = await tableHasColumn('assets', 'manufacturer_id')
   const a = await get<Record<string, unknown>>(`
     SELECT a.*,
       m.name as model_name, m.model_number,
       c.name as category_name, c.id as category_id,
-      mf.name as manufacturer_name, mf.id as manufacturer_id,
+      mf.name as model_manufacturer_name, mf.id as model_manufacturer_id,
+      ${hasAssetMfg ? 'amf.name as asset_manufacturer_name, amf.id as asset_manufacturer_id,' : ''}
       s.name as status_name, s.type as status_type, s.color as status_color,
       co.name as company_name, co.code as company_code,
       le.code as legal_entity_code, le.name as legal_entity_name,
@@ -39,6 +41,7 @@ export async function transformAsset(id: number) {
     LEFT JOIN models m ON m.id = a.model_id
     LEFT JOIN categories c ON c.id = m.category_id
     LEFT JOIN manufacturers mf ON mf.id = m.manufacturer_id
+    ${hasAssetMfg ? 'LEFT JOIN manufacturers amf ON amf.id = a.manufacturer_id' : ''}
     LEFT JOIN status_labels s ON s.id = a.status_id
     LEFT JOIN companies co ON co.id = a.company_id
     LEFT JOIN legal_entities le ON le.id = a.legal_entity_id
@@ -51,6 +54,15 @@ export async function transformAsset(id: number) {
   `, [id])
 
   if (!a) return null
+
+  const placeText = a.location_text != null && String(a.location_text).trim()
+    ? String(a.location_text).trim()
+    : ''
+  const location = placeText
+    ? { id: a.location_id ?? null, name: placeText, kind: 'other' as const }
+    : nest(a.location_id as number, a.location_name as string)
+  const manufacturerId = (hasAssetMfg ? a.asset_manufacturer_id : null) || a.model_manufacturer_id
+  const manufacturerName = (hasAssetMfg ? a.asset_manufacturer_name : null) || a.model_manufacturer_name
 
   return {
     id: a.id,
@@ -68,13 +80,14 @@ export async function transformAsset(id: number) {
       status_type: a.status_type,
     }),
     category: nest(a.category_id as number, a.category_name as string),
-    manufacturer: nest(a.manufacturer_id as number, a.manufacturer_name as string),
+    manufacturer: nest(manufacturerId as number, manufacturerName as string),
+    location_text: placeText || null,
     company: nest(a.company_id as number, a.company_name as string, { code: a.company_code || null }),
     legal_entity: nest(a.legal_entity_id as number, (a.legal_entity_code as string) || null, {
       code: a.legal_entity_code || null,
     }),
     department: nest(a.department_id as number, a.department_name as string),
-    location: nest(a.location_id as number, a.location_name as string),
+    location,
     rtd_location: nest(a.rtd_location_id as number, a.rtd_location_name as string),
     supplier: nest(a.supplier_id as number, a.supplier_name as string),
     domain: domainPayload(

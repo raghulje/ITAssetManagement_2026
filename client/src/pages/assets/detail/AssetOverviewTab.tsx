@@ -1,6 +1,7 @@
 import type { RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  ArrowRightLeft,
   Camera,
   History,
   Printer,
@@ -104,7 +105,11 @@ export default function AssetOverviewTab({
                 </div>
                 <div>
                   <dt>Location</dt>
-                  <dd>{nestName(asset.location)}</dd>
+                  <dd>
+                    {nestName(asset.location)}
+                    <br />
+                    <Link to={`/hardware/${asset.id}/transfer${returnQs}`}>Transfer</Link>
+                  </dd>
                 </div>
               </dl>
               <button type="button" className="vad-link-btn" onClick={() => onQuick('history')}>
@@ -148,6 +153,9 @@ export default function AssetOverviewTab({
                 <UserMinus /> Unassign
               </Link>
             ) : null}
+            <Link to={`/hardware/${asset.id}/transfer${returnQs}`}>
+              <ArrowRightLeft /> Transfer to another place
+            </Link>
             <Link to={`/maintenances/create?asset_id=${asset.id}`}>
               <Wrench /> Log maintenance
             </Link>
@@ -178,6 +186,11 @@ export default function AssetOverviewTab({
             <Field label="Purchase date">{dateVal(asset.purchase_date)}</Field>
             <Field label="Warranty (months)">{dash(asset.warranty_months)}</Field>
             <Field label="EOL date">{dateVal(asset.asset_eol_date)}</Field>
+            <Field label="Current place">
+              {nestName(asset.location)}
+              {' '}
+              <Link to={`/hardware/${asset.id}/transfer${returnQs}`}>Transfer</Link>
+            </Field>
             <Field label="Default location">{nestName(asset.rtd_location)}</Field>
             <Field label="Map pin">
               {asset.map_latitude != null && asset.map_longitude != null ? (

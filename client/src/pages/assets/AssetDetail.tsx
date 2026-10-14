@@ -177,6 +177,7 @@ export default function AssetDetail() {
     if (action === 'maintenance') return 'Maintenance'
     if (action === 'maintenance_update') return 'Maintenance updated'
     if (action === 'deregistered') return 'Captures deregistered'
+    if (action === 'transfer') return 'Transferred'
     return action
   }
 
@@ -231,7 +232,7 @@ export default function AssetDetail() {
   const imageUrl = assetImageSrc(
     (a.image_url as string | undefined) || (a.image as string | undefined) || null,
   )
-  const custody = history.filter((x) => ['checkout', 'checkin', 'replace_in', 'replace_out'].includes(String(x.action_type)))
+  const custody = history.filter((x) => ['checkout', 'checkin', 'replace_in', 'replace_out', 'transfer'].includes(String(x.action_type)))
 
   const tabs: Array<{ id: TabId; label: string; count?: number }> = [
     { id: 'overview', label: 'Overview' },
@@ -540,7 +541,7 @@ export default function AssetDetail() {
           <div style={{ display: 'grid', gap: 16 }}>
             <div className="vad-panel">
               <div className="vad-panel__bar">
-                <h3>Assign / unassign history</h3>
+                <h3>Assign, unassign, and transfers</h3>
                 <button type="button" className="btn btn-default btn-sm" onClick={focusAssignment}>
                   Current assignment
                 </button>
@@ -548,7 +549,7 @@ export default function AssetDetail() {
               {custody.length === 0 ? (
                 <div className="vad-empty">
                   <strong>No custody events yet</strong>
-                  Assign or unassign this asset — entries appear here.
+                  Assign, unassign, or transfer this asset — entries appear here.
                 </div>
               ) : (
                 <ul className="vad-timeline">
