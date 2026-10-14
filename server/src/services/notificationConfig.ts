@@ -31,13 +31,13 @@ export type NotificationConfig = {
 const DEFAULT_CONFIG: NotificationConfig = {
   emails_enabled: false,
   email_notifications: {
-    custody: true,
-    maintenance: true,
-    inventory: true,
-    crud: true,
-    eol_warranty: true,
-    license_renewal: true,
-    battery_calls: true,
+    custody: false,
+    maintenance: false,
+    inventory: false,
+    crud: false,
+    eol_warranty: false,
+    license_renewal: false,
+    battery_calls: false,
   },
   extra_ops_emails: '',
   email_recipient_user_ids: [],
@@ -52,16 +52,11 @@ function parseConfig(raw: unknown): NotificationConfig {
   } else if (raw && typeof raw === 'object') {
     obj = raw as Record<string, unknown>
   }
-  const toggles = (obj.email_notifications && typeof obj.email_notifications === 'object')
-    ? obj.email_notifications as Record<string, unknown>
-    : obj
   const en = { ...DEFAULT_CONFIG.email_notifications }
-  for (const k of Object.keys(en) as EmailCategoryKey[]) {
-    if (toggles[k] === false || toggles[k] === 0 || toggles[k] === '0') en[k] = false
-    else if (toggles[k] === true || toggles[k] === 1 || toggles[k] === '1') en[k] = true
-  }
+  for (const k of Object.keys(en) as EmailCategoryKey[]) en[k] = false
   return {
-    emails_enabled: obj.emails_enabled === true || obj.emails_enabled === 1 || obj.emails_enabled === '1',
+    // Hard-off in code for every action email, including values saved in settings.
+    emails_enabled: false,
     email_notifications: en,
     extra_ops_emails: String(obj.extra_ops_emails ?? ''),
     email_recipient_user_ids: parseIdList(obj.email_recipient_user_ids),
@@ -116,6 +111,10 @@ export async function saveNotificationConfig(partial: Partial<NotificationConfig
       ? Boolean(partial.workflow_to_ops_roles)
       : current.workflow_to_ops_roles,
   }
+  next.emails_enabled = false
+  for (const k of Object.keys(next.email_notifications) as EmailCategoryKey[]) {
+    next.email_notifications[k] = false
+  }
   await run(`UPDATE settings SET notification_config = ?, updated_at = ? WHERE id = 1`, [
     JSON.stringify(next),
     now(),
@@ -123,17 +122,9 @@ export async function saveNotificationConfig(partial: Partial<NotificationConfig
   return next
 }
 
-export async function isEmailCategoryEnabled(category: EmailCategoryKey | string): Promise<boolean> {
-  if (!mailConfigured()) return false
-  const cfg = await getNotificationConfig()
-  const key = category as EmailCategoryKey
-  const categoryOn = key in cfg.email_notifications
-    ? Boolean(cfg.email_notifications[key])
-    : true
-  if (!categoryOn) return false
-  if (INDEPENDENT_CATEGORIES.has(key)) return true
-  if (!cfg.emails_enabled) return false
-  return true
+export async function isEmailCategoryEnabled(_category: EmailCategoryKey | string): Promise<boolean> {
+  // All action notifications are off in code (assign, maintenance, inventory, create/delete, EOL, license, battery).
+  return false
 }
 
 function splitEmails(raw: string): string[] {

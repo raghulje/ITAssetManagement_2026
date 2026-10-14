@@ -1,3 +1,16 @@
+export type LabelPrintSheet = {
+  qr_base64: string
+  lines: string[]
+}
+
+function esc(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 export function openBlankLabelPreview() {
   const preview = window.open('', 'qr-label-print', 'popup,width=560,height=720')
   if (!preview) return null
@@ -7,42 +20,180 @@ export function openBlankLabelPreview() {
   return preview
 }
 
-/** Fills the preview and opens the browser print dialog (printer, or Save as PDF). */
-export function showLabelPrintPreview(preview: Window, base64: string, mime = 'image/png') {
-  const src = `data:${mime};base64,${base64}`
+/** Brother PT-P900W page from tasks/test.html, then the browser print dialog. */
+export function showLabelPrintPreview(preview: Window, labels: LabelPrintSheet[]) {
+  const sheets = labels.map((label) => {
+    const src = `data:image/png;base64,${label.qr_base64}`
+    const lines = [0, 1, 2].map((i) => esc(label.lines[i] || ''))
+    return `<div class="label">
+      <div class="label-content">
+        <div class="qr-section">
+          <img src="${src}" alt="Asset QR Code" />
+        </div>
+        <div class="text-section">
+          <div class="text-row">${lines[0]}</div>
+          <div class="text-row">${lines[1]}</div>
+          <div class="text-row">${lines[2]}</div>
+        </div>
+      </div>
+    </div>`
+  }).join('')
+
   preview.document.open()
   preview.document.write(`<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Print QR label</title>
+  <meta charset="UTF-8" />
+  <title>Brother PT-P900W Asset Tag</title>
   <style>
-    @page { size: 36mm 30mm; margin: 0; }
-    html, body { margin: 0; padding: 0; background: #e8eef5; color: #0f172a; font-family: Arial, sans-serif; }
-    .toolbar { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 16px 8px; }
-    .toolbar p { margin: 0; font-size: 13px; color: #475569; text-align: center; max-width: 420px; }
-    button { min-height: 40px; padding: 8px 18px; border: 0; border-radius: 8px; background: #0f766e; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
-    .sheet { width: 36mm; height: 30mm; margin: 12px auto 24px; background: #fff; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12); }
-    .sheet img { width: 36mm; height: 30mm; display: block; }
+    @page {
+      size: 22mm 36mm;
+      margin: 0;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 22mm;
+      height: 36mm;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    .label {
+      position: relative;
+      width: 22mm;
+      height: 36mm;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+    }
+    .label-content {
+      position: absolute;
+      top: 0;
+      width: 36mm;
+      height: 22mm;
+      transform-origin: top left;
+      transform: translateY(36mm) rotate(-90deg);
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 1mm;
+      padding: 1mm;
+    }
+    .qr-section {
+      width: 12mm;
+      height: 12mm;
+      flex: 0 0 12mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-section img {
+      display: block;
+      width: 12mm;
+      height: 12mm;
+      object-fit: contain;
+    }
+    .text-section {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 1.2mm;
+      overflow: hidden;
+    }
+    .text-row {
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      font-size: 7pt;
+      font-weight: bold;
+      line-height: 1.1;
+      color: #000;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: clip;
+    }
+    .toolbar {
+      display: none;
+    }
+    @media screen {
+      html, body {
+        width: auto;
+        height: auto;
+        overflow: auto;
+        background: #e8eef5;
+      }
+      .toolbar {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 18px 16px 0;
+      }
+      .toolbar p {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 400;
+        color: #475569;
+        text-align: center;
+        max-width: 420px;
+      }
+      .toolbar button {
+        min-height: 40px;
+        padding: 8px 18px;
+        border: 0;
+        border-radius: 8px;
+        background: #0f766e;
+        color: #fff;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .label {
+        transform: scale(3);
+        transform-origin: top center;
+        margin: 28px auto 110mm;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+      }
+    }
     @media print {
-      html, body { background: #fff; }
       .toolbar { display: none !important; }
-      .sheet { margin: 0; box-shadow: none; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        width: 22mm;
+        height: auto;
+        overflow: visible;
+      }
+      .label {
+        transform: none !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        page-break-after: always;
+        break-after: page;
+      }
+      .label:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
     }
   </style>
 </head>
 <body>
   <div class="toolbar">
-    <p>36 × 30 mm label. Choose the printer in the print window. Use Actual size if the dialog offers it.</p>
+    <p>Brother PT-P900W label, 22 × 36 mm. Choose the printer, then print at actual size.</p>
     <button type="button" onclick="window.print()">Print</button>
   </div>
-  <div class="sheet">
-    <img id="label" alt="QR label" src="${src}" />
-  </div>
+  ${sheets}
   <script>
-    const img = document.getElementById('label');
+    const img = document.querySelector('.qr-section img');
     function openPrint() { window.focus(); window.print(); }
-    if (img.complete) openPrint();
+    if (!img || img.complete) openPrint();
     else img.onload = openPrint;
   </script>
 </body>
