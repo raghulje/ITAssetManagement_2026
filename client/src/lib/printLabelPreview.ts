@@ -3,8 +3,9 @@ export type LabelPrintSheet = {
   lines: string[]
 }
 
-/** 300 dpi. High enough for a sharp 12 mm QR, small enough to print quickly. */
-const PX_PER_MM = 300 / 25.4
+/** Match the Brother driver: 360 dpi, so the file is 36 mm by 22 mm at actual size. */
+const LABEL_DPI = 360
+const PX_PER_MM = LABEL_DPI / 25.4
 
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -81,74 +82,78 @@ async function renderLabelCanvas(label: LabelPrintSheet) {
   return strip
 }
 
-/** Open this from the print click, before any await, so the browser allows the window. */
-export function openLabelPrintWindow() {
-  const preview = window.open('', 'asset-label-print', 'width=420,height=260')
-  if (!preview) return null
-  preview.document.open()
-  preview.document.write('<!DOCTYPE html><title>Asset label</title><p style="font-family:sans-serif">Preparing label…</p>')
-  preview.document.close()
-  return preview
-}
-
-function labelHtml(images: string[]) {
-  const sheets = images.map((src) => `<img class="label" alt="" width="136" height="79" src="${src}">`).join('')
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Asset label</title><style>
-    @page { size: 36mm 22mm; margin: 0; }
-    html, body { margin: 0; padding: 0; background: #fff; line-height: 0; font-size: 0; }
-    img.label {
-      display: block;
-      width: 36mm;
-      height: 21mm;
-      max-width: 36mm;
-      max-height: 21mm;
-      object-fit: fill;
-      object-position: left top;
-      break-inside: avoid;
-      page-break-inside: avoid;
-      break-after: avoid;
-      page-break-after: avoid;
-    }
-    img.label + img.label { break-before: page; page-break-before: always; }
-  </style></head><body>${sheets}</body></html>`
-}
-
-/**
- * A hidden frame always adds one blank sheet, and the Brother feeds that sheet out first.
- * This document is only the sticker, so the dialog has one sheet.
- */
-function whenReady(preview: Window) {
-  const imgs = Array.from(preview.document.images)
-  return Promise.all(imgs.map((img) => (img.complete ? Promise.resolve() : new Promise<void>((resolve) => {
-    img.onload = () => resolve()
-    img.onerror = () => resolve()
-  })))).then(() => undefined)
-}
-
-function printInWindow(preview: Window, images: string[]) {
-  const html = labelHtml(images)
-  preview.document.open()
-  preview.document.write(html)
-  preview.document.close()
-
-  const close = () => {
-    if (!preview.closed) preview.close()
-    window.focus()
+function crc32(bytes: Uint8Array) {
+  let c = 0xffffffff
+  for (const b of bytes) {
+    c ^= b
+    for (let i = 0; i < 8; i++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1))
   }
-  preview.addEventListener('afterprint', close)
+  return (c ^ 0xffffffff) >>> 0
+}
 
-  return whenReady(preview).then(() => {
-    preview.focus()
-    preview.print()
-    window.setTimeout(close, 120000)
+function pngChunk(type: string, data: Uint8Array) {
+  const typeBytes = new TextEncoder().encode(type)
+  const crcInput = new Uint8Array(4 + data.length)
+  crcInput.set(typeBytes, 0)
+  crcInput.set(data, 4)
+  const out = new Uint8Array(12 + data.length)
+  new DataView(out.buffer).setUint32(0, data.length)
+  out.set(typeBytes, 4)
+  out.set(data, 8)
+  new DataView(out.buffer).setUint32(8 + data.length, crc32(crcInput))
+  return out
+}
+
+/** Tell Windows the picture is 36 mm by 22 mm, which a browser print dialog ignores. */
+function pngWithDpi(png: Uint8Array, dpi: number) {
+  const perMeter = Math.round(dpi / 0.0254)
+  const data = new Uint8Array(9)
+  const view = new DataView(data.buffer)
+  view.setUint32(0, perMeter)
+  view.setUint32(4, perMeter)
+  data[8] = 1
+  const phys = pngChunk('pHYs', data)
+  const ihdrEnd = 33
+  const out = new Uint8Array(png.length + phys.length)
+  out.set(png.subarray(0, ihdrEnd), 0)
+  out.set(phys, ihdrEnd)
+  out.set(png.subarray(ihdrEnd), ihdrEnd + phys.length)
+  return out
+}
+
+function canvasToPng(canvas: HTMLCanvasElement) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        reject(new Error('Could not create the label image'))
+        return
+      }
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      resolve(new Blob([pngWithDpi(bytes, LABEL_DPI)], { type: 'image/png' }))
+    }, 'image/png')
   })
 }
 
-/** Print Brother PT-P900W labels, then leave the user on the asset page. */
-export async function printAssetLabels(labels: LabelPrintSheet[], preview?: Window | null) {
+function labelFileName(label: LabelPrintSheet, index: number) {
+  const raw = String(label.lines[1] || label.lines[0] || `label-${index + 1}`).trim()
+  const safe = raw.replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').slice(0, 60) || `label-${index + 1}`
+  return `${safe}.png`
+}
+
+function saveBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500)
+}
+
+/** Save each sticker as a picture. Photos prints that file at 3.6 cm by 2.2 cm. */
+export async function printAssetLabels(labels: LabelPrintSheet[]) {
   const canvases = await Promise.all(labels.map((label) => renderLabelCanvas(label)))
-  const images = canvases.map((canvas) => canvas.toDataURL('image/png'))
-  const target = preview && !preview.closed ? preview : openLabelPrintWindow()
-  if (!target) throw new Error('Allow pop-ups to print the label')
-  await printInWindow(target, images)
+  const files = await Promise.all(canvases.map((canvas) => canvasToPng(canvas)))
+  files.forEach((file, index) => saveBlob(file, labelFileName(labels[index], index)))
 }
