@@ -31,11 +31,15 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines.slice(0, 3)
 }
 
+const MM_TO_PT = 72 / 25.4
+const PAGE_W_PT = 36 * MM_TO_PT
+const PAGE_H_PT = 22 * MM_TO_PT
+
 /**
  * One Brother label: 36 mm across the tape, 22 mm along it.
- * QR on the left, model and serial on the right. No second page.
+ * QR on the left, model and serial on the right.
  */
-async function renderLabelPng(label: LabelPrintSheet) {
+async function renderLabelCanvas(label: LabelPrintSheet) {
   const ppm = PX_PER_MM
   const qr = await loadImage(`data:image/png;base64,${label.qr_base64}`)
   const stripW = Math.round(36 * ppm)
@@ -78,88 +82,122 @@ async function renderLabelPng(label: LabelPrintSheet) {
     sctx.fillText(serial, textX, y, textMax)
   }
 
-  return strip.toDataURL('image/png')
+  return strip
 }
 
-function printDocument(images: string[]) {
-  const sheets = images.map((src) => `<div class="label" style="background-image:url(&quot;${src}&quot;)"></div>`).join('')
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Asset label</title>
-  <style>
-    @page { size: 36mm 22mm; margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      width: 36mm;
-      background: #fff;
-    }
-    body.one {
-      height: 21.5mm;
-      overflow: hidden;
-    }
-    .label {
-      width: 36mm;
-      height: 21.5mm;
-      overflow: hidden;
-      background-color: #fff;
-      background-repeat: no-repeat;
-      background-position: center center;
-      background-size: 36mm 21.5mm;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-      break-inside: avoid;
-      page-break-inside: avoid;
-      break-after: avoid;
-      page-break-after: avoid;
-    }
-    .label + .label {
-      break-before: page;
-      page-break-before: always;
-    }
-  </style>
-</head>
-<body class="${images.length === 1 ? 'one' : ''}">${sheets}</body>
-</html>`
+function concatBytes(parts: Uint8Array[]) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let offset = 0
+  for (const part of parts) {
+    out.set(part, offset)
+    offset += part.length
+  }
+  return out
+}
 
+async function deflateBytes(data: Uint8Array) {
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream('deflate'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+
+/** One PDF page per label. The page box is the sticker, so the printer cannot add a blank sheet. */
+async function buildLabelsPdf(canvases: HTMLCanvasElement[]) {
+  const enc = new TextEncoder()
+  const images = await Promise.all(canvases.map(async (canvas) => {
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Could not read the label')
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+    const rgb = new Uint8Array(canvas.width * canvas.height * 3)
+    for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
+      rgb[j] = pixels[i]
+      rgb[j + 1] = pixels[i + 1]
+      rgb[j + 2] = pixels[i + 2]
+    }
+    return { w: canvas.width, h: canvas.height, bytes: await deflateBytes(rgb) }
+  }))
+
+  const count = images.length
+  const kids = images.map((_, i) => `${3 + i * 3} 0 R`).join(' ')
+  const pieces: Uint8Array[] = []
+  const objectOffsets: number[] = []
+  let cursor = 0
+  const add = (text: string, binary?: Uint8Array) => {
+    if (/^\d+ 0 obj/.test(text)) objectOffsets.push(cursor)
+    const encoded = enc.encode(text)
+    pieces.push(encoded)
+    cursor += encoded.length
+    if (binary) {
+      pieces.push(binary)
+      cursor += binary.length
+    }
+  }
+
+  add('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n')
+  add(`2 0 obj\n<< /Type /Pages /Count ${count} /Kids [${kids}] >>\nendobj\n`)
+
+  images.forEach((image, i) => {
+    const pageId = 3 + i * 3
+    const contentId = pageId + 1
+    const imageId = pageId + 2
+    const commands = `q ${PAGE_W_PT.toFixed(2)} 0 0 ${(-PAGE_H_PT).toFixed(2)} 0 ${PAGE_H_PT.toFixed(2)} cm /Im${i} Do Q\n`
+    add(
+      `${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W_PT.toFixed(2)} ${PAGE_H_PT.toFixed(2)}] /CropBox [0 0 ${PAGE_W_PT.toFixed(2)} ${PAGE_H_PT.toFixed(2)}] /Contents ${contentId} 0 R /Resources << /XObject << /Im${i} ${imageId} 0 R >> >> >>\nendobj\n`,
+    )
+    add(`${contentId} 0 obj\n<< /Length ${commands.length} >>\nstream\n${commands}endstream\nendobj\n`)
+    add(
+      `${imageId} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${image.w} /Height ${image.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${image.bytes.length} >>\nstream\n`,
+      image.bytes,
+    )
+    add('\nendstream\nendobj\n')
+  })
+
+  const header = enc.encode('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n')
+  const offsets = objectOffsets.map((offset) => offset + header.length)
+  const startxref = header.length + cursor
+  let xref = `xref\n0 ${offsets.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets) xref += `${String(offset).padStart(10, '0')} 00000 n \n`
+  xref += `trailer\n<< /Size ${offsets.length + 1} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF`
+  return new Blob([header, concatBytes(pieces), enc.encode(xref)], { type: 'application/pdf' })
+}
+
+function printPdf(pdf: Blob) {
+  const url = URL.createObjectURL(pdf)
   const iframe = document.createElement('iframe')
   iframe.setAttribute('title', 'Asset label print')
   iframe.setAttribute('aria-hidden', 'true')
   iframe.style.cssText = 'position:fixed;left:0;top:0;width:36mm;height:22mm;border:0;z-index:-1;'
+  iframe.src = url
   document.body.appendChild(iframe)
-
-  const doc = iframe.contentDocument
-  const frame = iframe.contentWindow
-  if (!doc || !frame) {
-    iframe.remove()
-    throw new Error('Could not open the print dialog')
-  }
-
-  doc.open()
-  doc.write(html)
-  doc.close()
 
   let closed = false
   const finish = () => {
     if (closed) return
     closed = true
-    window.setTimeout(() => iframe.remove(), 400)
+    window.setTimeout(() => {
+      iframe.remove()
+      URL.revokeObjectURL(url)
+    }, 400)
     window.focus()
   }
-  frame.addEventListener('afterprint', finish)
 
-  const start = () => {
-    frame.focus()
-    frame.print()
-    window.setTimeout(finish, 120000)
+  iframe.onload = () => {
+    const frame = iframe.contentWindow
+    if (!frame) {
+      iframe.remove()
+      URL.revokeObjectURL(url)
+      return
+    }
+    frame.addEventListener('afterprint', finish)
+    window.setTimeout(() => {
+      frame.focus()
+      frame.print()
+      window.setTimeout(finish, 120000)
+    }, 200)
   }
-
-  window.setTimeout(start, 80)
 }
 
 /** Print Brother PT-P900W labels from the current page, then leave the user there. */
 export async function printAssetLabels(labels: LabelPrintSheet[]) {
-  const images = await Promise.all(labels.map((label) => renderLabelPng(label)))
-  printDocument(images)
+  const canvases = await Promise.all(labels.map((label) => renderLabelCanvas(label)))
+  printPdf(await buildLabelsPdf(canvases))
 }
