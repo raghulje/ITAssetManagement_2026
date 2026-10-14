@@ -133,7 +133,7 @@ export default function AssetDetail() {
       }>(`/labels/hardware/${id}`, { method: 'POST', json: {} })
       const labels = res.payload?.labels || res.labels
       if (!labels?.length || !labels[0]?.qr_base64) throw new Error('No label returned')
-      printAssetLabels(labels)
+      await printAssetLabels(labels)
       setMsg('Choose the printer. This asset page stays open.')
       load()
     } catch (e) {
