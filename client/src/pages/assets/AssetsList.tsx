@@ -435,7 +435,7 @@ export default function AssetsList() {
       })
       const labels = (res.labels || []).filter((label) => label.qr_base64)
       if (!labels.length) throw new Error('No labels returned')
-      printAssetLabels(labels)
+      await printAssetLabels(labels)
       setBulkMsg(`Print dialog opened for ${labels.length.toLocaleString('en-IN')} label(s)`)
     } catch (e) {
       setBulkMsg(e instanceof Error ? e.message : 'Print failed')
