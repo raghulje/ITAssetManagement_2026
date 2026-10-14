@@ -5,7 +5,8 @@ import { AppSelect, Box, StatusBadge } from '../../components/ui'
 import { ThColumnFilter } from '../../components/ThColumnFilter'
 import { ModuleInsights } from '../../components/ModuleInsights'
 import AssetPeriodPicker, { getEmptyPeriodState, type PeriodState } from '../../components/AssetPeriodPicker'
-import { dashboardApi, hardwareApi, mastersApi, type SelectOption } from '../../api/client'
+import { api, dashboardApi, hardwareApi, mastersApi, type SelectOption } from '../../api/client'
+import { printAssetLabels, type LabelPrintSheet } from '../../lib/printLabelPreview'
 import { downloadCsv } from '../../utils/csv'
 import { useAuth } from '../../api/AuthContext'
 
@@ -420,6 +421,29 @@ export default function AssetsList() {
     }
   }
 
+  const printSelected = async () => {
+    if (!selectedCount) return
+    const count = selectedCount
+    if (count > 30 && !confirm(`Print ${count.toLocaleString('en-IN')} labels? Each asset prints on its own sheet.`)) return
+    setBulkBusy(true)
+    setBulkMsg('')
+    try {
+      const ids = selectAllMatching ? await fetchMatchingIds() : [...selected]
+      const res = await api<{ labels?: LabelPrintSheet[] }>('/labels', {
+        method: 'POST',
+        json: { asset_tags: ids.map(String) },
+      })
+      const labels = (res.labels || []).filter((label) => label.qr_base64)
+      if (!labels.length) throw new Error('No labels returned')
+      printAssetLabels(labels)
+      setBulkMsg(`Print dialog opened for ${labels.length.toLocaleString('en-IN')} label(s)`)
+    } catch (e) {
+      setBulkMsg(e instanceof Error ? e.message : 'Print failed')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   const exportSelected = async () => {
     const cols = exportableColumns
     setBulkBusy(true)
@@ -560,6 +584,9 @@ export default function AssetsList() {
                 Select all {total.toLocaleString('en-IN')} matching records
               </button>
             ) : null}
+            <button type="button" className="btn btn-default btn-sm" disabled={bulkBusy} onClick={() => { void printSelected() }}>
+              <i className="fas fa-print" /> Print selected
+            </button>
             <button type="button" className="btn btn-default btn-sm" disabled={bulkBusy} onClick={() => { void exportSelected() }}>
               <i className="fas fa-download" /> Export selected
             </button>
