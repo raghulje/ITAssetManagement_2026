@@ -67,7 +67,7 @@ export function makeMultiUploader(subdir: string, field = 'files', maxCount = 8)
   }).array(field, maxCount)
 }
 
-/** Photos + 30s video from the QR capture page. */
+/** Photos + 10s video from the QR capture page. */
 export function makeCaptureUploader(subdir: string, field = 'file') {
   return multer({
     storage: diskStorage(subdir),

@@ -166,12 +166,15 @@ async function listIds(req: { query: Record<string, unknown>; user?: { permissio
   }
 
   if (search) {
+    const hasPlace = await tableHasColumn('assets', 'location_text')
     sql += ` AND (
       a.asset_tag LIKE ? OR a.old_asset_tag LIKE ? OR a.name LIKE ? OR a.serial LIKE ? OR CAST(a.id AS CHAR) = ?
       OR m.name LIKE ? OR c.name LIKE ? OR loc.name LIKE ?
+      ${hasPlace ? 'OR a.location_text LIKE ?' : ''}
     )`
     const like = `%${search}%`
     params.push(like, like, like, like, search, like, like, like)
+    if (hasPlace) params.push(like)
   }
 
   if (req.query.order_number) {
@@ -598,6 +601,21 @@ router.get('/:id/agent/snapshots', async (req, res) => {
   return okList(res, rows)
 })
 
+async function applyAssetManufacturer(assetId: number, modelId: unknown, manufacturerId: unknown) {
+  if (!(await tableHasColumn('assets', 'manufacturer_id'))) return
+  const mf = Number(manufacturerId)
+  const id = Number.isFinite(mf) && mf > 0 ? mf : null
+  if (manufacturerId !== undefined) {
+    await run(`UPDATE assets SET manufacturer_id = ? WHERE id = ?`, [id, assetId])
+  }
+  const mid = Number(modelId)
+  if (!id || !mid) return
+  await run(
+    `UPDATE models SET manufacturer_id = ?, updated_at = ? WHERE id = ? AND (manufacturer_id IS NULL OR manufacturer_id = 0)`,
+    [id, now(), mid],
+  )
+}
+
 function custodyReason(b: Record<string, unknown>): string | null {
   const raw = b.reason ?? b.note ?? b.notes
   if (raw == null) return null
@@ -730,6 +748,7 @@ router.post('/', async (req, res) => {
       ],
   )
   const id = Number(info.insertId)
+  await applyAssetManufacturer(id, b.model_id, b.manufacturer_id)
   await logAction({ userId: req.user?.id, actionType: 'create', itemType: 'asset', itemId: id })
   notifyWorkflow({
     category: 'crud',
@@ -776,6 +795,8 @@ async function updateAsset(req: import('express').Request, res: import('express'
     'old_asset_tag', 'expected_checkin', 'next_audit_date',
     ...((await inventoryDomainColumnsReady()) ? (['domain_id'] as const) : []),
     ...((await tableHasColumn('assets', 'domain_attrs')) ? (['domain_attrs'] as const) : []),
+    ...((await tableHasColumn('assets', 'manufacturer_id')) ? (['manufacturer_id'] as const) : []),
+    ...((await tableHasColumn('assets', 'location_text')) ? (['location_text'] as const) : []),
   ] as const
   const sets: string[] = []
   const vals: unknown[] = []
@@ -797,12 +818,24 @@ async function updateAsset(req: import('express').Request, res: import('express'
         const s = String(v).trim()
         v = s ? s.slice(0, 500) : null
       }
+      if (f === 'manufacturer_id') {
+        const n = Number(v)
+        v = v == null || v === '' || !Number.isFinite(n) || n <= 0 ? null : n
+      }
+      if (f === 'location_text') {
+        const s = v == null ? '' : String(v).trim()
+        v = s ? s.slice(0, 255) : null
+      }
       vals.push(v)
     }
   }
   if (!sets.length) return fail(res, 'No valid fields')
   vals.push(now(), id)
   await run(`UPDATE assets SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`, vals)
+  if (b.manufacturer_id !== undefined) {
+    const modelId = b.model_id ?? (await get<{ model_id: number }>(`SELECT model_id FROM assets WHERE id = ?`, [id]))?.model_id
+    await applyAssetManufacturer(id, modelId, b.manufacturer_id)
+  }
   await logAction({ userId: req.user?.id, actionType: 'update', itemType: 'asset', itemId: id })
   return okMessage(res, 'Asset updated successfully', await transformAsset(id))
 }
@@ -989,6 +1022,93 @@ router.post('/:id/checkin', async (req, res) => {
   })
 
   return okMessage(res, 'Asset unassigned successfully', await transformAsset(id))
+})
+
+/** Move an asset to another office, or to a place that is not in the location master. */
+router.post('/:id/transfer', async (req, res) => {
+  const id = Number(req.params.id)
+  if (!(await requireAssetDomain(req, res, id))) return
+  if (!(await tableHasColumn('assets', 'location_text'))) {
+    return fail(res, 'Asset transfer needs database migration 058', 503)
+  }
+  const asset = await get<Record<string, unknown>>(
+    `SELECT a.id, a.asset_tag, a.location_id, a.location_text, a.rtd_location_id, loc.name as location_name
+     FROM assets a
+     LEFT JOIN locations loc ON loc.id = a.location_id
+     WHERE a.id = ? AND a.deleted_at IS NULL`,
+    [id],
+  )
+  if (!asset) return fail(res, 'Asset not found', 404)
+
+  const b = req.body || {}
+  const reason = custodyReason(b)
+  if (!reason) return fail(res, 'Reason is required to transfer an asset')
+
+  const wantsOffice = String(b.destination || '') !== 'other' && (b.location_id != null && String(b.location_id) !== '')
+  const fromLabel = String(asset.location_text || asset.location_name || '').trim() || 'Unspecified'
+  const ts = now()
+
+  let toLabel = ''
+  let locationId: number | null = null
+  if (wantsOffice || (b.destination === 'office')) {
+    locationId = Number(b.location_id)
+    if (!locationId) return fail(res, 'Choose the office this asset is moving to')
+    const loc = await get<{ id: number; name: string }>(
+      `SELECT id, name FROM locations WHERE id = ? AND deleted_at IS NULL`,
+      [locationId],
+    )
+    if (!loc) return fail(res, 'Location not found', 404)
+    toLabel = loc.name
+    await run(
+      `UPDATE assets SET location_id = ?, location_text = NULL, updated_at = ? WHERE id = ?`,
+      [locationId, ts, id],
+    )
+  } else {
+    toLabel = String(b.location_text || b.place || '').trim().slice(0, 255)
+    if (!toLabel) return fail(res, 'Enter the place this asset is moving to')
+    await run(
+      `UPDATE assets SET location_id = NULL, location_text = ?, updated_at = ? WHERE id = ?`,
+      [toLabel, ts, id],
+    )
+  }
+
+  await logAction({
+    userId: req.user?.id,
+    actionType: 'transfer',
+    itemType: 'asset',
+    itemId: id,
+    targetType: locationId ? 'location' : null,
+    targetId: locationId,
+    locationId,
+    note: `To ${toLabel}. ${reason}`,
+    meta: {
+      from: fromLabel,
+      from_location_id: asset.location_id || null,
+      to: toLabel,
+      to_location_id: locationId,
+      reason,
+    },
+  })
+
+  notifyWorkflow({
+    category: 'custody',
+    event: 'asset.transferred',
+    subject: `Asset transferred: ${asset.asset_tag}`,
+    title: 'Asset transferred',
+    intro: 'An asset was moved to another place.',
+    fields: [
+      { label: 'Asset tag', value: String(asset.asset_tag || id) },
+      { label: 'From', value: fromLabel },
+      { label: 'To', value: toLabel },
+      { label: 'Reason', value: reason },
+      { label: 'Transferred by', value: actorLabel(req.user) },
+    ],
+    ctaPath: `/hardware/${id}`,
+    itemType: 'asset',
+    itemId: id,
+  })
+
+  return okMessage(res, 'Asset transferred', await transformAsset(id))
 })
 
 /** Replace assigned asset with another (checkin old + checkout new) for the same employee. */

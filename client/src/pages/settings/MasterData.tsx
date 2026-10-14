@@ -631,6 +631,8 @@ function ApiCrudList({
   columns,
   mapRow,
   nameLink = 'edit',
+  query = '',
+  intro,
 }: {
   title: string
   basePath: string
@@ -638,6 +640,8 @@ function ApiCrudList({
   columns: { key: string; label: string }[]
   mapRow?: (r: Record<string, unknown>) => Row
   nameLink?: 'detail' | 'edit'
+  query?: string
+  intro?: string
 }) {
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -645,7 +649,7 @@ function ApiCrudList({
 
   const load = () => {
     setLoading(true)
-    api<{ rows: Record<string, unknown>[] }>(`${apiPath}?limit=500${search ? `&search=${encodeURIComponent(search)}` : ''}`)
+    api<{ rows: Record<string, unknown>[] }>(`${apiPath}?limit=500${query ? `&${query}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`)
       .then((r) => setRows((r.rows || []).map((row) => (mapRow ? mapRow(row) : row as Row))))
       .catch(() => setRows([]))
       .finally(() => setLoading(false))
@@ -654,10 +658,11 @@ function ApiCrudList({
   useEffect(() => {
     const t = setTimeout(load, 250)
     return () => clearTimeout(t)
-  }, [apiPath, search])
+  }, [apiPath, search, query])
 
   return (
     <AppLayout title={title} subtitle={loading ? 'Loading…' : `${rows.length} records`}>
+      {intro ? <p className="help-block" style={{ marginTop: 0 }}>{intro}</p> : null}
       <Box
         title={title}
         tools={<Link to={`${basePath}/create`} className="btn btn-primary btn-sm"><i className="fas fa-plus icon-white" /> Create New</Link>}
@@ -700,6 +705,34 @@ function ApiCrudList({
 export const ModelsList = () => <ModelsApiList />
 export const ModelDetail = () => <ModelApiDetail />
 export const ModelForm = () => <ModelApiForm />
+
+export const AssetTypesList = () => (
+  <ApiCrudList
+    title="Asset types"
+    basePath="/asset-types"
+    apiPath="/categories"
+    query="category_type=asset"
+    intro="Laptop, Desktop, Landline phone, and any other type you add here. These are the choices on an asset."
+    columns={[{ key: 'name', label: 'Name' }]}
+    mapRow={(c) => ({
+      id: Number(c.id),
+      name: String(c.name || ''),
+    })}
+  />
+)
+export const AssetTypeForm = () => (
+  <CrudResourceForm
+    title="Asset type"
+    basePath="/asset-types"
+    apiPath="/categories"
+    fields={[{ key: 'name', label: 'Name', required: true, placeholder: 'e.g. Laptop, Desktop, Landline phone' }]}
+    fromRow={(row) => ({ name: String(row.name || '') })}
+    toPayload={(v) => ({
+      name: String(v.name || '').trim(),
+      category_type: 'asset',
+    })}
+  />
+)
 
 export const CategoriesList = () => (
   <ApiCrudList

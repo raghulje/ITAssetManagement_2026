@@ -7,6 +7,7 @@ import AssetsList from './pages/assets/AssetsList'
 import AssetDetail from './pages/assets/AssetDetail'
 import AssetForm from './pages/assets/AssetForm'
 import { AssetCheckout, AssetCheckin } from './pages/assets/AssetCheckout'
+import AssetTransfer from './pages/assets/AssetTransfer'
 import {
   // AssetAudit, AuditDue, BulkAudit, // Audit feature — restore when needed
   EolDue, CheckinDue, QuickscanCheckin, BulkCheckout,
@@ -26,6 +27,7 @@ import {
 } from './pages/employees/Employees'
 import {
   ModelsList, ModelDetail, ModelForm,
+  AssetTypesList, AssetTypeForm,
   CategoriesList, CategoryDetail, CategoryForm,
   StatusLabelsList, StatusLabelForm,
   LocationsList, LocationDetail, LocationForm,
@@ -122,6 +124,7 @@ export default function App() {
                 <Route path="/hardware/:id/clone" element={<AssetForm />} />
                 <Route path="/hardware/:id/checkout" element={<AssetCheckout />} />
                 <Route path="/hardware/:id/checkin" element={<AssetCheckin />} />
+                <Route path="/hardware/:id/transfer" element={<AssetTransfer />} />
                 <Route path="/hardware/:id" element={<AssetDetail />} />
                 <Route path="/maintenances" element={<Maintenances />} />
                 <Route path="/maintenances/create" element={<MaintenanceForm />} />
@@ -169,6 +172,9 @@ export default function App() {
                 <Route path="/models/create" element={<ModelForm />} />
                 <Route path="/models/:id" element={<ModelDetail />} />
                 <Route path="/models/:id/edit" element={<ModelForm />} />
+                <Route path="/asset-types" element={<AssetTypesList />} />
+                <Route path="/asset-types/create" element={<AssetTypeForm />} />
+                <Route path="/asset-types/:id/edit" element={<AssetTypeForm />} />
                 <Route path="/categories" element={<CategoriesList />} />
                 <Route path="/categories/create" element={<CategoryForm />} />
                 <Route path="/categories/:id" element={<CategoryDetail />} />

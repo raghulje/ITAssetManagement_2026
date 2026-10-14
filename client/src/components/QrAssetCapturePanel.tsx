@@ -10,7 +10,7 @@ import { requestLocationAccess, type PrecisePosition } from '../lib/preciseLocat
 import { fetchGpsStaticMapUrl, stampGpsOnImage } from '../lib/stampGpsOnImage'
 import { CaptureLightbox, CaptureThumb, type CaptureMediaItem } from './CaptureMediaPreview'
 
-export type CaptureKind = 'photo' | 'serial' | 'video'
+export type CaptureKind = 'photo' | 'serial' | 'license' | 'video'
 
 export type CaptureRow = {
   id: number
@@ -26,7 +26,7 @@ export type CaptureRow = {
 }
 
 export const DEREGISTER_CONFIRM =
-  'Re-capture this asset at its latest location?\n\nCurrent photos and video move to history. Capture all sides, the serial number, and a 30-second video at the new site, then Submit.'
+  'Re-capture this asset at its latest location?\n\nCurrent photos and video move to history. Capture all sides, the serial number, the Windows/Apple license key, and a 10-second video at the new site, then Submit.'
 
 export type StagedCapture = {
   localId: string
@@ -46,15 +46,18 @@ export const MIN_SIDE_PHOTOS = 4
 export function firstPackStatus(items: Array<{ kind: string }>) {
   const sides = items.filter((i) => i.kind === 'photo').length
   const serial = items.filter((i) => i.kind === 'serial').length
+  const license = items.filter((i) => i.kind === 'license').length
   const videos = items.filter((i) => i.kind === 'video').length
   return {
     sides,
     serial,
+    license,
     videos,
     sidesOk: sides >= MIN_SIDE_PHOTOS,
     serialOk: serial >= 1,
+    licenseOk: license >= 1,
     videoOk: videos >= 1,
-    complete: sides >= MIN_SIDE_PHOTOS && serial >= 1 && videos >= 1,
+    complete: sides >= MIN_SIDE_PHOTOS && serial >= 1 && license >= 1 && videos >= 1,
   }
 }
 
@@ -151,7 +154,7 @@ export function stagedUploadMeta(item: StagedCapture) {
   }
 }
 
-type PhotoBucket = 'photo' | 'serial'
+type PhotoBucket = 'photo' | 'serial' | 'license'
 
 type Props = {
   token: string
@@ -189,6 +192,7 @@ export default function QrAssetCapturePanel({
   const pack = firstPackStatus(combined)
   const sideItems = [...rows.filter((r) => r.kind === 'photo'), ...pending.filter((i) => i.kind === 'photo')]
   const serialItems = [...rows.filter((r) => r.kind === 'serial'), ...pending.filter((i) => i.kind === 'serial')]
+  const licenseItems = [...rows.filter((r) => r.kind === 'license'), ...pending.filter((i) => i.kind === 'license')]
   const videoItems = [...rows.filter((r) => r.kind === 'video'), ...pending.filter((i) => i.kind === 'video')]
   const working = busy || submitBusy
   const canUploadSubmit = pack.complete && pending.length > 0
@@ -198,7 +202,7 @@ export default function QrAssetCapturePanel({
     const data = await api<{ rows: CaptureRow[] }>(`/public/assets/${encodeURIComponent(token)}/captures`)
     setRows((data.rows || []).map((r) => ({
       ...r,
-      kind: r.kind === 'serial' || r.kind === 'video' ? r.kind : 'photo',
+      kind: r.kind === 'serial' || r.kind === 'license' || r.kind === 'video' ? r.kind : 'photo',
     })))
   }, [token, staged])
 
@@ -298,7 +302,7 @@ export default function QrAssetCapturePanel({
 
   async function submitPending() {
     if (!pack.complete) {
-      setError(`Capture all sides (min ${MIN_SIDE_PHOTOS} photos), the serial number, and a 30-second video before submitting.`)
+      setError(`Capture all sides (min ${MIN_SIDE_PHOTOS} photos), the serial number, the Windows/Apple license key, and a 10-second video before submitting.`)
       return
     }
     if (!pending.length) {
@@ -355,7 +359,9 @@ export default function QrAssetCapturePanel({
 
   const cameraLabel = photoBucket === 'serial'
     ? `${assetTag} · serial number`
-    : `${assetTag} · all sides`
+    : photoBucket === 'license'
+      ? `${assetTag} · Windows/Apple license key`
+      : `${assetTag} · all sides`
 
   const savedOnAsset = !staged && rows.length > 0 && pending.length === 0
   const showSubmit = staged
@@ -364,7 +370,7 @@ export default function QrAssetCapturePanel({
   const submitHint = savedOnAsset
     ? 'Current photos and video are saved for this location.'
     : !pack.complete
-      ? `Finish the checklist (${MIN_SIDE_PHOTOS} sides + serial photo + 30s video), then submit.`
+      ? `Finish the checklist (${MIN_SIDE_PHOTOS} sides + serial photo + license key + 10s video), then submit.`
       : `${pending.length} capture(s) ready — tap Submit to store them on this asset.`
 
   return (
@@ -373,7 +379,7 @@ export default function QrAssetCapturePanel({
         <div>
           <h2>{staged ? 'First-time field capture' : 'Asset captures'}</h2>
           <p>
-            Capture all sides, the serial number, and a 30-second video. Nothing is stored until you tap{' '}
+            Capture all sides, the serial number, the Windows/Apple license key, and a 10-second video. Nothing is stored until you tap{' '}
             <strong>Submit</strong>. If the asset later moves, use <strong>Re-capture latest location</strong>.
           </p>
         </div>
@@ -386,8 +392,11 @@ export default function QrAssetCapturePanel({
         <li className={pack.serialOk ? 'is-done' : ''}>
           Serial number photo — {pack.serialOk ? 'captured' : 'required'}
         </li>
+        <li className={pack.licenseOk ? 'is-done' : ''}>
+          Windows/Apple license key — {pack.licenseOk ? 'captured' : 'required'}
+        </li>
         <li className={pack.videoOk ? 'is-done' : ''}>
-          30-second video — {pack.videoOk ? 'captured' : 'required'}
+          10-second video — {pack.videoOk ? 'captured' : 'required'}
         </li>
       </ul>
       {error ? <p className="text-danger">{error}</p> : null}
@@ -450,14 +459,35 @@ export default function QrAssetCapturePanel({
 
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
-          <h3 className="qr-capture-panel__sub">Video ({pack.videos}/1)</h3>
+          <h3 className="qr-capture-panel__sub">Windows/Apple license key ({pack.licenseOk ? '1/1' : '0/1'})</h3>
           {savedOnAsset ? null : (
-            <button type="button" className="btn btn-default btn-sm" disabled={working} onClick={() => { void openVideo() }}>
-              <i className="fas fa-video" /> Record 30s video
+            <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('license') }}>
+              <i className="fas fa-key" /> Capture Windows/Apple License Key
             </button>
           )}
         </div>
-        <p className="help-block">A 30-second walk-around video is mandatory for first-time registration.</p>
+        <p className="help-block">Photograph the Windows or Apple license key so the characters are readable.</p>
+        <Gallery
+          items={licenseItems}
+          busy={working}
+          empty="No license key photo yet."
+          hideRemove={savedOnAsset}
+          onRemoveStaged={removeStaged}
+          onRemoveLive={removeLive}
+          onOpen={setViewer}
+        />
+      </div>
+
+      <div className="qr-capture-block">
+        <div className="qr-capture-block__head">
+          <h3 className="qr-capture-panel__sub">Video ({pack.videos}/1)</h3>
+          {savedOnAsset ? null : (
+            <button type="button" className="btn btn-default btn-sm" disabled={working} onClick={() => { void openVideo() }}>
+              <i className="fas fa-video" /> Record 10s video
+            </button>
+          )}
+        </div>
+        <p className="help-block">A 10-second walk-around video is mandatory for first-time registration.</p>
         <Gallery
           items={videoItems}
           busy={working}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 
-const MAX_MS = 30_000
-const MAX_DURATION_SEC = 45
+const MAX_MS = 10_000
+const MAX_DURATION_SEC = 12
 const MIN_MS = 2_000
 const MIN_BLOB_BYTES = 8_192
 const TIMESLICE_MS = 1_000
@@ -101,7 +101,7 @@ async function validateVideoFile(file: File): Promise<string | null> {
     return 'Video is too short — record at least 2 seconds'
   }
   if (durationSec > MAX_DURATION_SEC) {
-    return `Video is too long (${Math.round(durationSec)}s) — please keep it under 30 seconds`
+    return `Video is too long (${Math.round(durationSec)}s) — please keep it under 10 seconds`
   }
   return null
 }
@@ -357,8 +357,8 @@ export default function AssetVideoCapture({ open, assetLabel, onClose, onCapture
       <div className="vc-webcam-panel">
         <header className="vc-webcam-head">
           <div>
-            <strong>30s asset video</strong>
-            <span>{assetLabel || 'Record a slow walk-around of the asset (up to 30 seconds)'}</span>
+            <strong>10s asset video</strong>
+            <span>{assetLabel || 'Record a slow walk-around of the asset (up to 10 seconds)'}</span>
           </div>
           <button type="button" className="btn btn-default btn-sm" onClick={onClose} disabled={recording || busy}>
             Done
@@ -389,7 +389,7 @@ export default function AssetVideoCapture({ open, assetLabel, onClose, onCapture
           ) : nativeMode ? (
             <div className="vc-native-video-prompt">
               <i className="fas fa-video vc-native-video-prompt__icon" aria-hidden />
-              <p>Use your phone camera to record up to <strong>30 seconds</strong>.</p>
+              <p>Use your phone camera to record up to <strong>10 seconds</strong>.</p>
               <p className="vc-native-video-prompt__sub">
                 Walk slowly around the asset and capture all sides.
               </p>
@@ -485,7 +485,7 @@ export default function AssetVideoCapture({ open, assetLabel, onClose, onCapture
                 disabled={!ready || busy}
                 onClick={startRecording}
               >
-                Record 30s video
+                Record 10s video
               </button>
             )}
             <button
@@ -497,7 +497,7 @@ export default function AssetVideoCapture({ open, assetLabel, onClose, onCapture
               Upload / phone camera
             </button>
             <p className="vc-webcam-hint">
-              Walk slowly around the asset. Record at least 2 seconds (up to 30s), then tap Stop and ✓ Use this video.
+              Walk slowly around the asset. Record at least 2 seconds (up to 10s), then tap Stop and ✓ Use this video.
             </p>
           </footer>
         )}

@@ -732,6 +732,37 @@ export function SettingsGeneral() {
         >
           {schemaMigrateBusy ? 'Applying…' : 'Apply call recordings migration (054)'}
         </button>
+        <button
+          type="button"
+          className="btn btn-theme"
+          style={{ marginLeft: 8 }}
+          disabled={schemaMigrateBusy || !canEdit}
+          onClick={() => {
+            if (!window.confirm(
+              'Run migrate-14102026 on this server?\n\nThis adds the asset transfer place and the per-asset manufacturer column. Safe to click again if it is already applied.',
+            )) return
+            setSchemaMigrateBusy(true)
+            setError('')
+            setOkMsg('')
+            api<{ messages?: string[] }>('/settings/migrate-14102026', { method: 'POST' })
+              .then((res) => {
+                const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'migrate-14102026 applied'
+                setOkMsg(msg)
+                toast.success(msg)
+                return api<{ pending: string[]; applied: string[] }>('/settings/migrations')
+              })
+              .then((s) => {
+                if (s) setMigStatus({ pending: s.pending || [], applied: s.applied || [] })
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setSchemaMigrateBusy(false))
+          }}
+        >
+          {schemaMigrateBusy ? 'Applying…' : 'migrate-14102026'}
+        </button>
         <p className="help-block" style={{ marginTop: 12, marginBottom: 0 }}>
           Agent id and notify email: <a href="/settings/battery">Settings → Battery Degradation</a>.
         </p>

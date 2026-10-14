@@ -37,6 +37,7 @@ export default function AssetCapturesTab({
   const pack = firstPackStatus(rows)
   const photos = rows.filter((r) => r.kind === 'photo')
   const serials = rows.filter((r) => r.kind === 'serial')
+  const licenses = rows.filter((r) => r.kind === 'license')
   const videos = rows.filter((r) => r.kind === 'video')
   const historyGroups = groupArchived(archived)
 
@@ -92,17 +93,19 @@ export default function AssetCapturesTab({
       {!rows.length ? (
         <div className="vad-empty">
           <strong>No current field captures</strong>
-          Recapture all sides, the serial number, and a 30-second video, then Submit.
+          Recapture all sides, the serial number, the Windows/Apple license key, and a 10-second video, then Submit.
         </div>
       ) : (
         <>
           <ul className="qr-capture-req">
             <li className={pack.sidesOk ? 'is-done' : ''}>All sides — {pack.sides}/{MIN_SIDE_PHOTOS}</li>
             <li className={pack.serialOk ? 'is-done' : ''}>Serial number photo — {pack.serialOk ? 'yes' : 'missing'}</li>
-            <li className={pack.videoOk ? 'is-done' : ''}>30-second video — {pack.videoOk ? 'yes' : 'missing'}</li>
+            <li className={pack.licenseOk ? 'is-done' : ''}>Windows/Apple license key — {pack.licenseOk ? 'yes' : 'missing'}</li>
+            <li className={pack.videoOk ? 'is-done' : ''}>10-second video — {pack.videoOk ? 'yes' : 'missing'}</li>
           </ul>
           <CaptureGroup title={`All sides (${photos.length})`} items={photos} onOpen={setViewer} />
           <CaptureGroup title={`Serial number (${serials.length})`} items={serials} onOpen={setViewer} />
+          <CaptureGroup title={`Windows/Apple license key (${licenses.length})`} items={licenses} onOpen={setViewer} />
           <CaptureGroup title={`Video (${videos.length})`} items={videos} onOpen={setViewer} video />
         </>
       )}
@@ -198,7 +201,7 @@ function groupArchived(rows: CaptureRow[]) {
 
 export function normalizeCaptureRows(raw: Record<string, unknown>[]): CaptureRow[] {
   return raw.map((r) => {
-    const kind = r.kind === 'serial' || r.kind === 'video' ? r.kind : 'photo'
+    const kind = r.kind === 'serial' || r.kind === 'license' || r.kind === 'video' ? r.kind : 'photo'
     return {
       id: Number(r.id),
       kind: kind as CaptureKind,
