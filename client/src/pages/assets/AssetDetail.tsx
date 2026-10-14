@@ -7,7 +7,7 @@ import { useAuth } from '../../api/AuthContext'
 import { assetImageSrc } from '../../api/baseUrl'
 import { formatINR } from '../../utils/money'
 import { formatAppDateTime } from '../../lib/datetime'
-import { openBlankLabelPreview, showLabelPrintPreview, type LabelPrintSheet } from '../../lib/printLabelPreview'
+import { printAssetLabels, type LabelPrintSheet } from '../../lib/printLabelPreview'
 import AssetRecordHero from './detail/AssetRecordHero'
 import AssetOverviewTab from './detail/AssetOverviewTab'
 import AssetCapturesTab, { normalizeCaptureRows } from './detail/AssetCapturesTab'
@@ -126,11 +126,6 @@ export default function AssetDetail() {
   }, [tab, id])
 
   const printLabel = async () => {
-    const preview = openBlankLabelPreview()
-    if (!preview) {
-      setMsg('Allow pop-ups so the print preview can open.')
-      return
-    }
     try {
       const res = await api<{
         payload?: { labels?: LabelPrintSheet[] }
@@ -138,11 +133,10 @@ export default function AssetDetail() {
       }>(`/labels/hardware/${id}`, { method: 'POST', json: {} })
       const labels = res.payload?.labels || res.labels
       if (!labels?.length || !labels[0]?.qr_base64) throw new Error('No label returned')
-      showLabelPrintPreview(preview, labels)
-      setMsg('Print preview opened. Choose the printer in that window.')
+      printAssetLabels(labels)
+      setMsg('Choose the printer. This asset page stays open.')
       load()
     } catch (e) {
-      preview.close()
       setMsg(e instanceof Error ? e.message : 'Print label failed')
     }
   }
