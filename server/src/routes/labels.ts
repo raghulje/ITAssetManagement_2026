@@ -15,7 +15,7 @@ router.get('/templates', (_req, res) => {
         height: LABEL_HEIGHT_MM,
         support_1d_barcode: false,
         support_2d_barcode: true,
-        fields: ['assignee', 'asset_tag', 'device'],
+        fields: ['model', 'serial'],
       },
     ],
   })

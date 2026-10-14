@@ -24,16 +24,14 @@ export function openBlankLabelPreview() {
 export function showLabelPrintPreview(preview: Window, labels: LabelPrintSheet[]) {
   const sheets = labels.map((label) => {
     const src = `data:image/png;base64,${label.qr_base64}`
-    const lines = [0, 1, 2].map((i) => esc(label.lines[i] || ''))
+    const rows = label.lines.filter((line) => String(line || '').trim()).map((line) => `<div class="text-row">${esc(line)}</div>`).join('')
     return `<div class="label">
       <div class="label-content">
         <div class="qr-section">
           <img src="${src}" alt="Asset QR Code" />
         </div>
         <div class="text-section">
-          <div class="text-row">${lines[0]}</div>
-          <div class="text-row">${lines[1]}</div>
-          <div class="text-row">${lines[2]}</div>
+          ${rows}
         </div>
       </div>
     </div>`
