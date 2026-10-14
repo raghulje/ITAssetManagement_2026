@@ -3,115 +3,129 @@ export type LabelPrintSheet = {
   lines: string[]
 }
 
-function esc(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+/** 300 dpi. High enough for a sharp 12 mm QR, small enough to print quickly. */
+const PX_PER_MM = 300 / 25.4
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('QR image failed to load'))
+    img.src = src
+  })
 }
 
-function labelHtml(labels: LabelPrintSheet[]) {
-  const sheets = labels.map((label) => {
-    const src = `data:image/png;base64,${label.qr_base64}`
-    const rows = label.lines
-      .filter((line) => String(line || '').trim())
-      .map((line, index) => `<div class="text-row${index === 0 ? ' is-model' : ''}">${esc(line)}</div>`)
-      .join('')
-    return `<section class="label">
-      <div class="copy">${rows}</div>
-      <div class="qr"><img src="${src}" alt="" /></div>
-    </section>`
-  }).join('')
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let current = ''
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word
+    if (ctx.measureText(next).width <= maxWidth) current = next
+    else {
+      if (current) lines.push(current)
+      current = word
+    }
+  }
+  if (current) lines.push(current)
+  return lines.slice(0, 3)
+}
 
-  return `<!DOCTYPE html>
+/**
+ * One Brother label: 36 mm across the tape, 22 mm along it.
+ * QR on the left, model and serial on the right. No second page.
+ */
+async function renderLabelPng(label: LabelPrintSheet) {
+  const ppm = PX_PER_MM
+  const qr = await loadImage(`data:image/png;base64,${label.qr_base64}`)
+  const stripW = Math.round(36 * ppm)
+  const stripH = Math.round(22 * ppm)
+  const strip = document.createElement('canvas')
+  strip.width = stripW
+  strip.height = stripH
+  const sctx = strip.getContext('2d')
+  if (!sctx) throw new Error('Could not draw the label')
+
+  sctx.fillStyle = '#ffffff'
+  sctx.fillRect(0, 0, stripW, stripH)
+
+  const pad = Math.round(1 * ppm)
+  const qrSize = Math.round(12 * ppm)
+  const gap = Math.round(1 * ppm)
+  sctx.imageSmoothingEnabled = false
+  sctx.drawImage(qr, pad, Math.round((stripH - qrSize) / 2), qrSize, qrSize)
+
+  const textX = pad + qrSize + gap
+  const textMax = Math.max(10, stripW - textX - pad)
+  const fontPx = Math.max(8, Math.round((7 * 25.4 / 72) * ppm))
+  sctx.imageSmoothingEnabled = true
+  sctx.fillStyle = '#000000'
+  sctx.font = `700 ${fontPx}px Arial, sans-serif`
+  sctx.textBaseline = 'top'
+
+  const modelLines = wrapText(sctx, String(label.lines[0] || '').trim() || '—', textMax)
+  const serial = String(label.lines[1] || '').trim()
+  const lineH = Math.round(fontPx * 1.2)
+  const serialGap = Math.round(0.7 * ppm)
+  const blockH = modelLines.length * lineH + (serial ? serialGap + lineH : 0)
+  let y = Math.max(pad, Math.round((stripH - blockH) / 2))
+  for (const line of modelLines) {
+    sctx.fillText(line, textX, y, textMax)
+    y += lineH
+  }
+  if (serial) {
+    y += serialGap
+    sctx.fillText(serial, textX, y, textMax)
+  }
+
+  return strip.toDataURL('image/png')
+}
+
+function printDocument(images: string[]) {
+  const sheets = images.map((src) => `<img class="label" alt="" src="${src}" />`).join('')
+  const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Asset label</title>
   <style>
-    @page { size: 22mm 36mm; margin: 0; }
-    * { box-sizing: border-box; }
+    @page { size: 36mm 22mm; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
-      margin: 0;
-      padding: 0;
-      width: 22mm;
+      width: 36mm;
+      height: 22mm;
+      overflow: hidden;
       background: #fff;
     }
-    body.single {
-      height: 36mm;
-      overflow: hidden;
-    }
-    .label {
-      width: 22mm;
-      height: 36mm;
-      max-width: 22mm;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 0.8mm;
-      padding: 1mm;
-      background: #fff;
-      break-inside: avoid;
-      page-break-inside: avoid;
-      break-after: avoid;
+    img.label {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 36mm;
+      height: 22mm;
+      border: 0;
+      page-break-before: avoid;
       page-break-after: avoid;
+      break-before: avoid;
+      break-after: avoid;
     }
-    .label:not(:last-of-type) {
+    img.label:not(:only-child) {
+      position: static;
+      display: block;
+    }
+    img.label:not(:last-child) {
       break-after: page;
       page-break-after: always;
     }
-    .copy {
-      flex: 1 1 auto;
-      min-height: 0;
-      width: 20mm;
-      max-width: 20mm;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: flex-start;
-      gap: 0.7mm;
-      writing-mode: sideways-lr;
-      overflow: hidden;
-    }
-    .text-row {
-      margin: 0;
-      max-width: 100%;
-      font-family: Arial, sans-serif;
-      font-size: 7pt;
-      font-weight: 700;
-      line-height: 1.15;
-      color: #000;
-      white-space: nowrap;
-    }
-    .text-row.is-model {
-      white-space: normal;
-      overflow-wrap: break-word;
-    }
-    .qr {
-      width: 12mm;
-      height: 12mm;
-      flex: 0 0 12mm;
-    }
-    .qr img {
-      display: block;
-      width: 12mm;
-      height: 12mm;
-    }
   </style>
 </head>
-<body class="${labels.length === 1 ? 'single' : ''}">${sheets}</body>
+<body>${sheets}</body>
 </html>`
-}
 
-/** Print Brother PT-P900W labels from the current page, then leave the user there. */
-export function printAssetLabels(labels: LabelPrintSheet[]) {
   const iframe = document.createElement('iframe')
   iframe.setAttribute('title', 'Asset label print')
   iframe.setAttribute('aria-hidden', 'true')
-  iframe.style.cssText = 'position:fixed;left:-240mm;top:0;width:22mm;height:36mm;border:0;opacity:1;'
+  iframe.style.cssText = 'position:fixed;left:0;top:0;width:36mm;height:22mm;border:0;z-index:-1;'
   document.body.appendChild(iframe)
 
   const doc = iframe.contentDocument
@@ -122,17 +136,16 @@ export function printAssetLabels(labels: LabelPrintSheet[]) {
   }
 
   doc.open()
-  doc.write(labelHtml(labels))
+  doc.write(html)
   doc.close()
 
   let closed = false
   const finish = () => {
     if (closed) return
     closed = true
-    window.setTimeout(() => iframe.remove(), 250)
+    window.setTimeout(() => iframe.remove(), 400)
     window.focus()
   }
-
   frame.addEventListener('afterprint', finish)
 
   const start = () => {
@@ -141,7 +154,27 @@ export function printAssetLabels(labels: LabelPrintSheet[]) {
     window.setTimeout(finish, 120000)
   }
 
-  const img = doc.querySelector('img')
-  if (img && !img.complete) img.addEventListener('load', start, { once: true })
-  else window.setTimeout(start, 50)
+  const imgs = [...doc.querySelectorAll('img')]
+  if (!imgs.length) {
+    start()
+    return
+  }
+  let pending = imgs.length
+  const done = () => {
+    pending -= 1
+    if (pending <= 0) window.setTimeout(start, 30)
+  }
+  for (const img of imgs) {
+    if (img.complete && img.naturalWidth > 0) done()
+    else {
+      img.addEventListener('load', done, { once: true })
+      img.addEventListener('error', done, { once: true })
+    }
+  }
+}
+
+/** Print Brother PT-P900W labels from the current page, then leave the user there. */
+export async function printAssetLabels(labels: LabelPrintSheet[]) {
+  const images = await Promise.all(labels.map((label) => renderLabelPng(label)))
+  printDocument(images)
 }
