@@ -206,20 +206,77 @@ export function buildMonthOptions(year: number) {
   return options
 }
 
-export function buildFinancialYearOptions(count = 4) {
+type FyPart = 'FULL' | 'H1' | 'H2' | 'Q1' | 'Q2' | 'Q3' | 'Q4'
+
+const FY_PARTS: { part: FyPart; label: string; window: string }[] = [
+  { part: 'FULL', label: 'Full year', window: 'Apr–Mar' },
+  { part: 'H1', label: 'H1', window: 'Apr–Sep' },
+  { part: 'H2', label: 'H2', window: 'Oct–Mar' },
+  { part: 'Q1', label: 'Q1', window: 'Apr–Jun' },
+  { part: 'Q2', label: 'Q2', window: 'Jul–Sep' },
+  { part: 'Q3', label: 'Q3', window: 'Oct–Dec' },
+  { part: 'Q4', label: 'Q4', window: 'Jan–Mar' },
+]
+
+function fyLabel(fyStartYear: number) {
+  return `FY ${fyStartYear}–${String(fyStartYear + 1).slice(-2)}`
+}
+
+/** Indian FY slices. A slice that has not started yet is omitted. */
+export function getFyPartRange(fyStartYear: number, part: FyPart, { capToToday = true } = {}) {
+  const endYear = fyStartYear + 1
+  const windows: Record<FyPart, { from: Date; to: Date }> = {
+    FULL: { from: new Date(fyStartYear, 3, 1), to: new Date(endYear, 2, 31) },
+    H1: { from: new Date(fyStartYear, 3, 1), to: new Date(fyStartYear, 8, 30) },
+    H2: { from: new Date(fyStartYear, 9, 1), to: new Date(endYear, 2, 31) },
+    Q1: { from: new Date(fyStartYear, 3, 1), to: new Date(fyStartYear, 5, 30) },
+    Q2: { from: new Date(fyStartYear, 6, 1), to: new Date(fyStartYear, 8, 30) },
+    Q3: { from: new Date(fyStartYear, 9, 1), to: new Date(fyStartYear, 11, 31) },
+    Q4: { from: new Date(endYear, 0, 1), to: new Date(endYear, 2, 31) },
+  }
+  const window = windows[part]
+  const today = startOfDay(new Date())
+  if (startOfDay(window.from) > today) return null
+  let to = window.to
+  if (capToToday && to > today) to = today
+  if (to < window.from) return null
+  return { from: padDateInput(window.from), to: padDateInput(to) }
+}
+
+export type FinancialYearOption = {
+  key: string
+  fyStartYear: number
+  part: FyPart
+  label: string
+  sub: string
+  hint?: string
+  summary: string
+  range: PeriodRange
+}
+
+export function buildFinancialYearOptions(count = 6): FinancialYearOption[] {
   const currentFy = getFyStartYear()
-  const options: { key: string; label: string; sub: string; hint?: string; range: PeriodRange }[] = []
+  const options: FinancialYearOption[] = []
   for (let i = 0; i < count; i += 1) {
     const fyStartYear = currentFy - i
-    const range = getFinancialYearRange(fyStartYear)
-    const label = `FY ${fyStartYear}–${String(fyStartYear + 1).slice(-2)}`
-    options.push({
-      key: `fy:${fyStartYear}`,
-      label,
-      sub: `1 Apr ${fyStartYear} → 31 Mar ${fyStartYear + 1}`,
-      hint: i === 0 ? 'Current financial year' : undefined,
-      range: { from: range.from, to: range.to },
-    })
+    const yearName = fyLabel(fyStartYear)
+    for (const part of FY_PARTS) {
+      const range = getFyPartRange(fyStartYear, part.part)
+      if (!range) continue
+      const isFull = part.part === 'FULL'
+      options.push({
+        key: `fy:${fyStartYear}:${part.part}`,
+        fyStartYear,
+        part: part.part,
+        label: isFull ? 'Full year' : part.label,
+        sub: isFull
+          ? `1 Apr ${fyStartYear} → 31 Mar ${fyStartYear + 1}`
+          : `${part.window} · ${yearName}`,
+        hint: i === 0 && isFull ? 'Current financial year' : undefined,
+        summary: isFull ? `${yearName} · Apr–Mar` : `${yearName} · ${part.label} · ${part.window}`,
+        range: { from: range.from, to: range.to },
+      })
+    }
   }
   return options
 }
@@ -279,7 +336,8 @@ export default function AssetPeriodPicker({
     minWidth: 360,
     maxWidth: 400,
     matchTriggerWidth: false,
-    estimatedHeight: 420,
+    estimatedHeight: 520,
+    maxHeight: 520,
     align: 'end',
   })
 
@@ -313,7 +371,7 @@ export default function AssetPeriodPicker({
     [weekMonthCursor.year, weekMonthCursor.monthIndex],
   )
   const monthOptions = useMemo(() => buildMonthOptions(monthYear), [monthYear])
-  const fyOptions = useMemo(() => buildFinancialYearOptions(4), [])
+  const fyOptions = useMemo(() => buildFinancialYearOptions(6), [])
 
   const triggerLabel = summaryLabel || 'Select period'
   const hasSelection = Boolean(mode && range.from && range.to)
@@ -481,17 +539,20 @@ export default function AssetPeriodPicker({
                 <p className="asset-period-hint" style={{ marginBottom: 8 }}>
                   Indian financial year · 1 April → 31 March next year
                 </p>
-                {fyOptions.map((opt) => {
-                  const active = mode === 'fy' && range.from === opt.range.from
+                {fyOptions.map((opt, index) => {
+                  const active = mode === 'fy' && range.from === opt.range.from && range.to === opt.range.to
+                  const showYear = index === 0 || fyOptions[index - 1]?.fyStartYear !== opt.fyStartYear
                   return (
-                    <PeriodOptionRow
-                      key={opt.key}
-                      active={active}
-                      label={opt.label}
-                      sub={opt.sub}
-                      hint={opt.hint}
-                      onClick={() => applySelection('fy', opt.range, `${opt.label} · Apr–Mar`)}
-                    />
+                    <div key={opt.key}>
+                      {showYear ? <p className="asset-period-group">{fyLabel(opt.fyStartYear)}</p> : null}
+                      <PeriodOptionRow
+                        active={active}
+                        label={opt.label}
+                        sub={opt.sub}
+                        hint={opt.hint}
+                        onClick={() => applySelection('fy', opt.range, opt.summary)}
+                      />
+                    </div>
                   )
                 })}
               </div>
