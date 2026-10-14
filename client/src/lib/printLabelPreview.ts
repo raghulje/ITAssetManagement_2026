@@ -82,7 +82,7 @@ async function renderLabelPng(label: LabelPrintSheet) {
 }
 
 function printDocument(images: string[]) {
-  const sheets = images.map((src) => `<img class="label" alt="" src="${src}" />`).join('')
+  const sheets = images.map((src) => `<div class="label" style="background-image:url(&quot;${src}&quot;)"></div>`).join('')
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,33 +93,34 @@ function printDocument(images: string[]) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
       width: 36mm;
-      height: 22mm;
-      overflow: hidden;
       background: #fff;
     }
-    img.label {
-      position: fixed;
-      left: 0;
-      top: 0;
+    body.one {
+      height: 21.5mm;
+      overflow: hidden;
+    }
+    .label {
       width: 36mm;
-      height: 22mm;
-      border: 0;
-      page-break-before: avoid;
-      page-break-after: avoid;
-      break-before: avoid;
+      height: 21.5mm;
+      overflow: hidden;
+      background-color: #fff;
+      background-repeat: no-repeat;
+      background-position: center center;
+      background-size: 36mm 21.5mm;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      break-inside: avoid;
+      page-break-inside: avoid;
       break-after: avoid;
+      page-break-after: avoid;
     }
-    img.label:not(:only-child) {
-      position: static;
-      display: block;
-    }
-    img.label:not(:last-child) {
-      break-after: page;
-      page-break-after: always;
+    .label + .label {
+      break-before: page;
+      page-break-before: always;
     }
   </style>
 </head>
-<body>${sheets}</body>
+<body class="${images.length === 1 ? 'one' : ''}">${sheets}</body>
 </html>`
 
   const iframe = document.createElement('iframe')
@@ -154,23 +155,7 @@ function printDocument(images: string[]) {
     window.setTimeout(finish, 120000)
   }
 
-  const imgs = [...doc.querySelectorAll('img')]
-  if (!imgs.length) {
-    start()
-    return
-  }
-  let pending = imgs.length
-  const done = () => {
-    pending -= 1
-    if (pending <= 0) window.setTimeout(start, 30)
-  }
-  for (const img of imgs) {
-    if (img.complete && img.naturalWidth > 0) done()
-    else {
-      img.addEventListener('load', done, { once: true })
-      img.addEventListener('error', done, { once: true })
-    }
-  }
+  window.setTimeout(start, 80)
 }
 
 /** Print Brother PT-P900W labels from the current page, then leave the user there. */
