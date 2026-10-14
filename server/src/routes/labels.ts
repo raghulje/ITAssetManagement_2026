@@ -9,19 +9,19 @@ router.get('/templates', (_req, res) => {
   return okItem(res, {
     rows: [
       {
-        name: '36x30 mm',
+        name: 'Brother PT-P900W 22x36 mm',
         unit: 'mm',
         width: LABEL_WIDTH_MM,
         height: LABEL_HEIGHT_MM,
         support_1d_barcode: false,
         support_2d_barcode: true,
-        fields: ['asset_tag', 'company'],
+        fields: ['assignee', 'asset_tag', 'device'],
       },
     ],
   })
 })
 
-/** POST { asset_tags: string[] } → PNG sticker(s), 36 × 30 mm at 600 DPI */
+/** POST { asset_tags: string[] } → Brother PT-P900W label data (22 × 36 mm page) */
 router.post('/', async (req, res) => {
   const tags = req.body?.asset_tags || req.body?.assets || []
   if (!Array.isArray(tags) || !tags.length) return fail(res, 'asset_tags array required')

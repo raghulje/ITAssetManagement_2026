@@ -7,7 +7,7 @@ import { useAuth } from '../../api/AuthContext'
 import { assetImageSrc } from '../../api/baseUrl'
 import { formatINR } from '../../utils/money'
 import { formatAppDateTime } from '../../lib/datetime'
-import { openBlankLabelPreview, showLabelPrintPreview } from '../../lib/printLabelPreview'
+import { openBlankLabelPreview, showLabelPrintPreview, type LabelPrintSheet } from '../../lib/printLabelPreview'
 import AssetRecordHero from './detail/AssetRecordHero'
 import AssetOverviewTab from './detail/AssetOverviewTab'
 import AssetCapturesTab, { normalizeCaptureRows } from './detail/AssetCapturesTab'
@@ -133,15 +133,12 @@ export default function AssetDetail() {
     }
     try {
       const res = await api<{
-        payload?: { image_base64?: string; filename?: string; mime?: string }
-        image_base64?: string
-        filename?: string
-        mime?: string
+        payload?: { labels?: LabelPrintSheet[] }
+        labels?: LabelPrintSheet[]
       }>(`/labels/hardware/${id}`, { method: 'POST', json: {} })
-      const body = res.payload?.image_base64 ? res.payload : res
-      const b64 = body.image_base64
-      if (!b64) throw new Error('No label image returned')
-      showLabelPrintPreview(preview, b64, body.mime || 'image/png')
+      const labels = res.payload?.labels || res.labels
+      if (!labels?.length || !labels[0]?.qr_base64) throw new Error('No label returned')
+      showLabelPrintPreview(preview, labels)
       setMsg('Print preview opened. Choose the printer in that window.')
       load()
     } catch (e) {
