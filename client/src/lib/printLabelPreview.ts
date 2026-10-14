@@ -3,8 +3,10 @@ export type LabelPrintSheet = {
   lines: string[]
 }
 
-/** ~600 dpi. The printed page is 22mm × 36mm. */
+/** ~600 dpi. One sheet is 22mm wide. The picture is 33mm tall so it stays inside a 36mm page. */
 const PX_PER_MM = 24
+const LABEL_WIDTH_MM = 22
+const LABEL_HEIGHT_MM = 33
 
 function mm(value: number) {
   return Math.round(value * PX_PER_MM)
@@ -37,8 +39,8 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
 }
 
 async function renderLabel(label: LabelPrintSheet) {
-  const width = mm(22)
-  const height = mm(36)
+  const width = mm(LABEL_WIDTH_MM)
+  const height = mm(LABEL_HEIGHT_MM)
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -79,91 +81,63 @@ async function renderLabel(label: LabelPrintSheet) {
   return canvas.toDataURL('image/png')
 }
 
-function labelHtml(imageUrls: string[]) {
-  const sheets = imageUrls.map((src) => `<div class="sheet"><img src="${src}" alt="" /></div>`).join('')
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Brother PT-P900W Asset Tag</title>
-  <style>
-    @page { size: 22mm 36mm; margin: 0; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 22mm;
-      height: 36mm;
-      overflow: hidden;
-      background: #fff;
-    }
-    .sheet {
-      position: relative;
-      width: 22mm;
-      height: 35.6mm;
-      overflow: hidden;
-      margin: 0;
-      padding: 0;
-      break-after: avoid;
-      page-break-after: avoid;
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-    .sheet:not(:last-child) {
-      height: 36mm;
-      break-after: page;
-      page-break-after: always;
-    }
-    .sheet img {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 22mm;
-      height: 36mm;
-      display: block;
-    }
-  </style>
-</head>
-<body>${sheets}</body>
-</html>`
+const PRINT_STYLE = `
+@page { size: 22mm 36mm; margin: 0 !important; }
+@media screen {
+  #qr-label-print { display: none !important; }
 }
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    height: auto !important;
+    overflow: hidden !important;
+  }
+  body > *:not(#qr-label-print) { display: none !important; }
+  #qr-label-print {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: ${LABEL_WIDTH_MM}mm !important;
+    overflow: hidden !important;
+  }
+  #qr-label-print img {
+    display: block !important;
+    width: ${LABEL_WIDTH_MM}mm !important;
+    height: ${LABEL_HEIGHT_MM}mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+}
+`
 
-/** Print Brother PT-P900W labels from the current page. The dialog closes back here. */
+/** Print one label from this page. The picture is shorter than the sheet, so no blank page is added. */
 export async function printAssetLabels(labels: LabelPrintSheet[]) {
   const imageUrls = await Promise.all(labels.map(renderLabel))
-  const frame = document.createElement('iframe')
-  frame.setAttribute('aria-hidden', 'true')
-  frame.style.cssText = 'position:fixed;left:-120vw;top:0;width:22mm;height:36mm;border:0;'
-  document.body.appendChild(frame)
-  const doc = frame.contentDocument
-  const win = frame.contentWindow
-  if (!doc || !win) {
-    frame.remove()
-    throw new Error('Could not open the print dialog')
-  }
-  doc.open()
-  doc.write(labelHtml(imageUrls))
-  doc.close()
-
-  await new Promise<void>((resolve) => {
-    const img = doc.querySelector('img')
-    if (!img || img.complete) resolve()
-    else img.addEventListener('load', () => resolve(), { once: true })
-  })
+  const host = document.createElement('div')
+  host.id = 'qr-label-print'
+  host.innerHTML = imageUrls.map((src) => `<img alt="" src="${src}" />`).join('')
+  const style = document.createElement('style')
+  style.textContent = PRINT_STYLE
+  document.head.appendChild(style)
+  document.body.appendChild(host)
 
   await new Promise<void>((resolve) => {
     let done = false
     const finish = () => {
       if (done) return
       done = true
-      window.setTimeout(() => {
-        frame.remove()
-        window.focus()
-        resolve()
-      }, 250)
+      host.remove()
+      style.remove()
+      resolve()
     }
-    win.addEventListener('afterprint', finish, { once: true })
-    win.focus()
-    win.print()
+    window.addEventListener('afterprint', finish, { once: true })
+    window.print()
     finish()
   })
 }
