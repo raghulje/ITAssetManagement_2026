@@ -6,7 +6,7 @@ import { ThColumnFilter } from '../../components/ThColumnFilter'
 import { ModuleInsights } from '../../components/ModuleInsights'
 import AssetPeriodPicker, { getEmptyPeriodState, type PeriodState } from '../../components/AssetPeriodPicker'
 import { api, dashboardApi, hardwareApi, mastersApi, type SelectOption } from '../../api/client'
-import { printAssetLabels, type LabelPrintSheet } from '../../lib/printLabelPreview'
+import { openLabelPrintWindow, printAssetLabels, type LabelPrintSheet } from '../../lib/printLabelPreview'
 import { downloadCsv } from '../../utils/csv'
 import { useAuth } from '../../api/AuthContext'
 
@@ -425,6 +425,7 @@ export default function AssetsList() {
     if (!selectedCount) return
     const count = selectedCount
     if (count > 30 && !confirm(`Print ${count.toLocaleString('en-IN')} labels? Each asset prints on its own sheet.`)) return
+    const preview = openLabelPrintWindow()
     setBulkBusy(true)
     setBulkMsg('')
     try {
@@ -435,9 +436,10 @@ export default function AssetsList() {
       })
       const labels = (res.labels || []).filter((label) => label.qr_base64)
       if (!labels.length) throw new Error('No labels returned')
-      await printAssetLabels(labels)
+      await printAssetLabels(labels, preview)
       setBulkMsg(`Print dialog opened for ${labels.length.toLocaleString('en-IN')} label(s)`)
     } catch (e) {
+      if (preview && !preview.closed) preview.close()
       setBulkMsg(e instanceof Error ? e.message : 'Print failed')
     } finally {
       setBulkBusy(false)
