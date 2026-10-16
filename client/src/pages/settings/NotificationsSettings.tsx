@@ -160,9 +160,8 @@ export default function NotificationsSettings() {
                   {' '}Email notifications are {cfg.emails_enabled ? 'enabled' : 'disabled'}
                 </label>
                 <p className="help-block" style={{ margin: '8px 0 0' }}>
-                  Keep this off to stop asset create/delete, assign, maintenance, inventory, EOL, and license emails.
-                  Battery Degradation call emails are separate and stay on unless you turn that category off below.
-                  Recipients for those are set in Settings → Battery Degradation.
+                  Asset create/delete, assign, maintenance, inventory, EOL, and license emails stay off.
+                  Battery Degradation call and issue emails are on. Recipients are set in Settings → Battery Degradation.
                 </p>
               </div>
 
@@ -284,7 +283,7 @@ export default function NotificationsSettings() {
                     <label key={cat.key} className="checkbox" style={{ display: 'block', marginBottom: 6 }}>
                       <input
                         type="checkbox"
-                        disabled={!canEdit || (!independent && !cfg.emails_enabled)}
+                        disabled={!canEdit || independent || !cfg.emails_enabled}
                         checked={cfg.email_notifications[cat.key] !== false}
                         onChange={(e) => setCfg((c) => ({
                           ...c,

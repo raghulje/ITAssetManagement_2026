@@ -15,7 +15,7 @@ export type EmailCategoryKey =
 const INDEPENDENT_CATEGORIES = new Set<EmailCategoryKey>(['battery_calls'])
 
 export type NotificationConfig = {
-  /** Master switch. When false, asset/workflow/EOL/license emails are not sent. Battery call emails stay on. */
+  /** Master switch. Asset, workflow, EOL, and license emails stay off. Battery call emails are on. */
   emails_enabled: boolean
   email_notifications: Record<EmailCategoryKey, boolean>
   /** Extra addresses (comma/newline) always BCC'd on ops digests */
@@ -37,7 +37,7 @@ const DEFAULT_CONFIG: NotificationConfig = {
     crud: false,
     eol_warranty: false,
     license_renewal: false,
-    battery_calls: false,
+    battery_calls: true,
   },
   extra_ops_emails: '',
   email_recipient_user_ids: [],
@@ -53,9 +53,9 @@ function parseConfig(raw: unknown): NotificationConfig {
     obj = raw as Record<string, unknown>
   }
   const en = { ...DEFAULT_CONFIG.email_notifications }
-  for (const k of Object.keys(en) as EmailCategoryKey[]) en[k] = false
+  for (const k of Object.keys(en) as EmailCategoryKey[]) en[k] = k === 'battery_calls'
   return {
-    // Hard-off in code for every action email, including values saved in settings.
+    // Asset and workflow emails stay off. Battery Degradation emails stay on.
     emails_enabled: false,
     email_notifications: en,
     extra_ops_emails: String(obj.extra_ops_emails ?? ''),
@@ -113,7 +113,7 @@ export async function saveNotificationConfig(partial: Partial<NotificationConfig
   }
   next.emails_enabled = false
   for (const k of Object.keys(next.email_notifications) as EmailCategoryKey[]) {
-    next.email_notifications[k] = false
+    next.email_notifications[k] = k === 'battery_calls'
   }
   await run(`UPDATE settings SET notification_config = ?, updated_at = ? WHERE id = 1`, [
     JSON.stringify(next),
@@ -122,9 +122,9 @@ export async function saveNotificationConfig(partial: Partial<NotificationConfig
   return next
 }
 
-export async function isEmailCategoryEnabled(_category: EmailCategoryKey | string): Promise<boolean> {
-  // All action notifications are off in code (assign, maintenance, inventory, create/delete, EOL, license, battery).
-  return false
+export async function isEmailCategoryEnabled(category: EmailCategoryKey | string): Promise<boolean> {
+  // Only Battery Degradation emails send. Assign, maintenance, inventory, create/delete, EOL, and license stay off.
+  return INDEPENDENT_CATEGORIES.has(category as EmailCategoryKey)
 }
 
 function splitEmails(raw: string): string[] {
