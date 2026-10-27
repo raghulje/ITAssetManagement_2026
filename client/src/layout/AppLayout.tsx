@@ -414,9 +414,15 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
     <div className="wrapper has-refexone-shell">
       <RefexOneShell />
       <header className="main-header">
-        <NavLink to="/" className="logo" aria-label={siteName}>
-          <img src="/refexone-logo.png" alt={siteName} />
-        </NavLink>
+        <button
+          type="button"
+          className="logo"
+          onClick={() => goToRefexOne()}
+          title="Back to RefexOne"
+          aria-label="RefexOne"
+        >
+          <img src="/refexone-logo.png" alt="RefexOne" />
+        </button>
         <nav className="navbar">
           <form className="header-search" onSubmit={searchTag}>
             <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Search asset tag" />

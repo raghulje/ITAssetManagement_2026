@@ -246,8 +246,10 @@ img { max-width: 100%; }
   letter-spacing: -0.03em;
   flex-shrink: 0;
   transition: background 200ms var(--ease);
+  border: 0;
   border-right: 1px solid #e2e9f2;
   padding: 0 14px;
+  cursor: pointer;
 }
 .main-header .logo img {
   height: 36px;
