@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { downloadCsv } from '../utils/csv'
 import { useToast } from './Toast'
 import { fxVariantFromColor, playKpiClick } from '../lib/kpiFx'
+import { KpiIcon, KpiMarkIcons } from './kpiIcons'
 
 export function Box({
   title,
@@ -58,18 +59,6 @@ export function PageBack({
   )
 }
 
-const CARD_MARKS: Record<string, string[]> = {
-  'fas fa-barcode': ['fas fa-barcode', 'fas fa-qrcode', 'fas fa-laptop', 'fas fa-tag', 'fas fa-check'],
-  'fas fa-save': ['fas fa-save', 'fas fa-key', 'fas fa-id-badge', 'fas fa-file', 'fas fa-check'],
-  'fas fa-keyboard': ['fas fa-keyboard', 'fas fa-desktop', 'fas fa-plug', 'fas fa-box', 'fas fa-check'],
-  'fas fa-tint': ['fas fa-tint', 'fas fa-box-open', 'fas fa-cubes', 'fas fa-box', 'fas fa-check'],
-  'fas fa-hdd': ['fas fa-hdd', 'fas fa-desktop', 'fas fa-server', 'fas fa-barcode', 'fas fa-check'],
-  'fas fa-users': ['fas fa-users', 'fas fa-user', 'fas fa-id-badge', 'fas fa-building', 'fas fa-check'],
-  'fas fa-user-check': ['fas fa-user-check', 'fas fa-laptop', 'fas fa-barcode', 'fas fa-user', 'fas fa-check'],
-  'fas fa-warehouse': ['fas fa-warehouse', 'fas fa-boxes', 'fas fa-barcode', 'fas fa-box', 'fas fa-check'],
-  'fas fa-calendar-times': ['fas fa-calendar-times', 'fas fa-clock', 'fas fa-exclamation-triangle', 'fas fa-laptop', 'fas fa-barcode'],
-}
-
 const CARD_SUB: Record<string, string> = {
   Assets: 'Tracked hardware',
   Licenses: 'Software licenses',
@@ -103,20 +92,21 @@ export function KpiCard({
 }) {
   const text = typeof count === 'number' ? count.toLocaleString() : count
   const pct = share == null || !Number.isFinite(share) ? null : Math.max(0, Math.min(100, Math.round(share)))
-  const marks = CARD_MARKS[icon] || [icon, icon, icon, icon, icon]
   const subtitle = hint ?? CARD_SUB[label]
   return (
     <div className={`dashboard small-box ${color}${pct != null ? ' has-meter' : ''}`}>
       <span className="small-box-glow" aria-hidden="true" />
       <div className="small-box-head">
-        <span className="small-box-badge" aria-hidden="true"><i className={icon} /></span>
+        <span className="small-box-badge" aria-hidden="true">
+          <KpiIcon icon={icon} />
+        </span>
         <span className="small-box-copy">
           <span className="small-box-label">{label}</span>
           {subtitle ? <span className="small-box-hint">{subtitle}</span> : null}
         </span>
         {linked || pct != null ? (
           <span className="small-box-chip">
-            <i className="fas fa-arrow-right" aria-hidden="true" />
+            <KpiIcon icon="arrow" />
             {pct != null ? `${pct}%` : null}
           </span>
         ) : null}
@@ -131,7 +121,7 @@ export function KpiCard({
           </div>
         </div>
         <span className="small-box-marks" aria-hidden="true">
-          {marks.map((name, n) => <i key={`${name}-${n}`} className={name} />)}
+          <KpiMarkIcons icon={icon} />
         </span>
       </div>
       {pct != null ? (
@@ -146,6 +136,8 @@ export function KpiCard({
 
 export function SmallBox({
   to,
+  onClick,
+  active,
   count,
   label,
   color,
@@ -156,6 +148,8 @@ export function SmallBox({
   total,
 }: {
   to?: string
+  onClick?: () => void
+  active?: boolean
   count: number | string
   label: string
   color: string
@@ -165,21 +159,34 @@ export function SmallBox({
   share?: number
   total?: number
 }) {
+  const linked = Boolean(to || onClick)
   const box = (
     <KpiCard
       count={count}
       label={label}
       color={color}
       icon={icon}
-      hint={footer}
+      hint={footer || (onClick ? (active ? 'Showing below' : 'Show records') : undefined)}
       share={share}
       total={total}
-      linked={Boolean(to)}
+      linked={linked}
     />
   )
+  const wrapClass = `${colClass}${active ? ' is-dash-card-active' : ''}`
   return (
-    <div className={colClass} data-aos="zoom-in">
-      {to ? (
+    <div className={wrapClass} data-aos="zoom-in">
+      {onClick ? (
+        <button
+          type="button"
+          className={`small-box-link small-box-button${active ? ' is-active' : ''}`}
+          onClick={(e: MouseEvent<HTMLButtonElement>) => {
+            playKpiClick(fxVariantFromColor(color), e.currentTarget)
+            onClick()
+          }}
+        >
+          {box}
+        </button>
+      ) : to ? (
         <Link
           to={to}
           className="small-box-link"

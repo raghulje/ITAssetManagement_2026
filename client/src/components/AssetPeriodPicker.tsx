@@ -412,7 +412,7 @@ export default function AssetPeriodPicker({
         className="asset-period-trigger"
       >
         <span className="asset-period-trigger-icon" aria-hidden>
-          <CalendarRange size={14} strokeWidth={2.25} />
+          <CalendarRange size={16} strokeWidth={2.15} />
         </span>
         <span className="asset-period-trigger-text">
           <span className="asset-period-trigger-kicker">Period</span>
