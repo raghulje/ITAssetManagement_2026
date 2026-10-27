@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- period picker + range helpers */
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { CalendarRange, ChevronDown, ChevronUp, Check } from 'lucide-react'
-import { FloatingPortal, useFloatingStyle } from './formControls'
+import { DateField, FloatingPortal, useFloatingStyle } from './formControls'
 
 export type PeriodMode = 'weekly' | 'monthly' | 'fy' | 'custom' | ''
 
@@ -480,6 +480,7 @@ export default function AssetPeriodPicker({
     const onDoc = (event: MouseEvent) => {
       const t = event.target as Node
       if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return
+      if (t instanceof Element && t.closest('.date-picker, .date-field')) return
       setOpen(false)
     }
     const onKey = (event: KeyboardEvent) => {
@@ -623,23 +624,11 @@ export default function AssetPeriodPicker({
             <div className="asset-period-custom">
               <div>
                 <label className="asset-period-custom-label" htmlFor={fromId}>From</label>
-                <input
-                  id={fromId}
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  className="asset-period-custom-input"
-                />
+                <DateField id={fromId} value={customFrom} onChange={setCustomFrom} placeholder="From" />
               </div>
               <div>
                 <label className="asset-period-custom-label" htmlFor={toId}>To</label>
-                <input
-                  id={toId}
-                  type="date"
-                  value={customTo}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  className="asset-period-custom-input"
-                />
+                <DateField id={toId} value={customTo} onChange={setCustomTo} placeholder="To" />
               </div>
               <button
                 type="button"

@@ -190,13 +190,24 @@ export default function Dashboard() {
     loadCounts()
   }, [loadCounts])
 
+  const revealTimer = useRef<number | null>(null)
+  const flashTimer = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (revealTimer.current) window.clearTimeout(revealTimer.current)
+    if (flashTimer.current) window.clearTimeout(flashTimer.current)
+  }, [])
+
   const selectModule = useCallback((mod: DashModule) => {
     setActiveModule(mod)
-    setFlash(true)
-    window.setTimeout(() => setFlash(false), 900)
-    window.requestAnimationFrame(() => {
+    setFlash(false)
+    if (revealTimer.current) window.clearTimeout(revealTimer.current)
+    const wait = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1100
+    revealTimer.current = window.setTimeout(() => {
       tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
+      setFlash(true)
+      if (flashTimer.current) window.clearTimeout(flashTimer.current)
+      flashTimer.current = window.setTimeout(() => setFlash(false), 1400)
+    }, wait)
   }, [])
 
   useEffect(() => {
@@ -389,12 +400,13 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="dash-hello-actions">
-          <DashSemanticSearchButton onClick={() => setSearchOpen(true)} />
           <div className="dash-filters-mobile">
+            <DashSemanticSearchButton onClick={() => setSearchOpen(true)} />
             <DashFiltersButton count={activeFilterCount} onClick={() => setSheetOpen(true)} />
           </div>
         </div>
         <div className="dash-hello-filters dash-filters-desktop">
+          <DashSemanticSearchButton onClick={() => setSearchOpen(true)} />
           <label className="dash-hello-field">
             <span>Company</span>
             <AppSelect

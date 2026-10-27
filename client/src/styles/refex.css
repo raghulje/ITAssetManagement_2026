@@ -1430,6 +1430,7 @@ input[type="date"].form-control::-webkit-calendar-picker-indicator {
   bottom: auto;
   max-width: calc(100vw - 16px);
   box-sizing: border-box;
+  z-index: 10050 !important;
 }
 .date-picker-header {
   display: flex;
@@ -2565,15 +2566,15 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
 }
 .asset-period-trigger:hover,
 .asset-period-trigger[aria-expanded="true"] {
-  border-color: #c7d2fe;
+  border-color: #8fd4de;
   box-shadow: none;
 }
 .asset-period-trigger-icon {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: #EEF3FF;
-  color: #4f46e5;
+  background: #e6f6f8;
+  color: #0f6b7a;
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -2653,11 +2654,11 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
 }
 .asset-period-kind:hover { background: #e2e8f0; }
 .asset-period-kind.is-active {
-  background: #E8F0FE;
-  color: #1e293b;
-  border-color: #bae6fd;
+  background: #e6f6f8;
+  color: #0f6b7a;
+  border-color: #8fd4de;
 }
-.asset-period-kind.is-active:hover { background: #E8F0FE; }
+.asset-period-kind.is-active:hover { background: #e6f6f8; }
 .asset-period-grains {
   display: flex;
   background: #f1f5f9;
@@ -2683,9 +2684,9 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
 }
 .asset-period-grain.is-active {
   background: #fff;
-  color: #1e293b;
-  border-color: #bae6fd;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  color: #0f6b7a;
+  border-color: #8fd4de;
+  box-shadow: 0 1px 2px rgba(15, 107, 122, 0.08);
 }
 .asset-period-year-hint {
   margin: 0 0 8px;
@@ -2728,14 +2729,19 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   height: 36px;
   border: 0;
   border-radius: 12px;
-  background: #4f46e5;
+  background: #17a2b4;
   color: #fff;
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
-.asset-period-apply:hover { background: #4338ca; }
+.asset-period-apply:hover { background: #0f6b7a; }
+.asset-period-custom .date-field,
+.asset-period-custom .date-field-trigger {
+  width: 100%;
+  min-width: 0;
+}
 .asset-period-hint {
   margin: 0;
   font-size: 12px;
@@ -4114,6 +4120,11 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid #bfe6ec;
 }
+.dash-hello-filters .dash-semantic-btn {
+  align-self: flex-end;
+  height: 44px;
+  flex: none;
+}
 .dash-hello-field {
   display: flex;
   flex-direction: column;
@@ -4129,7 +4140,7 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
 }
 .dash-hello-refresh { margin-bottom: 4px; }
 .dash-hello-actions {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 10px;
   margin-left: auto;
@@ -4285,8 +4296,22 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   transition: box-shadow 280ms var(--ease), border-color 280ms var(--ease);
 }
 .dash-records.is-flash {
-  border-color: rgba(23, 162, 180, 0.55);
-  box-shadow: 0 0 0 4px rgba(23, 162, 180, 0.16), 0 16px 36px -18px rgba(15, 107, 122, 0.45);
+  border-color: rgba(23, 162, 180, 0.7);
+  box-shadow: 0 0 0 4px rgba(23, 162, 180, 0.18), 0 16px 36px -18px rgba(15, 107, 122, 0.45);
+  animation: dash-records-flash 1.4s ease;
+}
+.dash-records.is-flash .dash-records-title { color: #0f6b7a; }
+.dash-records.is-flash .dash-records-table tbody td {
+  animation: dash-row-flash 1.4s ease;
+}
+@keyframes dash-records-flash {
+  0% { box-shadow: 0 0 0 0 rgba(23, 162, 180, 0.45); }
+  35% { box-shadow: 0 0 0 6px rgba(23, 162, 180, 0.2), 0 16px 36px -18px rgba(15, 107, 122, 0.45); }
+  100% { box-shadow: 0 0 0 4px rgba(23, 162, 180, 0.18), 0 16px 36px -18px rgba(15, 107, 122, 0.45); }
+}
+@keyframes dash-row-flash {
+  0% { background: rgba(23, 162, 180, 0.22); }
+  100% { background: transparent; }
 }
 .dash-records-head {
   display: flex;
@@ -4528,6 +4553,7 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
     min-width: 0;
   }
   .dash-hello-actions {
+    display: flex;
     width: 100%;
     margin-left: 0;
     flex-direction: column;
@@ -4538,7 +4564,9 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
     justify-content: flex-start;
   }
   .dash-hello .dash-filters-mobile {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     margin: 0;
     width: 100%;
   }
