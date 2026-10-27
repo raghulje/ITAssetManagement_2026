@@ -26,13 +26,9 @@ function nestName(v: unknown) {
 
 export function DashSemanticSearchButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" className="dash-semantic-btn" onClick={onClick} title="Search across assets, licenses, people… (Ctrl+K)">
+    <button type="button" className="dash-semantic-btn" onClick={onClick} aria-label="Search">
       <i className="fas fa-search" aria-hidden />
-      <span className="dash-semantic-btn-copy">
-        <strong>Semantic search</strong>
-        <small>Assets · licenses · people</small>
-      </span>
-      <kbd className="dash-semantic-kbd">Ctrl K</kbd>
+      <span>Search</span>
     </button>
   )
 }

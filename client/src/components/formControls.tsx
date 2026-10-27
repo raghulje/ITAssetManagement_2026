@@ -26,6 +26,8 @@ export function useFloatingStyle(
     align?: 'start' | 'end'
     /** Cap the menu height. Defaults to 280 so compact selects stay short. */
     maxHeight?: number
+    /** Space between the trigger and the menu. Defaults to 6. */
+    gap?: number
   },
 ) {
   const [style, setStyle] = useState<CSSProperties>({})
@@ -52,7 +54,7 @@ export function useFloatingStyle(
       if (!trigger) return
       const rect = trigger.getBoundingClientRect()
       const pad = 8
-      const gap = 6
+      const gap = opts?.gap ?? 6
       const vw = window.innerWidth
       const vh = window.innerHeight
       const estimated = opts?.estimatedHeight ?? menuRef.current?.offsetHeight ?? 280
@@ -128,7 +130,7 @@ export function useFloatingStyle(
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onResize)
     }
-  }, [open, triggerRef, menuRef, opts?.estimatedHeight, opts?.minWidth, opts?.matchTriggerWidth, opts?.maxWidth, opts?.align, opts?.maxHeight])
+  }, [open, triggerRef, menuRef, opts?.estimatedHeight, opts?.minWidth, opts?.matchTriggerWidth, opts?.maxWidth, opts?.align, opts?.maxHeight, opts?.gap])
 
   return { style, placement }
 }

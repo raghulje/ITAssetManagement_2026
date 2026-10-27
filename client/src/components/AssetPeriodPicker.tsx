@@ -1,9 +1,9 @@
 /* eslint-disable react-refresh/only-export-components -- period picker + range helpers */
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarRange, ChevronDown, Check } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { CalendarRange, ChevronDown, ChevronUp, Check } from 'lucide-react'
 import { FloatingPortal, useFloatingStyle } from './formControls'
 
-export type PeriodMode = 'weekly' | 'monthly' | 'fy' | ''
+export type PeriodMode = 'weekly' | 'monthly' | 'fy' | 'custom' | ''
 
 export type PeriodRange = { from: string; to: string }
 
@@ -285,6 +285,141 @@ export function getEmptyPeriodState(): PeriodState {
   return { mode: '', range: { from: '', to: '' }, summaryLabel: '' }
 }
 
+type Grain = 'weekly' | 'monthly' | 'year' | 'custom'
+type Kind = 'today' | 'mtd' | 'qtd' | 'this_fy'
+
+const KINDS: { id: Kind; label: string }[] = [
+  { id: 'today', label: 'Today' },
+  { id: 'mtd', label: 'MTD' },
+  { id: 'qtd', label: 'QTD' },
+  { id: 'this_fy', label: 'This FY' },
+]
+
+const GRAINS: { id: Grain; label: string }[] = [
+  { id: 'weekly', label: 'Weekly' },
+  { id: 'monthly', label: 'Monthly' },
+  { id: 'year', label: 'Year' },
+  { id: 'custom', label: 'Custom' },
+]
+
+type PickerOption = {
+  key: string
+  label: string
+  sub: string
+  from: string
+  to: string
+  current: boolean
+}
+
+function formatShort(iso: string) {
+  const d = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function indianQuarterStart(d = new Date()) {
+  const day = startOfDay(d)
+  const m = day.getMonth()
+  if (m >= 3 && m <= 5) return new Date(day.getFullYear(), 3, 1)
+  if (m >= 6 && m <= 8) return new Date(day.getFullYear(), 6, 1)
+  if (m >= 9 && m <= 11) return new Date(day.getFullYear(), 9, 1)
+  return new Date(day.getFullYear(), 0, 1)
+}
+
+function rangeForKind(kind: Kind, today = startOfDay(new Date())) {
+  const fy = getFyStartYear(today)
+  if (kind === 'today') return { from: padDateInput(today), to: padDateInput(today) }
+  if (kind === 'mtd') return { from: padDateInput(new Date(today.getFullYear(), today.getMonth(), 1)), to: padDateInput(today) }
+  if (kind === 'qtd') return { from: padDateInput(indianQuarterStart(today)), to: padDateInput(today) }
+  return { from: padDateInput(new Date(fy, 3, 1)), to: padDateInput(today) }
+}
+
+function p2pYearOptions(today = startOfDay(new Date()), count = 8): PickerOption[] {
+  const current = getFyStartYear(today)
+  return Array.from({ length: count }, (_, i) => {
+    const startYear = current - i
+    const from = new Date(startYear, 3, 1)
+    const end = new Date(startYear + 1, 2, 31)
+    const isCurrent = i === 0
+    const to = isCurrent && today < end ? today : end
+    return {
+      key: `fy:${startYear}`,
+      label: `FY ${startYear}–${String(startYear + 1).slice(-2)}`,
+      sub: isCurrent
+        ? `${formatShort(padDateInput(from))} → Today`
+        : `${formatShort(padDateInput(from))} → ${formatShort(padDateInput(end))}`,
+      from: padDateInput(from),
+      to: padDateInput(to),
+      current: isCurrent,
+    }
+  })
+}
+
+function p2pMonthOptions(today = startOfDay(new Date()), count = 12): PickerOption[] {
+  return Array.from({ length: count }, (_, i) => {
+    const from = new Date(today.getFullYear(), today.getMonth() - i, 1)
+    const end = new Date(today.getFullYear(), today.getMonth() - i + 1, 0)
+    const isCurrent = i === 0
+    const to = isCurrent ? today : end
+    return {
+      key: `month:${padDateInput(from)}`,
+      label: from.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+      sub: isCurrent
+        ? `${formatShort(padDateInput(from))} → Today`
+        : `${formatShort(padDateInput(from))} → ${formatShort(padDateInput(end))}`,
+      from: padDateInput(from),
+      to: padDateInput(to),
+      current: isCurrent,
+    }
+  })
+}
+
+function p2pWeekOptions(today = startOfDay(new Date()), count = 12): PickerOption[] {
+  const monday = getMonday(today)
+  return Array.from({ length: count }, (_, i) => {
+    const from = new Date(monday)
+    from.setDate(from.getDate() - i * 7)
+    const end = new Date(from)
+    end.setDate(end.getDate() + 6)
+    const isCurrent = i === 0
+    const to = isCurrent ? today : end
+    return {
+      key: `week:${padDateInput(from)}`,
+      label: `Week of ${formatShort(padDateInput(from))}`,
+      sub: isCurrent
+        ? `${formatShort(padDateInput(from))} → Today`
+        : `${formatShort(padDateInput(from))} → ${formatShort(padDateInput(end))}`,
+      from: padDateInput(from),
+      to: padDateInput(to),
+      current: isCurrent,
+    }
+  })
+}
+
+function periodButtonLabel(from: string, to: string) {
+  if (!from || !to) return ''
+  const today = startOfDay(new Date())
+  const todayIso = padDateInput(today)
+  const years = p2pYearOptions(today)
+  const currentFy = years[0]
+  if (currentFy && from === currentFy.from && (to === currentFy.to || to === todayIso)) return currentFy.label
+  if (from === todayIso && to === todayIso) return 'Today'
+  const mtd = rangeForKind('mtd', today)
+  if (from === mtd.from && to === mtd.to) return 'MTD'
+  const qtd = rangeForKind('qtd', today)
+  if (from === qtd.from && to === qtd.to) return 'QTD'
+  const match = years.find((y) => y.from === from && (y.to === to || (y.current && to === todayIso)))
+  if (match) return match.label
+  return `${formatShort(from)} – ${formatShort(to)}`
+}
+
+function grainForMode(mode: PeriodMode): Grain {
+  if (mode === 'weekly') return 'weekly'
+  if (mode === 'monthly') return 'monthly'
+  if (mode === 'custom') return 'custom'
+  return 'year'
+}
+
 export function getDefaultApproverPeriodState(): PeriodState {
   const fyStartYear = getFyStartYear()
   const range = getFinancialYearRange(fyStartYear)
@@ -295,12 +430,6 @@ export function getDefaultApproverPeriodState(): PeriodState {
   }
 }
 
-const MODE_OPTIONS = [
-  { key: 'weekly' as const, label: 'Weekly' },
-  { key: 'monthly' as const, label: 'Monthly' },
-  { key: 'fy' as const, label: 'Financial Year' },
-]
-
 type Props = {
   mode?: PeriodMode
   range?: PeriodRange
@@ -310,8 +439,8 @@ type Props = {
 }
 
 /**
- * Adaptive period control — Weekly / Monthly / FY (Apr–Mar).
- * Same UX as ITSM ITApproverPeriodPicker.
+ * Period control. Closed button and open menu match the P2P dashboard picker.
+ * The selected range is what asset lists filter on.
  */
 export default function AssetPeriodPicker({
   mode = '',
@@ -321,35 +450,33 @@ export default function AssetPeriodPicker({
   className = '',
 }: Props) {
   const [open, setOpen] = useState(false)
-  const [panelMode, setPanelMode] = useState<'weekly' | 'monthly' | 'fy'>(
-    mode === 'weekly' || mode === 'monthly' || mode === 'fy' ? mode : 'fy',
-  )
-  const [monthYear, setMonthYear] = useState(() => new Date().getFullYear())
-  const [weekMonthCursor, setWeekMonthCursor] = useState(() => {
-    const now = new Date()
-    return { year: now.getFullYear(), monthIndex: now.getMonth() }
-  })
+  const [grain, setGrain] = useState<Grain>(() => grainForMode(mode))
+  const [kind, setKind] = useState<Kind>('this_fy')
+  const [customFrom, setCustomFrom] = useState(range.from)
+  const [customTo, setCustomTo] = useState(range.to)
+  const fromId = useId()
+  const toId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const { style: panelStyle } = useFloatingStyle(open, triggerRef, panelRef, {
     minWidth: 360,
-    maxWidth: 400,
+    maxWidth: 360,
     matchTriggerWidth: false,
-    estimatedHeight: 520,
-    maxHeight: 520,
-    align: 'end',
+    estimatedHeight: 460,
+    maxHeight: 640,
+    align: 'start',
+    gap: 8,
   })
 
   useEffect(() => {
+    setCustomFrom(range.from)
+    setCustomTo(range.to)
+  }, [range.from, range.to])
+
+  useEffect(() => {
     if (!open) return undefined
-    setPanelMode(mode === 'weekly' || mode === 'monthly' || mode === 'fy' ? mode : 'fy')
-    if (mode === 'weekly' && range?.from) {
-      const anchor = new Date(`${range.from}T12:00:00`)
-      if (!Number.isNaN(anchor.getTime())) {
-        setWeekMonthCursor({ year: anchor.getFullYear(), monthIndex: anchor.getMonth() })
-      }
-    }
+    setGrain(grainForMode(mode))
     const onDoc = (event: MouseEvent) => {
       const t = event.target as Node
       if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return
@@ -364,40 +491,66 @@ export default function AssetPeriodPicker({
       document.removeEventListener('mousedown', onDoc)
       document.removeEventListener('keydown', onKey)
     }
-  }, [open, mode, range?.from])
+  }, [open, mode])
 
-  const weekOptions = useMemo(
-    () => buildWeekNavOptions({ year: weekMonthCursor.year, monthIndex: weekMonthCursor.monthIndex }),
-    [weekMonthCursor.year, weekMonthCursor.monthIndex],
-  )
-  const monthOptions = useMemo(() => buildMonthOptions(monthYear), [monthYear])
-  const fyOptions = useMemo(() => buildFinancialYearOptions(6), [])
+  const weeks = useMemo(() => p2pWeekOptions(), [])
+  const months = useMemo(() => p2pMonthOptions(), [])
+  const years = useMemo(() => p2pYearOptions(), [])
+  const list = grain === 'monthly' ? months : grain === 'weekly' ? weeks : grain === 'year' ? years : []
 
-  const triggerLabel = summaryLabel || 'Select period'
-  const hasSelection = Boolean(mode && range.from && range.to)
+  const activeKind = (['today', 'mtd', 'qtd', 'this_fy'] as Kind[]).find((id) => {
+    const next = rangeForKind(id)
+    return next.from === range.from && next.to === range.to
+  })
 
-  const applySelection = (nextMode: PeriodMode, nextRange: PeriodRange, label: string) => {
-    onChange?.({ mode: nextMode, range: nextRange, summaryLabel: label })
-    setOpen(false)
-  }
+  const triggerLabel = summaryLabel || periodButtonLabel(range.from, range.to) || 'Select period'
 
-  const shiftWeekMonth = (delta: number) => {
-    setWeekMonthCursor((prev) => {
-      const d = new Date(prev.year, prev.monthIndex + delta, 1)
-      const now = new Date()
-      if (
-        d.getFullYear() > now.getFullYear()
-        || (d.getFullYear() === now.getFullYear() && d.getMonth() > now.getMonth())
-      ) {
-        return { year: now.getFullYear(), monthIndex: now.getMonth() }
-      }
-      return { year: d.getFullYear(), monthIndex: d.getMonth() }
+  const applyRange = (nextMode: PeriodMode, from: string, to: string, close = false) => {
+    onChange?.({
+      mode: nextMode,
+      range: { from, to },
+      summaryLabel: periodButtonLabel(from, to),
     })
+    if (close) setOpen(false)
   }
 
-  const canShiftWeekMonthForward =
-    weekMonthCursor.year < new Date().getFullYear()
-    || (weekMonthCursor.year === new Date().getFullYear() && weekMonthCursor.monthIndex < new Date().getMonth())
+  const pickKind = (next: Kind) => {
+    setKind(next)
+    const picked = rangeForKind(next)
+    if (next === 'this_fy') {
+      setGrain('year')
+      applyRange('fy', picked.from, picked.to)
+    } else if (next === 'mtd') {
+      setGrain('monthly')
+      applyRange('monthly', picked.from, picked.to)
+    } else if (next === 'today') {
+      setGrain('custom')
+      applyRange('custom', picked.from, picked.to, true)
+    } else {
+      setGrain('custom')
+      applyRange('custom', picked.from, picked.to)
+    }
+  }
+
+  const pickGrain = (next: Grain) => {
+    setGrain(next)
+    if (next === 'monthly') {
+      const item = months[0]
+      if (item) applyRange('monthly', item.from, item.to)
+      setKind(item?.current ? 'mtd' : 'this_fy')
+      return
+    }
+    if (next === 'weekly') {
+      const item = weeks[0]
+      if (item) applyRange('weekly', item.from, item.to)
+      return
+    }
+    if (next === 'year') {
+      const item = years[0]
+      if (item) applyRange('fy', item.from, item.to)
+      setKind('this_fy')
+    }
+  }
 
   return (
     <div ref={rootRef} className={`asset-period-picker ${className}`.trim()}>
@@ -418,11 +571,11 @@ export default function AssetPeriodPicker({
           <span className="asset-period-trigger-kicker">Period</span>
           <span className="asset-period-trigger-label">{triggerLabel}</span>
         </span>
-        <ChevronDown
-          size={16}
-          className={`asset-period-chevron${open ? ' is-open' : ''}`}
-          aria-hidden
-        />
+        {open ? (
+          <ChevronUp size={18} className="asset-period-chevron" aria-hidden />
+        ) : (
+          <ChevronDown size={18} className="asset-period-chevron" aria-hidden />
+        )}
       </button>
 
       <FloatingPortal open={open}>
@@ -431,179 +584,109 @@ export default function AssetPeriodPicker({
           className="asset-period-panel asset-period-panel--portal"
           role="dialog"
           aria-label="Choose period"
-          style={panelStyle}
+          style={{ ...panelStyle, zIndex: 9999, maxHeight: 'none' }}
         >
-          <div className="asset-period-panel-head">
-            <p className="asset-period-panel-kicker">Choose period type</p>
-            <div className="asset-period-segments">
-              {MODE_OPTIONS.map((opt) => (
+          <p className="asset-period-panel-kicker">Choose period type</p>
+          <div className="asset-period-kinds">
+            {KINDS.map((item) => {
+              const active = (activeKind || kind) === item.id
+              return (
                 <button
-                  key={opt.key}
+                  key={item.id}
                   type="button"
-                  className={`asset-period-seg${panelMode === opt.key ? ' is-active' : ''}`}
-                  onClick={() => {
-                    setPanelMode(opt.key)
-                    if (opt.key === 'weekly') {
-                      const now = new Date()
-                      setWeekMonthCursor({ year: now.getFullYear(), monthIndex: now.getMonth() })
-                      onChange?.(getCurrentWeekPeriodState())
-                    }
-                  }}
+                  className={`asset-period-kind${active ? ' is-active' : ''}`}
+                  onClick={() => pickKind(item.id)}
                 >
-                  {opt.label}
+                  {item.label}
                 </button>
-              ))}
-            </div>
+              )
+            })}
+          </div>
+          <div className="asset-period-grains">
+            {GRAINS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`asset-period-grain${grain === item.id ? ' is-active' : ''}`}
+                onClick={() => pickGrain(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
 
-          <div className="asset-period-panel-body">
-            {panelMode === 'weekly' ? (
-              <div className="asset-period-stack">
-                <div className="asset-period-nav">
-                  <p className="asset-period-hint">Weeks in month · Mon → Sun</p>
-                  <div className="asset-period-nav-controls">
-                    <button type="button" className="asset-period-nav-btn" onClick={() => shiftWeekMonth(-1)}>←</button>
-                    <span className="asset-period-nav-label">
-                      {formatMonthLabel(weekMonthCursor.year, weekMonthCursor.monthIndex)}
-                    </span>
-                    <button
-                      type="button"
-                      className="asset-period-nav-btn"
-                      disabled={!canShiftWeekMonthForward}
-                      onClick={() => shiftWeekMonth(1)}
-                    >
-                      →
-                    </button>
-                  </div>
-                </div>
-                <p className="asset-period-meta">
-                  {weekOptions.length} week{weekOptions.length === 1 ? '' : 's'} available · no future weeks
-                </p>
-                {weekOptions.map((opt) => {
-                  const active = mode === 'weekly' && range.from === opt.range.from && range.to === opt.range.to
-                  return (
-                    <PeriodOptionRow
-                      key={opt.key}
-                      active={active}
-                      label={opt.label}
-                      sub={opt.sub}
-                      hint={opt.hint}
-                      onClick={() => applySelection('weekly', opt.range, `${opt.label} · ${opt.sub}`)}
-                    />
-                  )
-                })}
-                {!weekOptions.length ? (
-                  <p className="asset-period-empty">No weeks in this month yet.</p>
-                ) : null}
-              </div>
-            ) : null}
+          {grain === 'year' ? (
+            <p className="asset-period-year-hint">Indian financial year · 1 April → 31 March next year</p>
+          ) : null}
 
-            {panelMode === 'monthly' ? (
-              <div className="asset-period-stack">
-                <div className="asset-period-nav">
-                  <p className="asset-period-hint">Calendar months · January → December</p>
-                  <div className="asset-period-nav-controls">
-                    <button type="button" className="asset-period-nav-btn" onClick={() => setMonthYear((y) => y - 1)}>←</button>
-                    <span className="asset-period-nav-label is-year">{monthYear}</span>
-                    <button
-                      type="button"
-                      className="asset-period-nav-btn"
-                      disabled={monthYear >= new Date().getFullYear()}
-                      onClick={() => setMonthYear((y) => Math.min(new Date().getFullYear(), y + 1))}
-                    >
-                      →
-                    </button>
-                  </div>
-                </div>
-                <div className="asset-period-month-grid">
-                  {monthOptions.map((opt) => {
-                    const active = mode === 'monthly' && range.from === opt.range.from
-                    return (
-                      <button
-                        key={opt.key}
-                        type="button"
-                        className={`asset-period-month-btn${active ? ' is-active' : ''}`}
-                        onClick={() => applySelection('monthly', opt.range, opt.label)}
-                      >
-                        <span className="asset-period-month-name">{opt.label.split(' ')[0]}</span>
-                        <span className="asset-period-month-sub">{opt.sub}</span>
-                      </button>
-                    )
-                  })}
-                </div>
+          {grain === 'custom' ? (
+            <div className="asset-period-custom">
+              <div>
+                <label className="asset-period-custom-label" htmlFor={fromId}>From</label>
+                <input
+                  id={fromId}
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="asset-period-custom-input"
+                />
               </div>
-            ) : null}
-
-            {panelMode === 'fy' ? (
-              <div className="asset-period-stack">
-                <p className="asset-period-hint" style={{ marginBottom: 8 }}>
-                  Indian financial year · 1 April → 31 March next year
-                </p>
-                {fyOptions.map((opt, index) => {
-                  const active = mode === 'fy' && range.from === opt.range.from && range.to === opt.range.to
-                  const showYear = index === 0 || fyOptions[index - 1]?.fyStartYear !== opt.fyStartYear
-                  return (
-                    <div key={opt.key}>
-                      {showYear ? <p className="asset-period-group">{fyLabel(opt.fyStartYear)}</p> : null}
-                      <PeriodOptionRow
-                        active={active}
-                        label={opt.label}
-                        sub={opt.sub}
-                        hint={opt.hint}
-                        onClick={() => applySelection('fy', opt.range, opt.summary)}
-                      />
-                    </div>
-                  )
-                })}
+              <div>
+                <label className="asset-period-custom-label" htmlFor={toId}>To</label>
+                <input
+                  id={toId}
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="asset-period-custom-input"
+                />
               </div>
-            ) : null}
-          </div>
-
-          {hasSelection ? (
-            <div className="asset-period-panel-foot">
               <button
                 type="button"
-                className="asset-period-clear"
+                className="asset-period-apply"
                 onClick={() => {
-                  onChange?.(getEmptyPeriodState())
-                  setOpen(false)
+                  if (customFrom && customTo) applyRange('custom', customFrom, customTo, true)
                 }}
               >
-                Clear period
+                Apply custom range
               </button>
             </div>
-          ) : null}
+          ) : (
+            <div className="asset-period-list">
+              {list.map((item) => {
+                const selected = range.from === item.from && range.to === item.to
+                const badge = item.current
+                  ? grain === 'year'
+                    ? 'CURRENT FINANCIAL YEAR'
+                    : grain === 'monthly'
+                      ? 'CURRENT MONTH'
+                      : 'CURRENT WEEK'
+                  : ''
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`asset-period-option${selected ? ' is-active' : ''}`}
+                    onClick={() => {
+                      const nextMode: PeriodMode = grain === 'monthly' ? 'monthly' : grain === 'weekly' ? 'weekly' : 'fy'
+                      if (grain === 'monthly') setKind(item.current ? 'mtd' : 'this_fy')
+                      else if (grain === 'year' && item.current) setKind('this_fy')
+                      applyRange(nextMode, item.from, item.to, true)
+                    }}
+                  >
+                    <span className="asset-period-option-top">
+                      <span className="asset-period-option-label">{item.label}</span>
+                      {selected ? <Check size={16} className="asset-period-option-check" aria-hidden /> : null}
+                    </span>
+                    <span className="asset-period-option-sub">{item.sub}</span>
+                    {badge ? <span className="asset-period-badge">{badge}</span> : null}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       </FloatingPortal>
     </div>
-  )
-}
-
-function PeriodOptionRow({
-  active,
-  label,
-  sub,
-  hint,
-  onClick,
-}: {
-  active: boolean
-  label: string
-  sub: string
-  hint?: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`asset-period-option${active ? ' is-active' : ''}`}
-    >
-      <span className="asset-period-option-text">
-        <span className="asset-period-option-label">{label}</span>
-        <span className="asset-period-option-sub">{sub}</span>
-        {hint ? <span className="asset-period-option-hint">{hint}</span> : null}
-      </span>
-      {active ? <Check size={16} className="asset-period-option-check" aria-hidden /> : null}
-    </button>
   )
 }

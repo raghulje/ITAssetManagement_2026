@@ -417,7 +417,7 @@ export default function Dashboard() {
               options={locationOptions}
             />
           </label>
-          <label className="dash-hello-field">
+          <label className="dash-hello-field dash-hello-field--period">
             <span>Period</span>
             <AssetPeriodPicker
               className="filter-period-picker"
