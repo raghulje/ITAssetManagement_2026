@@ -43,8 +43,19 @@ function appendFilters(path: string, filters: Record<string, string | undefined>
   return s ? `${base}?${s}` : base
 }
 
+function dayGreeting(now = new Date()) {
+  const hour = Number(new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    hour12: false,
+  }).format(now))
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
 export default function Dashboard() {
-  const { activeDomain } = useAuth()
+  const { activeDomain, user } = useAuth()
   const [params] = useSearchParams()
   const showLicenses = softwareLicensesInDomain(activeDomain)
   const [counts, setCounts] = useState<DashCounts>(emptyCounts)
@@ -157,6 +168,12 @@ export default function Dashboard() {
   const assigned = counts.deployed || 0
   const totalAssets = counts.assets || 0
   const assignedPct = totalAssets ? `${Math.round((assigned / totalAssets) * 100)}%` : '0%'
+  const helloName = String(user?.first_name || user?.name || 'there').trim()
+  const designation = String(user?.hrms_designation || '').trim()
+  const helloMeta = [designation ? `Logged in as ${designation}` : '', user?.hrms_department, user?.hrms_company, user?.email]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean)
+  const helloInitial = helloName.charAt(0).toUpperCase() || 'R'
   const showCompanies = charts.companies.filter((c) => c.label !== 'No company').length > 1
     || charts.companies.length > 1
   const trendTitle = period.summaryLabel
@@ -169,61 +186,62 @@ export default function Dashboard() {
     : 'No assignment activity in the last 14 days.'
 
   return (
-    <AppLayout title="Dashboard">
-      <div className="dash-filters-mobile">
-        <DashFiltersButton count={activeFilterCount} onClick={() => setSheetOpen(true)} />
-      </div>
-
-      <div className="dash-filters-desktop">
-        <Box type="primary">
-          <div className="asset-toolbar dash-toolbar">
-            <div className="asset-toolbar-bar">
-              <div className="asset-toolbar-actions">
-                <span className="dash-filter-kicker">Filters</span>
-              </div>
-              <div className="asset-toolbar-tools">
-                <button type="button" className="btn btn-default btn-sm" onClick={load} disabled={loading} title="Refresh">
-                  <i className={`fas fa-sync ${loading ? 'fa-spin' : ''}`} />
-                </button>
-              </div>
-            </div>
-            <div className="asset-toolbar-filters">
-              <AppSelect
-                className="filter-app-select"
-                value={companyId}
-                onChange={setCompanyId}
-                searchable
-                placeholder="All companies"
-                options={companyOptions}
-              />
-              <AppSelect
-                className="filter-app-select"
-                value={locationId}
-                onChange={setLocationId}
-                searchable
-                placeholder="All locations"
-                options={locationOptions}
-              />
-              <AssetPeriodPicker
-                className="filter-period-picker"
-                mode={period.mode}
-                range={period.range}
-                summaryLabel={period.summaryLabel}
-                onChange={setPeriod}
-              />
-              {hasFilters ? (
-                <button
-                  type="button"
-                  className="btn btn-default btn-sm asset-toolbar-clear"
-                  onClick={clearFilters}
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
+    <AppLayout title="Dashboard" hideHeader>
+      <section className="dash-hello" aria-label="Signed in" data-aos="fade-down">
+        <span className="p2p-header-bubbles" aria-hidden><i /><i /><i /><i /><i /><i /><i /></span>
+        <div className="dash-hello-person">
+          <span className="dash-hello-avatar" aria-hidden="true">{helloInitial}</span>
+          <div className="dash-hello-copy">
+            <p className="dash-hello-greet">{dayGreeting()}, {helloName}</p>
+            <p className="dash-hello-role">{helloMeta.join(' · ') || 'Signed in to IT Asset Management'}</p>
           </div>
-        </Box>
-      </div>
+        </div>
+        <div className="dash-filters-mobile">
+          <DashFiltersButton count={activeFilterCount} onClick={() => setSheetOpen(true)} />
+        </div>
+        <div className="dash-hello-filters dash-filters-desktop">
+          <label className="dash-hello-field">
+            <span>Company</span>
+            <AppSelect
+              className="filter-app-select"
+              value={companyId}
+              onChange={setCompanyId}
+              searchable
+              placeholder="All companies"
+              options={companyOptions}
+            />
+          </label>
+          <label className="dash-hello-field">
+            <span>Location</span>
+            <AppSelect
+              className="filter-app-select"
+              value={locationId}
+              onChange={setLocationId}
+              searchable
+              placeholder="All locations"
+              options={locationOptions}
+            />
+          </label>
+          <label className="dash-hello-field">
+            <span>Period</span>
+            <AssetPeriodPicker
+              className="filter-period-picker"
+              mode={period.mode}
+              range={period.range}
+              summaryLabel={period.summaryLabel}
+              onChange={setPeriod}
+            />
+          </label>
+          {hasFilters ? (
+            <button type="button" className="btn btn-default btn-sm" onClick={clearFilters}>
+              Clear
+            </button>
+          ) : null}
+          <button type="button" className="btn btn-default btn-sm dash-hello-refresh" onClick={load} disabled={loading} title="Refresh">
+            <i className={`fas fa-sync ${loading ? 'fa-spin' : ''}`} />
+          </button>
+        </div>
+      </section>
 
       <DashFilterSheet
         open={sheetOpen}
@@ -258,11 +276,11 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="module-insights-title" style={{ marginTop: 4 }}>Asset inventory snapshot</div>
+      <div className="module-insights-title dash-snapshot-title">Asset inventory snapshot</div>
       <div className="row">
-        <SmallBox to={appendFilters('/hardware?status_type=Assigned', hrefFilters)} count={assigned} label="Assigned" color="bg-orange" icon="fas fa-user-check" />
-        <SmallBox to={appendFilters('/hardware?status_type=RTD', hrefFilters)} count={counts.rtd || 0} label="In stock" color="bg-olive" icon="fas fa-warehouse" />
-        <SmallBox to={appendFilters('/hardware/eol/due', { company_id: companyId || undefined, location_id: locationId || undefined })} count={counts.eol_due || 0} label="EOL due" color="bg-red" icon="fas fa-calendar-times" />
+        <SmallBox to={appendFilters('/hardware?status_type=Assigned', hrefFilters)} count={assigned} label="Assigned" color="bg-orange" icon="fas fa-user-check" share={totalAssets ? (assigned / totalAssets) * 100 : 0} total={totalAssets} />
+        <SmallBox to={appendFilters('/hardware?status_type=RTD', hrefFilters)} count={counts.rtd || 0} label="In stock" color="bg-olive" icon="fas fa-warehouse" share={totalAssets ? ((counts.rtd || 0) / totalAssets) * 100 : 0} total={totalAssets} />
+        <SmallBox to={appendFilters('/hardware/eol/due', { company_id: companyId || undefined, location_id: locationId || undefined })} count={counts.eol_due || 0} label="EOL due" color="bg-red" icon="fas fa-calendar-times" share={totalAssets ? ((counts.eol_due || 0) / totalAssets) * 100 : 0} total={totalAssets} />
       </div>
 
       <div className="row dash-chart-row">

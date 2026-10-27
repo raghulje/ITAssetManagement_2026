@@ -168,6 +168,7 @@ export async function transformUser(id: number, opts?: { includeDeleted?: boolea
   if (!u) return null
   const perms = typeof u.permissions === 'string' ? JSON.parse(u.permissions as string) : (u.permissions || {})
   const groups = await getUserGroupNames(Number(u.id))
+  const hrms = await hrmsProfileForUser(u.email, u.employee_num)
   return {
     id: u.id,
     avatar: null,
@@ -178,6 +179,9 @@ export async function transformUser(id: number, opts?: { includeDeleted?: boolea
     email: u.email,
     employee_num: u.employee_num,
     jobtitle: u.jobtitle,
+    hrms_designation: hrms?.designation || null,
+    hrms_department: hrms?.department || null,
+    hrms_company: hrms?.company || null,
     phone: u.phone,
     notes: u.notes,
     activated: Boolean(u.activated),
@@ -193,6 +197,38 @@ export async function transformUser(id: number, opts?: { includeDeleted?: boolea
       all: allowedDomainCodes(perms as Record<string, unknown>).length > 1,
     },
     available_actions: { update: !u.deleted_at, delete: !u.deleted_at, clone: true },
+  }
+}
+
+async function hrmsProfileForUser(email: unknown, employeeNum: unknown) {
+  const mail = String(email || '').trim().toLowerCase()
+  const code = String(employeeNum || '').trim()
+  if (!mail && !code) return null
+  try {
+    const row = await get<{
+      designation: string | null
+      department_name: string | null
+      refex_company_name: string | null
+    }>(`
+      SELECT designation, department_name, refex_company_name
+      FROM employees
+      WHERE deleted_at IS NULL
+        AND (
+          (? <> '' AND LOWER(TRIM(COALESCE(email, ''))) = ?)
+          OR (? <> '' AND employee_code = ?)
+        )
+      ORDER BY (date_of_exit IS NULL) DESC, id DESC
+      LIMIT 1
+    `, [mail, mail, code, code])
+    const designation = String(row?.designation || '').trim()
+    if (!row || !designation) return null
+    return {
+      designation,
+      department: String(row.department_name || '').trim() || null,
+      company: String(row.refex_company_name || '').trim() || null,
+    }
+  } catch {
+    return null
   }
 }
 

@@ -1,25 +1,19 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import AOS from 'aos'
 import { siteName } from '../data/mockData'
 import { useAuth } from '../api/AuthContext'
 import { softwareLicensesInDomain } from '../lib/domainScope'
 import { PageBack } from '../components/ui'
 import { goToRefexOne } from '../utils/refexOneUrl'
+import { resolveHeaderVariant, resolveModuleScene } from '../lib/moduleScenes'
 
-const NARROW_MQ = '(max-width: 991px)'
-
-function useIsNarrow() {
-  const [narrow, setNarrow] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia(NARROW_MQ).matches : false,
+function HeaderBubbles() {
+  return (
+    <span className="p2p-header-bubbles" aria-hidden>
+      <i /><i /><i /><i /><i /><i /><i />
+    </span>
   )
-  useEffect(() => {
-    const mq = window.matchMedia(NARROW_MQ)
-    const onChange = () => setNarrow(mq.matches)
-    onChange()
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return narrow
 }
 
 type Props = {
@@ -27,6 +21,7 @@ type Props = {
   title: string
   subtitle?: string
   hideHeader?: boolean
+  scene?: string
   backTo?: string
   backLabel?: string
   onBack?: () => void
@@ -325,12 +320,8 @@ function RefexOneShell() {
   )
 }
 
-export default function AppLayout({ children, title, subtitle, hideHeader, backTo, backLabel, onBack }: Props) {
-  const isNarrow = useIsNarrow()
-  /** Desktop: false = sidebar visible. Mobile: true = drawer closed. */
-  const [collapsed, setCollapsed] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia(NARROW_MQ).matches : false,
-  )
+export default function AppLayout({ children, title, subtitle, hideHeader, scene, backTo, backLabel, onBack }: Props) {
+  const navRef = useRef<HTMLElement>(null)
   const [userOpen, setUserOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [tag, setTag] = useState('')
@@ -338,33 +329,74 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
   const navigate = useNavigate()
   const { user, logout, can, isAdmin, domainScope, activeDomain, setActiveDomain } = useAuth()
   const showLicenses = can('licenses.view') && softwareLicensesInDomain(activeDomain)
-  const displayName = user ? `${user.first_name} ${user.last_name}` : 'Admin User'
-  const path = location.pathname + location.search
+  const displayName = user ? `${user.first_name} ${user.last_name}`.trim() : 'Admin User'
+  const designation = String(user?.hrms_designation || '').trim()
   const section = resolveSection(location.pathname, location.search)
   const showSectionTabs = Boolean(
     section
     && shouldShowSectionTabs(location.pathname)
     && !(new URLSearchParams(location.search).get('from') === 'employee' && location.pathname.startsWith('/hardware')),
   )
-  const drawerOpen = isNarrow && !collapsed
-
+  const activeScene = scene || resolveModuleScene(location.pathname, activeDomain)
+  const headerVariant = resolveHeaderVariant(location.pathname)
   useEffect(() => {
-    if (isNarrow) setCollapsed(true)
-    else setCollapsed(false)
-  }, [isNarrow])
-
-  useEffect(() => {
-    if (isNarrow) setCollapsed(true)
     setUserOpen(false)
     setCreateOpen(false)
-  }, [location.pathname, location.search, isNarrow])
+  }, [location.pathname, location.search])
 
   useEffect(() => {
-    if (!drawerOpen) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
-  }, [drawerOpen])
+    const t = window.setTimeout(() => AOS.refreshHard(), 40)
+    return () => window.clearTimeout(t)
+  }, [location.pathname, location.search, activeDomain])
+
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    const pill = nav.querySelector<HTMLElement>('.app-nav-pill')
+    if (!pill) return
+    const place = (animate: boolean) => {
+      const active = nav.querySelector<HTMLElement>('a.active')
+      if (!active) {
+        pill.style.opacity = '0'
+        return
+      }
+      const nextLeft = active.offsetLeft
+      const nextWidth = active.offsetWidth
+      const seen = pill.dataset.left != null
+      const prevLeft = Number(pill.dataset.left ?? nextLeft)
+      const prevWidth = Number(pill.dataset.width ?? nextWidth)
+      pill.style.opacity = '1'
+      if (!animate || !seen) {
+        pill.style.transition = 'none'
+        pill.style.transform = `translate3d(${nextLeft}px,0,0)`
+        pill.style.width = `${nextWidth}px`
+        pill.style.borderRadius = '10px'
+      } else {
+        const left = Math.min(prevLeft, nextLeft)
+        const right = Math.max(prevLeft + prevWidth, nextLeft + nextWidth)
+        const forward = nextLeft >= prevLeft
+        pill.style.transition = 'none'
+        pill.style.transform = `translate3d(${left}px,0,0)`
+        pill.style.width = `${Math.max(right - left, nextWidth)}px`
+        pill.style.borderRadius = forward ? '12px 22px 22px 12px' : '22px 12px 12px 22px'
+        pill.getBoundingClientRect()
+        pill.style.transition = 'transform 720ms cubic-bezier(.18,1.55,.32,1), width 720ms cubic-bezier(.18,1.55,.32,1), border-radius 720ms cubic-bezier(.2,1.2,.32,1)'
+        pill.style.transform = `translate3d(${nextLeft}px,0,0)`
+        pill.style.width = `${nextWidth}px`
+        pill.style.borderRadius = '10px'
+      }
+      pill.dataset.left = String(nextLeft)
+      pill.dataset.width = String(nextWidth)
+      const viewLeft = nav.scrollLeft
+      const viewRight = viewLeft + nav.clientWidth
+      if (nextLeft < viewLeft + 8) nav.scrollLeft = Math.max(0, nextLeft - 12)
+      else if (nextLeft + nextWidth > viewRight - 8) nav.scrollLeft = nextLeft + nextWidth - nav.clientWidth + 12
+    }
+    place(true)
+    const onResize = () => place(false)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [location.pathname, location.search, section, showLicenses])
 
   useEffect(() => {
     if (softwareLicensesInDomain(activeDomain)) return
@@ -373,40 +405,19 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
     }
   }, [activeDomain, location.pathname, navigate])
 
-  const closeDrawer = () => {
-    if (isNarrow) setCollapsed(true)
-  }
-
   const searchTag = (e: FormEvent) => {
     e.preventDefault()
     if (tag.trim()) navigate(`/hardware?q=${encodeURIComponent(tag.trim())}`)
   }
 
   return (
-    <div className={`wrapper has-refexone-shell ${collapsed ? 'sidebar-collapse' : ''} ${!collapsed ? 'sidebar-open' : ''}${isNarrow ? ' is-narrow' : ''}`}>
+    <div className="wrapper has-refexone-shell">
       <RefexOneShell />
-      {drawerOpen ? (
-        <button
-          type="button"
-          className="sidebar-backdrop"
-          aria-label="Close menu"
-          onClick={closeDrawer}
-        />
-      ) : null}
       <header className="main-header">
-        <NavLink to="/" className="logo" aria-label={siteName} onClick={closeDrawer}>
+        <NavLink to="/" className="logo" aria-label={siteName}>
           <img src="/refexone-logo.png" alt={siteName} />
         </NavLink>
         <nav className="navbar">
-          <button
-            type="button"
-            className="sidebar-toggle"
-            onClick={() => setCollapsed((c) => !c)}
-            aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={drawerOpen}
-          >
-            <i className="fas fa-bars" />
-          </button>
           <form className="header-search" onSubmit={searchTag}>
             <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Search asset tag" />
             <button type="submit"><i className="fas fa-search" /></button>
@@ -465,9 +476,15 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
               <li className={`dropdown ${userOpen ? 'open' : ''}`}>
                 <button type="button" className="nav-icon-btn nav-user-btn" onClick={() => setUserOpen((o) => !o)}>
                   <i className="fas fa-user" aria-hidden="true" />
-                  <span className="nav-user-name">{displayName}</span>
+                  <span className="nav-user-copy">
+                    <span className="nav-user-name">{displayName}</span>
+                    {designation ? <span className="nav-user-role">Logged in as {designation}</span> : null}
+                  </span>
                 </button>
                 <div className="dropdown-menu">
+                  {designation ? (
+                    <div className="nav-user-menu-role">Logged in as {designation}</div>
+                  ) : null}
                   <NavLink to="/account/profile" onClick={() => setUserOpen(false)}>Edit Profile</NavLink>
                   <NavLink to="/account/password" onClick={() => setUserOpen(false)}>Change Password</NavLink>
                   <div className="divider" />
@@ -479,97 +496,67 @@ export default function AppLayout({ children, title, subtitle, hideHeader, backT
         </nav>
       </header>
 
-      <aside className="main-sidebar" aria-hidden={isNarrow && collapsed}>
-        <ul className="sidebar-menu">
-          <li className={path === '/' ? 'active' : ''}>
-            <NavLink to="/" onClick={closeDrawer}><i className="fas fa-tachometer-alt fa-fw" /><span>Dashboard</span></NavLink>
-          </li>
-
-          {can('assets.view') ? (
-            <li className={section === 'assets' ? 'active' : ''}>
-              <NavLink to="/hardware" onClick={closeDrawer}><i className="fas fa-barcode fa-fw" /><span>Assets</span></NavLink>
-            </li>
-          ) : null}
-          {can('assets.view') ? (
-            <li className={path.startsWith('/labels') ? 'active' : ''}>
-              <NavLink to="/labels" onClick={closeDrawer}><i className="fas fa-qrcode fa-fw" /><span>QR / Barcode</span></NavLink>
-            </li>
-          ) : null}
-
-          {showLicenses ? (
-            <li className={path.startsWith('/licenses') ? 'active' : ''}>
-              <NavLink to="/licenses" onClick={closeDrawer}><i className="fas fa-save fa-fw" /><span>Licenses</span></NavLink>
-            </li>
-          ) : null}
-          {can('accessories.view') ? (
-            <li className={path.startsWith('/accessories') ? 'active' : ''}>
-              <NavLink to="/accessories" onClick={closeDrawer}><i className="fas fa-keyboard fa-fw" /><span>Accessories</span></NavLink>
-            </li>
-          ) : null}
-          {can('consumables.view') ? (
-            <li className={path.startsWith('/consumables') ? 'active' : ''}>
-              <NavLink to="/consumables" onClick={closeDrawer}><i className="fas fa-tint fa-fw" /><span>Consumables</span></NavLink>
-            </li>
-          ) : null}
-          {can('components.view') ? (
-            <li className={path.startsWith('/components') ? 'active' : ''}>
-              <NavLink to="/components" onClick={closeDrawer}><i className="fas fa-hdd fa-fw" /><span>Components</span></NavLink>
-            </li>
-          ) : null}
-          {can('battery_issues.view') ? (
-            <li className={path.startsWith('/battery-issues') ? 'active' : ''}>
-              <NavLink to="/battery-issues" onClick={closeDrawer}><i className="fas fa-battery-half fa-fw" /><span>Battery Degradation</span></NavLink>
-            </li>
-          ) : null}
-
-          {can('people.view') ? (
-            <li className={section === 'people' ? 'active' : ''}>
-              <NavLink to="/employees" onClick={closeDrawer}><i className="fas fa-users fa-fw" /><span>People</span></NavLink>
-            </li>
-          ) : null}
-          {can('settings.view') ? (
-            <li className={section === 'spaces' ? 'active' : ''}>
-              <NavLink to="/spaces" onClick={closeDrawer}><i className="fas fa-building fa-fw" /><span>Space Management</span></NavLink>
-            </li>
-          ) : null}
-          {can('settings.view') ? (
-            <li className={section === 'masters' ? 'active' : ''}>
-              <NavLink to="/companies" onClick={closeDrawer}><i className="fas fa-database fa-fw" /><span>Masters</span></NavLink>
-            </li>
-          ) : null}
-          {can('settings.edit') ? (
-            <li className={path.startsWith('/import') ? 'active' : ''}>
-              <NavLink to="/import" onClick={closeDrawer}><i className="fas fa-file-import fa-fw" /><span>Import</span></NavLink>
-            </li>
-          ) : null}
-          {isAdmin ? (
-            <li className={section === 'settings' ? 'active' : ''}>
-              <NavLink to="/settings" onClick={closeDrawer}><i className="fas fa-cog fa-fw" /><span>Settings</span></NavLink>
-            </li>
-          ) : null}
-          {isAdmin ? (
-            <li className={section === 'reports' ? 'active' : ''}>
-              <NavLink to="/reports" onClick={closeDrawer}><i className="fas fa-chart-bar fa-fw" /><span>Reports</span></NavLink>
-            </li>
-          ) : null}
-        </ul>
-      </aside>
-
-      <div className="content-wrapper">
+      <div className="content-wrapper" style={{ ['--page-scene' as string]: `url("${activeScene}")` }}>
+        <div className="page-scene-wash" aria-hidden />
+        <nav className="app-nav" aria-label="Sections" ref={navRef}>
+          <span className="app-nav-pill" aria-hidden="true" />
+          <NavLink to="/" end>Dashboard</NavLink>
+          {can('assets.view') ? <NavLink to="/hardware" className={section === 'assets' ? 'active' : undefined}>Assets</NavLink> : null}
+          {can('assets.view') ? <NavLink to="/labels">QR / Barcode</NavLink> : null}
+          {showLicenses ? <NavLink to="/licenses">Licenses</NavLink> : null}
+          {can('accessories.view') ? <NavLink to="/accessories">Accessories</NavLink> : null}
+          {can('consumables.view') ? <NavLink to="/consumables">Consumables</NavLink> : null}
+          {can('components.view') ? <NavLink to="/components">Components</NavLink> : null}
+          {can('battery_issues.view') ? <NavLink to="/battery-issues">Battery</NavLink> : null}
+          {can('people.view') ? <NavLink to="/employees" className={section === 'people' ? 'active' : undefined}>People</NavLink> : null}
+          {can('settings.view') ? <NavLink to="/spaces" className={section === 'spaces' ? 'active' : undefined}>Spaces</NavLink> : null}
+          {can('settings.view') ? <NavLink to="/companies" className={section === 'masters' ? 'active' : undefined}>Masters</NavLink> : null}
+          {can('settings.edit') ? <NavLink to="/import">Import</NavLink> : null}
+          {isAdmin ? <NavLink to="/settings" className={section === 'settings' ? 'active' : undefined}>Settings</NavLink> : null}
+          {isAdmin ? <NavLink to="/reports" className={section === 'reports' ? 'active' : undefined}>Reports</NavLink> : null}
+        </nav>
         {!hideHeader ? (
-          <section className="content-header" key={`h-${location.pathname}`}>
-            <div className="content-header-copy">
-              {onBack || backTo ? (
-                <PageBack fallback={backTo || '/'} label={backLabel || 'Back'} onClick={onBack} />
-              ) : null}
-              {subtitle ? <p className="content-kicker">{subtitle}</p> : null}
-              <h1>{title}</h1>
-            </div>
-            <ol className="breadcrumb">
-              <li><NavLink to="/">Home</NavLink></li>
-              <li>{title}</li>
-            </ol>
-          </section>
+          headerVariant === 'form' ? (
+            <section
+              className="content-header content-header--form"
+              style={{ ['--scene' as string]: `url("${activeScene}")` }}
+              key={`h-${location.pathname}`}
+              data-aos="fade-down"
+            >
+              <HeaderBubbles />
+              <div className="content-header-copy">
+                <ol className="breadcrumb breadcrumb--on-dark">
+                  <li><NavLink to="/">Home</NavLink></li>
+                  <li>{title}</li>
+                </ol>
+                {onBack || backTo ? (
+                  <PageBack fallback={backTo || '/'} label={backLabel || 'Back'} onClick={onBack} />
+                ) : null}
+                <h1>{title}</h1>
+                {subtitle ? <p className="content-kicker content-kicker--on-dark">{subtitle}</p> : null}
+              </div>
+            </section>
+          ) : (
+            <section
+              className="content-header has-scene"
+              style={{ ['--scene' as string]: `url("${activeScene}")` }}
+              key={`h-${location.pathname}`}
+              data-aos="fade-down"
+            >
+              <HeaderBubbles />
+              <div className="content-header-copy">
+                {onBack || backTo ? (
+                  <PageBack fallback={backTo || '/'} label={backLabel || 'Back'} onClick={onBack} />
+                ) : null}
+                {subtitle ? <p className="content-kicker">{subtitle}</p> : null}
+                <h1>{title}</h1>
+              </div>
+              <ol className="breadcrumb">
+                <li><NavLink to="/">Home</NavLink></li>
+                <li>{title}</li>
+              </ol>
+            </section>
+          )
         ) : null}
         {showSectionTabs && section ? <SectionTabs section={section} /> : null}
         <section className={`content${hideHeader ? ' content--flush' : ''}`} key={`c-${location.pathname}`}>{children}</section>

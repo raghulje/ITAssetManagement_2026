@@ -1,0 +1,161 @@
+/* P2P / VMS KPI click FX + shared spin helpers */
+@keyframes tfx-spin { to { transform: rotate(360deg); } }
+@keyframes tfx-draw { to { stroke-dashoffset: 0; } }
+
+.fx-confetti { position: fixed; z-index: 9999; top: 0; left: 0; width: 8px; height: 12px; border-radius: 2px; pointer-events: none; }
+.fx-ov { position: fixed; z-index: 9998; pointer-events: none; display: grid; place-items: center; border-radius: 18px; overflow: visible; }
+.fx-bounce { animation: fx-bounce 0.65s cubic-bezier(0.3, 1.6, 0.5, 1) !important; }
+@keyframes fx-bounce { 0% { transform: scale(1); } 30% { transform: scale(0.94); } 60% { transform: scale(1.04); } 100% { transform: scale(1); } }
+.fx-breathe { animation: fx-breathe 1.35s ease-in-out !important; }
+@keyframes fx-breathe { 0%, 100% { transform: none; } 25% { transform: scale(1.03); } 50% { transform: scale(0.99); } 75% { transform: scale(1.02); } }
+.fx-nudge-back { animation: fx-nudgeBack 0.75s cubic-bezier(0.3, 1.4, 0.5, 1) !important; }
+@keyframes fx-nudgeBack { 0% { transform: none; } 35% { transform: translateX(-16px) rotate(-1.5deg); } 70% { transform: translateX(4px); } 100% { transform: none; } }
+
+.fx-doc {
+  position: fixed; z-index: 9999; top: 0; left: 0; width: 38px; height: 46px; border-radius: 9px; pointer-events: none;
+  display: grid; place-items: center; color: #0f6b7a; background: #fff;
+  border: 1.5px solid #bfe6ec; box-shadow: 0 10px 22px -10px rgba(13, 95, 110, 0.55);
+}
+.fx-doc svg { width: 22px; height: 22px; }
+.fx-all-glow { position: absolute; inset: 0; border-radius: 18px; box-shadow: 0 0 0 0 rgba(23, 162, 180, 0.5); animation: fx-allGlow 1.2s ease-out forwards; }
+@keyframes fx-allGlow { 0% { box-shadow: 0 0 0 0 rgba(23, 162, 180, 0.55); } 100% { box-shadow: 0 0 0 26px rgba(23, 162, 180, 0); } }
+
+.fx-pending .fx-ring {
+  position: absolute; width: 70px; height: 70px; border-radius: 50%; border: 2px solid #17a2b4;
+  animation: fx-radar 1.5s cubic-bezier(0.2, 0.7, 0.4, 1) forwards; opacity: 0;
+}
+.fx-pending .r2 { animation-delay: 0.25s; }
+.fx-pending .r3 { animation-delay: 0.5s; }
+@keyframes fx-radar { 0% { transform: scale(0.4); opacity: 0.9; } 100% { transform: scale(3.2); opacity: 0; } }
+.fx-clock {
+  position: relative; width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 35% 30%, #ffffff, #e6f6f8);
+  box-shadow: 0 16px 34px -12px rgba(47, 91, 234, 0.6), 0 0 0 4px rgba(91, 140, 255, 0.25);
+  animation: fx-clockIn 1.55s cubic-bezier(0.3, 1.5, 0.5, 1) forwards;
+}
+@keyframes fx-clockIn {
+  0% { transform: scale(0) rotate(-90deg); opacity: 0; }
+  22% { transform: scale(1.1) rotate(8deg); opacity: 1; }
+  32% { transform: scale(1) rotate(0); }
+  80% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.6) translateY(-20px); opacity: 0; }
+}
+.fx-clock svg { width: 64px; height: 64px; }
+.fx-clock .face { fill: none; stroke: #0f6b7a; stroke-width: 2.5; }
+.fx-clock .tick { stroke: #2cc4d4; stroke-width: 2; stroke-linecap: round; }
+.fx-clock .hand { stroke-linecap: round; transform-origin: 24px 24px; }
+.fx-clock .h { stroke: #0e1726; stroke-width: 3; animation: tfx-spin 1.5s linear; }
+.fx-clock .m { stroke: #0f6b7a; stroke-width: 2.2; animation: tfx-spin 0.35s linear infinite; }
+.fx-clock .pin { fill: #0f6b7a; }
+.fx-dots { position: absolute; bottom: -22px; display: flex; gap: 5px; }
+.fx-dots b { width: 7px; height: 7px; border-radius: 50%; background: #0f6b7a; animation: fx-dot 0.9s ease-in-out infinite; }
+.fx-dots b:nth-child(2) { animation-delay: 0.15s; }
+.fx-dots b:nth-child(3) { animation-delay: 0.3s; }
+@keyframes fx-dot { 0%, 100% { transform: translateY(0); opacity: 0.4; } 50% { transform: translateY(-6px); opacity: 1; } }
+
+.fx-reject-shake { animation: fx-headShake 0.65s cubic-bezier(0.36, 0.07, 0.19, 0.97) !important; }
+@keyframes fx-headShake {
+  0%, 100% { transform: none; }
+  15% { transform: translateX(-10px) rotate(-2deg); }
+  30% { transform: translateX(9px) rotate(1.5deg); }
+  45% { transform: translateX(-7px) rotate(-1deg); }
+  60% { transform: translateX(5px); }
+  75% { transform: translateX(-3px); }
+}
+.fx-reject-ring {
+  position: fixed; z-index: 9997; pointer-events: none; border-radius: 18px;
+  box-shadow: 0 0 0 0 rgba(229, 48, 74, 0.55), inset 0 0 0 2px rgba(229, 48, 74, 0.7);
+  animation: fx-rejRing 0.85s ease-out forwards;
+}
+@keyframes fx-rejRing {
+  0% { opacity: 1; box-shadow: 0 0 0 0 rgba(229, 48, 74, 0.55), inset 0 0 0 2px rgba(229, 48, 74, 0.8); background: rgba(255, 240, 242, 0.12); }
+  100% { opacity: 0; box-shadow: 0 0 0 22px rgba(229, 48, 74, 0), inset 0 0 0 2px rgba(229, 48, 74, 0); background: transparent; }
+}
+.fx-reject-stamp {
+  position: fixed; z-index: 9999; pointer-events: none; display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px 8px 10px; border-radius: 12px; color: #e5304a; background: rgba(255, 255, 255, 0.92);
+  border: 3px solid #e5304a; box-shadow: 0 14px 30px -10px rgba(229, 48, 74, 0.6);
+  font-weight: 900; font-size: 20px; letter-spacing: 0.14em;
+  transform: translate(-50%, -50%) rotate(-12deg);
+  animation: fx-stamp 1.45s cubic-bezier(0.2, 0.9, 0.3, 1.1) forwards;
+}
+.fx-reject-stamp svg { width: 28px; height: 28px; }
+.fx-reject-stamp .x1, .fx-reject-stamp .x2 { stroke-dasharray: 15; stroke-dashoffset: 15; animation: tfx-draw 0.25s ease forwards; }
+.fx-reject-stamp .x1 { animation-delay: 0.22s; }
+.fx-reject-stamp .x2 { animation-delay: 0.38s; }
+@keyframes fx-stamp {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(-12deg) scale(2.4); }
+  18% { opacity: 1; transform: translate(-50%, -50%) rotate(-12deg) scale(0.92); }
+  26% { transform: translate(-50%, -50%) rotate(-12deg) scale(1.04); }
+  34%, 75% { opacity: 1; transform: translate(-50%, -50%) rotate(-12deg) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) rotate(-12deg) scale(0.96) translateY(10px); }
+}
+
+.fx-sheet {
+  position: relative; width: 150px; height: 100px; border-radius: 12px; background: #fff;
+  border: 1.5px solid #e2d8ff; box-shadow: 0 18px 36px -14px rgba(122, 78, 232, 0.55);
+  animation: fx-sheet 1.65s cubic-bezier(0.3, 1.3, 0.5, 1) forwards;
+}
+.fx-sheet::before { content: ""; position: absolute; top: 0; right: 0; width: 22px; height: 22px; border-radius: 0 12px 0 10px; background: linear-gradient(225deg, #f3eeff 50%, #e2d8ff 50%); }
+@keyframes fx-sheet {
+  0% { transform: translateY(40px) rotate(-6deg) scale(0.6); opacity: 0; }
+  18% { transform: translateY(-4px) rotate(2deg) scale(1.04); opacity: 1; }
+  28% { transform: none; }
+  82% { transform: none; opacity: 1; }
+  100% { transform: translateY(-24px) rotate(4deg) scale(0.9); opacity: 0; }
+}
+.fx-lines { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); }
+.fx-lines .l { fill: none; stroke: #7a4ee8; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 110; stroke-dashoffset: 110; }
+.fx-lines .l1 { animation: fx-writeLine 0.35s ease-out 0.3s forwards; }
+.fx-lines .l2 { animation: fx-writeLine 0.35s ease-out 0.65s forwards; }
+.fx-lines .l3 { animation: fx-writeLine 0.3s ease-out 1s forwards; stroke: #b39bff; }
+@keyframes fx-writeLine { to { stroke-dashoffset: 0; } }
+.fx-pen {
+  position: absolute; width: 30px; height: 30px; color: #fff; display: grid; place-items: center; border-radius: 9px;
+  background: linear-gradient(135deg, #b39bff, #7a4ee8); box-shadow: 0 8px 16px -6px rgba(122, 78, 232, 0.8);
+  left: 0; top: 0; animation: fx-penPath 1.05s ease-in-out 0.3s both;
+}
+.fx-pen svg { width: 17px; height: 17px; }
+@keyframes fx-penPath {
+  0% { transform: translate(14px, 4px) rotate(-10deg); }
+  30% { transform: translate(112px, 4px) rotate(8deg); }
+  33% { transform: translate(14px, 22px) rotate(-10deg); }
+  63% { transform: translate(102px, 22px) rotate(8deg); }
+  66% { transform: translate(14px, 40px) rotate(-10deg); }
+  100% { transform: translate(78px, 40px) rotate(6deg); }
+}
+.fx-spark { position: absolute; font-style: normal; color: #b39bff; font-size: 14px; opacity: 0; animation: fx-spark 0.7s ease-out forwards; }
+.fx-spark.s1 { right: -14px; top: 6px; animation-delay: 0.6s; }
+.fx-spark.s2 { left: -12px; bottom: 10px; animation-delay: 0.9s; font-size: 11px; }
+.fx-spark.s3 { right: 10px; bottom: -14px; animation-delay: 1.2s; }
+@keyframes fx-spark { 0% { opacity: 0; transform: scale(0) rotate(0); } 50% { opacity: 1; transform: scale(1.3) rotate(90deg); } 100% { opacity: 0; transform: scale(0.6) rotate(180deg); } }
+
+.fx-uturn { width: 170px; height: 96px; overflow: visible; filter: drop-shadow(0 8px 14px rgba(242, 118, 28, 0.45)); animation: fx-uturnOut 1.45s ease forwards; }
+.fx-uturn .trail, .fx-uturn .head { fill: none; stroke: #f2761c; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+.fx-uturn .trail { stroke-dasharray: 240; stroke-dashoffset: 240; animation: fx-writeLine 0.7s cubic-bezier(0.5, 0, 0.3, 1) 0.1s forwards; }
+.fx-uturn .head { stroke-dasharray: 50; stroke-dashoffset: 50; animation: fx-writeLine 0.2s ease-out 0.75s forwards; }
+@keyframes fx-uturnOut { 0%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateX(-30px); } }
+.fx-wind { position: absolute; height: 3px; border-radius: 3px; background: linear-gradient(90deg, rgba(255, 190, 85, 0), #ffbe55); opacity: 0; animation: fx-wind 0.7s ease-out forwards; }
+.fx-wind.w1 { width: 60px; top: 30%; right: 8%; animation-delay: 0.2s; }
+.fx-wind.w2 { width: 40px; top: 52%; right: 4%; animation-delay: 0.35s; }
+.fx-wind.w3 { width: 50px; top: 72%; right: 12%; animation-delay: 0.5s; }
+@keyframes fx-wind { 0% { opacity: 0; transform: translateX(30px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateX(-90px); } }
+
+.fx-overdue .fx-wave {
+  position: absolute; width: 74px; height: 74px; border-radius: 50%; border: 3px solid #f2761c; opacity: 0;
+  animation: fx-radar 1.2s ease-out forwards;
+}
+.fx-overdue .v2 { animation-delay: 0.2s; border-color: #ef3b4b; }
+.fx-overdue .v3 { animation-delay: 0.4s; }
+.fx-alarm {
+  width: 72px; height: 72px; border-radius: 22px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, #ffbe55, #f2761c); box-shadow: 0 16px 30px -10px rgba(242, 118, 28, 0.7);
+  animation: fx-alarmIn 1.45s cubic-bezier(0.3, 1.5, 0.5, 1) forwards;
+}
+.fx-alarm svg { width: 40px; height: 40px; animation: fx-ringBell 0.12s linear 10 alternate 0.2s; transform-origin: 50% 55%; }
+@keyframes fx-ringBell { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
+@keyframes fx-alarmIn { 0% { transform: scale(0); opacity: 0; } 20% { transform: scale(1.1); opacity: 1; } 30%, 80% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.7); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-bounce, .fx-breathe, .fx-nudge-back, .fx-reject-shake { animation: none !important; }
+}

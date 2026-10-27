@@ -1,8 +1,8 @@
 /* Enterprise login — Refex Asset Management */
 
 .em-page {
-  --em-primary: #0F9D8A;
-  --em-secondary: #34D399;
+  --em-primary: #17a2b4;
+  --em-secondary: #5fe0e6;
   --em-blue: #3B82F6;
   --em-orange: #F97316;
   --em-bg: #F8FAFC;
@@ -10,7 +10,7 @@
   --em-muted: #64748B;
   --em-border: #E2E8F0;
   --em-card: #ffffff;
-  --em-font: "Plus Jakarta Sans", "Manrope", "Segoe UI", sans-serif;
+  --em-font: Inter, "Plus Jakarta Sans", "Segoe UI", sans-serif;
   --em-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   position: relative;
@@ -32,7 +32,7 @@
   z-index: 0;
   overflow: hidden;
   background:
-    radial-gradient(900px 480px at 8% 12%, rgba(15, 157, 138, 0.12), transparent 55%),
+    radial-gradient(900px 480px at 8% 12%, rgba(23, 162, 180, 0.12), transparent 55%),
     radial-gradient(700px 420px at 92% 8%, rgba(59, 130, 246, 0.1), transparent 50%),
     radial-gradient(640px 360px at 70% 92%, rgba(249, 115, 22, 0.07), transparent 55%),
     linear-gradient(180deg, #fbfdff 0%, #f1f5f9 100%);
@@ -56,7 +56,7 @@
   opacity: 0.55;
   animation: emFloat 14s ease-in-out infinite;
 }
-.em-orb--a { width: 220px; height: 220px; background: rgba(15, 157, 138, 0.22); top: 8%; left: 6%; }
+.em-orb--a { width: 220px; height: 220px; background: rgba(23, 162, 180, 0.22); top: 8%; left: 6%; }
 .em-orb--b { width: 180px; height: 180px; background: rgba(59, 130, 246, 0.18); top: 18%; right: 8%; animation-delay: -4s; }
 .em-orb--c { width: 160px; height: 160px; background: rgba(52, 211, 153, 0.16); bottom: 10%; left: 28%; animation-delay: -7s; }
 
@@ -84,9 +84,9 @@
   gap: 8px;
   padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(15, 157, 138, 0.1);
-  border: 1px solid rgba(15, 157, 138, 0.22);
-  color: #0f766e;
+  background: rgba(23, 162, 180, 0.1);
+  border: 1px solid rgba(23, 162, 180, 0.22);
+  color: #0f6b7a;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -102,7 +102,7 @@
   color: var(--em-ink);
 }
 .em-title span {
-  background: linear-gradient(90deg, #0F9D8A, #3B82F6);
+  background: linear-gradient(90deg, #17a2b4, #3B82F6);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -153,10 +153,10 @@
   transform: translateY(-4px);
   box-shadow: 0 18px 36px -20px rgba(15, 23, 42, 0.35);
 }
-.em-feature--green:hover::before { opacity: 1; background: linear-gradient(135deg, #34D399, transparent 60%); }
+.em-feature--green:hover::before { opacity: 1; background: linear-gradient(135deg, #5fe0e6, transparent 60%); }
 .em-feature--violet:hover::before { opacity: 1; background: linear-gradient(135deg, #a78bfa, transparent 60%); }
 .em-feature--blue:hover::before { opacity: 1; background: linear-gradient(135deg, #3B82F6, transparent 60%); }
-.em-feature--teal:hover::before { opacity: 1; background: linear-gradient(135deg, #0F9D8A, transparent 60%); }
+.em-feature--teal:hover::before { opacity: 1; background: linear-gradient(135deg, #17a2b4, transparent 60%); }
 
 .em-feature-icon {
   width: 34px;
@@ -167,10 +167,10 @@
   margin-bottom: 10px;
   color: #fff;
 }
-.em-feature--green .em-feature-icon { background: linear-gradient(145deg, #34D399, #059669); }
+.em-feature--green .em-feature-icon { background: linear-gradient(145deg, #5fe0e6, #17a2b4); }
 .em-feature--violet .em-feature-icon { background: linear-gradient(145deg, #a78bfa, #7c3aed); }
 .em-feature--blue .em-feature-icon { background: linear-gradient(145deg, #60a5fa, #2563eb); }
-.em-feature--teal .em-feature-icon { background: linear-gradient(145deg, #2dd4bf, #0F9D8A); }
+.em-feature--teal .em-feature-icon { background: linear-gradient(145deg, #5fe0e6, #17a2b4); }
 
 .em-feature strong {
   display: block;
@@ -221,8 +221,8 @@
 }
 .em-preview-side button.is-active,
 .em-preview-side button:hover {
-  background: rgba(15, 157, 138, 0.14);
-  color: #0F9D8A;
+  background: rgba(23, 162, 180, 0.14);
+  color: #17a2b4;
 }
 
 .em-preview-main { padding: 14px; }
@@ -266,9 +266,9 @@
   height: 22px;
   display: block;
 }
-.em-stat--teal { color: #0F9D8A; }
+.em-stat--teal { color: #17a2b4; }
 .em-stat--blue { color: #3B82F6; }
-.em-stat--green { color: #10b981; }
+.em-stat--green { color: #17a2b4; }
 .em-stat--orange { color: #F97316; }
 .em-stat--teal .em-spark,
 .em-stat--blue .em-spark,
@@ -316,7 +316,7 @@
   height: 86px;
   border-radius: 50%;
   background: conic-gradient(
-    #0F9D8A 0 42%,
+    #17a2b4 0 42%,
     #3B82F6 42% 68%,
     #F97316 68% 86%,
     #cbd5e1 86% 100%
@@ -346,7 +346,7 @@
   border-radius: 50%;
   margin-right: 6px;
 }
-.em-legend .t { background: #0F9D8A; }
+.em-legend .t { background: #17a2b4; }
 .em-legend .b { background: #3B82F6; }
 .em-legend .o { background: #F97316; }
 .em-legend .g { background: #cbd5e1; }
@@ -373,8 +373,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #0F9D8A;
-  box-shadow: 0 0 0 3px rgba(15, 157, 138, 0.15);
+  background: #17a2b4;
+  box-shadow: 0 0 0 3px rgba(23, 162, 180, 0.15);
 }
 .em-timeline strong { color: var(--em-ink); font-weight: 750; }
 
@@ -395,7 +395,7 @@
   gap: 6px;
   color: #475569;
 }
-.em-trust svg { color: #0F9D8A; }
+.em-trust svg { color: #17a2b4; }
 
 .em-bot {
   position: absolute;
@@ -409,9 +409,9 @@
   width: 46px;
   height: 46px;
   border-radius: 16px;
-  background: linear-gradient(145deg, #2dd4bf, #0F9D8A);
+  background: linear-gradient(145deg, #5fe0e6, #17a2b4);
   position: relative;
-  box-shadow: 0 10px 20px -10px rgba(15, 157, 138, 0.7);
+  box-shadow: 0 10px 20px -10px rgba(23, 162, 180, 0.7);
 }
 .em-bot-eye {
   position: absolute;
@@ -440,7 +440,7 @@
   width: 10px;
   height: 18px;
   border-radius: 999px;
-  background: #0d9488;
+  background: #17a2b4;
   transform-origin: top center;
   animation: emWave 1.8s ease-in-out infinite;
 }
@@ -540,7 +540,7 @@
     ellipse at center,
     rgba(96, 165, 250, 0.28) 0%,
     rgba(45, 212, 191, 0.2) 38%,
-    rgba(15, 157, 138, 0.08) 58%,
+    rgba(23, 162, 180, 0.08) 58%,
     transparent 74%
   );
   filter: blur(10px);
@@ -575,7 +575,7 @@
 }
 
 .km-buddy:focus-visible {
-  outline: 2px solid rgba(15, 157, 138, 0.45);
+  outline: 2px solid rgba(23, 162, 180, 0.45);
   outline-offset: 6px;
   border-radius: 16px;
 }
@@ -703,7 +703,7 @@
 }
 
 .km-buddy.is-happy .km-figure {
-  filter: drop-shadow(0 8px 14px rgba(15, 157, 138, 0.22));
+  filter: drop-shadow(0 8px 14px rgba(23, 162, 180, 0.22));
 }
 
 .km-buddy.is-sad .km-figure {
@@ -739,12 +739,12 @@
   transition: border-color 180ms var(--em-ease), box-shadow 180ms var(--em-ease), background 180ms var(--em-ease);
 }
 .em-field-box:focus-within {
-  border-color: #0F9D8A;
+  border-color: #17a2b4;
   background: #fff;
-  box-shadow: 0 0 0 4px rgba(15, 157, 138, 0.14);
+  box-shadow: 0 0 0 4px rgba(23, 162, 180, 0.14);
 }
 .em-field-box svg { color: #94a3b8; flex-shrink: 0; }
-.em-field-box:focus-within svg { color: #0F9D8A; }
+.em-field-box:focus-within svg { color: #17a2b4; }
 .em-field-box input {
   flex: 1;
   border: 0;
@@ -768,7 +768,7 @@
   place-items: center;
   padding: 4px;
 }
-.em-eye-btn:hover { color: #0F9D8A; }
+.em-eye-btn:hover { color: #17a2b4; }
 
 .em-row {
   display: flex;
@@ -786,14 +786,14 @@
   cursor: pointer;
   font-weight: 560;
 }
-.em-remember input { accent-color: #0F9D8A; width: 15px; height: 15px; }
+.em-remember input { accent-color: #17a2b4; width: 15px; height: 15px; }
 .em-forgot {
   font-size: 13px;
   font-weight: 750;
-  color: #0F9D8A;
+  color: #17a2b4;
   text-decoration: none;
 }
-.em-forgot:hover { color: #0f766e; }
+.em-forgot:hover { color: #0f6b7a; }
 
 .em-error {
   background: rgba(220, 38, 38, 0.08);
@@ -819,13 +819,13 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(135deg, #34D399 0%, #0F9D8A 55%, #0f766e 100%);
-  box-shadow: 0 12px 24px -12px rgba(15, 157, 138, 0.65);
+  background: linear-gradient(135deg, #5fe0e6 0%, #17a2b4 55%, #0f6b7a 100%);
+  box-shadow: 0 12px 24px -12px rgba(23, 162, 180, 0.65);
   transition: transform 160ms var(--em-ease), box-shadow 200ms var(--em-ease), filter 160ms var(--em-ease);
 }
 .em-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 16px 30px -12px rgba(15, 157, 138, 0.75);
+  box-shadow: 0 16px 30px -12px rgba(23, 162, 180, 0.75);
   filter: brightness(1.03);
 }
 .em-submit:active:not(:disabled) { transform: translateY(0) scale(0.99); }

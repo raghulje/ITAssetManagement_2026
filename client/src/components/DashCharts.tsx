@@ -2,12 +2,12 @@ import type { DashSlice, DashTrendPoint } from '../api/client'
 
 const STATUS_COLORS: Record<string, string> = {
   Assigned: '#F97316',
-  'In stock': '#0F9D8A',
+  'In stock': '#17a2b4',
   Pending: '#C05600',
   'Not deployable': '#64748B',
   Other: '#94A3B8',
 }
-const PALETTE = ['#0F9D8A', '#3B82F6', '#F97316', '#7C3AED', '#059669', '#E11D48', '#0F766E', '#64748B']
+const PALETTE = ['#17a2b4', '#3B82F6', '#F97316', '#7C3AED', '#059669', '#E11D48', '#0f6b7a', '#64748B']
 
 function colorFor(label: string, i: number) {
   return STATUS_COLORS[label] || PALETTE[i % PALETTE.length]
@@ -146,7 +146,7 @@ export function TrendChart({ points, empty = 'No assignment activity in the last
               <rect x={x - barW - 1} y={pad.t + innerH - aH} width={barW} height={aH} rx="2" fill="#F97316">
                 <title>{`${fmtDay(p.day)}: ${p.assigned} assigned`}</title>
               </rect>
-              <rect x={x + 1} y={pad.t + innerH - rH} width={barW} height={rH} rx="2" fill="#0F9D8A">
+              <rect x={x + 1} y={pad.t + innerH - rH} width={barW} height={rH} rx="2" fill="#17a2b4">
                 <title>{`${fmtDay(p.day)}: ${p.returned} returned`}</title>
               </rect>
               {i % labelEvery === 0 ? (
@@ -158,7 +158,7 @@ export function TrendChart({ points, empty = 'No assignment activity in the last
       </svg>
       <div className="dash-trend-legend">
         <span><i style={{ background: '#F97316' }} /> Assigned</span>
-        <span><i style={{ background: '#0F9D8A' }} /> Returned</span>
+        <span><i style={{ background: '#17a2b4' }} /> Returned</span>
       </div>
     </div>
   )

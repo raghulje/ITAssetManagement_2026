@@ -28,6 +28,9 @@ type User = {
   last_name: string
   email?: string
   name?: string
+  hrms_designation?: string | null
+  hrms_department?: string | null
+  hrms_company?: string | null
   groups?: string[]
   permissions?: Record<string, unknown>
 }

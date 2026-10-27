@@ -1,4 +1,7 @@
 import { Link } from 'react-router-dom'
+import type { MouseEvent } from 'react'
+import { KpiCard } from './ui'
+import { fxVariantFromColor, playKpiClick } from '../lib/kpiFx'
 
 export type InsightCard = {
   label: string
@@ -52,7 +55,7 @@ export function ModuleInsights({
   if (!cards.length) return null
 
   return (
-    <div className="module-insights">
+    <div className="module-insights" data-aos="fade-up">
       {title ? <div className="module-insights-title">{title}</div> : null}
       <div className="module-insights-tiles">
         {cards.map((c, i) => {
@@ -62,29 +65,48 @@ export function ModuleInsights({
           const icon = c.icon || byLabel?.icon || byTone.icon
           const footer = c.to || c.onClick ? (c.hint || (c.active ? 'Showing this filter' : 'View')) : (c.hint || 'Overview')
           const box = (
-            <div className={`dashboard small-box ${color}`} style={{ animationDelay: `${40 + i * 40}ms` }}>
-              <div className="inner">
-                <h3>{typeof c.value === 'number' ? c.value.toLocaleString() : c.value}</h3>
-                <p>{c.label}</p>
-              </div>
-              <div className="icon" aria-hidden="true"><i className={icon} /></div>
-              <span className="small-box-footer">
-                {c.to && !c.onClick ? <>View all <i className="fas fa-arrow-right" /></> : footer}
-              </span>
-            </div>
+            <KpiCard
+              count={c.value}
+              label={c.label}
+              color={color}
+              icon={icon}
+              hint={footer}
+              linked={Boolean(c.to || c.onClick)}
+            />
           )
           const tileClass = `module-insight-tile${c.active ? ' is-active' : ''}`
+          const aosProps = {
+            'data-aos': 'zoom-in',
+            'data-aos-delay': String(40 + i * 40),
+          } as const
           if (c.onClick) {
             return (
-              <button key={c.label} type="button" className={`${tileClass} small-box-link small-box-button`} onClick={c.onClick}>
+              <button
+                key={c.label}
+                type="button"
+                className={`${tileClass} small-box-link small-box-button`}
+                {...aosProps}
+                onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                  playKpiClick(fxVariantFromColor(color), e.currentTarget)
+                  c.onClick?.()
+                }}
+              >
                 {box}
               </button>
             )
           }
           return c.to ? (
-            <Link key={c.label} to={c.to} className={`${tileClass} small-box-link`}>{box}</Link>
+            <Link
+              key={c.label}
+              to={c.to}
+              className={`${tileClass} small-box-link`}
+              {...aosProps}
+              onClick={(e) => playKpiClick(fxVariantFromColor(color), e.currentTarget)}
+            >
+              {box}
+            </Link>
           ) : (
-            <div key={c.label} className={`${tileClass} small-box-static`}>{box}</div>
+            <div key={c.label} className={`${tileClass} small-box-static`} {...aosProps}>{box}</div>
           )
         })}
       </div>

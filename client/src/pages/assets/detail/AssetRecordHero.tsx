@@ -21,6 +21,7 @@ import {
   statusTone,
   warrantyKpi,
 } from './helpers'
+import { resolveFormScene } from '../../../lib/moduleScenes'
 
 type Props = {
   asset: Record<string, unknown>
@@ -51,6 +52,8 @@ export default function AssetRecordHero({
   const title = String(asset.asset_tag || 'Asset')
   const subtitle = [String(asset.name || ''), nestName(asset.location)].filter((s) => s && s !== '—').join('  •  ')
   const actions = asset.available_actions as { checkout?: boolean; checkin?: boolean } | undefined
+  const domainCode = String((asset.domain as { code?: string } | null)?.code || 'it')
+  const formScene = resolveFormScene(domainCode)
 
   function goBack() {
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -62,56 +65,63 @@ export default function AssetRecordHero({
 
   return (
     <>
-      <div className="vad-crumb">
-        <button type="button" className="vad-back-btn" onClick={goBack}>
-          <ArrowLeft size={16} /> {backLabel}
-        </button>
-        <span className="vad-crumb__sep" aria-hidden>/</span>
-        <Link to="/">Home</Link>
-        <span className="vad-crumb__sep">›</span>
-        <Link to="/hardware">Assets</Link>
-        <span className="vad-crumb__sep">›</span>
-        <span className="vad-crumb__current">{title}</span>
-      </div>
+      <section
+        className="vad-form-banner"
+        style={{ ['--scene' as string]: `url("${formScene}")` }}
+        data-aos="fade-down"
+      >
+        <span className="p2p-header-bubbles" aria-hidden><i /><i /><i /><i /><i /><i /><i /></span>
+        <div className="vad-crumb">
+          <button type="button" className="vad-back-btn" onClick={goBack}>
+            <ArrowLeft size={16} /> {backLabel}
+          </button>
+          <span className="vad-crumb__sep" aria-hidden>/</span>
+          <Link to="/">Home</Link>
+          <span className="vad-crumb__sep">›</span>
+          <Link to="/hardware">Assets</Link>
+          <span className="vad-crumb__sep">›</span>
+          <span className="vad-crumb__current">{title}</span>
+        </div>
 
-      <div className="vad-title-row">
-        <div className="vad-title-block">
-          <h1>
-            {title}
-            <span className={`vad-status ${statusClass(tone)}`}>
-              {assigned ? 'Assigned' : status?.name || '—'}
-            </span>
-          </h1>
-          <p>{subtitle || 'Asset record'}</p>
-        </div>
-        <div className="vad-actions">
-          <button type="button" className="btn btn-default" onClick={goBack}>
-            <ArrowLeft size={15} /> Back
-          </button>
-          {actions?.checkout ? (
-            <Link to={`/hardware/${asset.id}/checkout${returnQs}`} className="btn vad-btn-capture">
-              <UserPlus size={15} /> Assign
+        <div className="vad-title-row">
+          <div className="vad-title-block">
+            <h1>
+              {title}
+              <span className={`vad-status ${statusClass(tone)}`}>
+                {assigned ? 'Assigned' : status?.name || '—'}
+              </span>
+            </h1>
+            <p>{subtitle || 'Asset record'}</p>
+          </div>
+          <div className="vad-actions">
+            <button type="button" className="btn btn-default" onClick={goBack}>
+              <ArrowLeft size={15} /> Back
+            </button>
+            {actions?.checkout ? (
+              <Link to={`/hardware/${asset.id}/checkout${returnQs}`} className="btn vad-btn-capture">
+                <UserPlus size={15} /> Assign
+              </Link>
+            ) : null}
+            {actions?.checkin ? (
+              <Link to={`/hardware/${asset.id}/checkin${returnQs}`} className="btn vad-btn-transfer">
+                <UserMinus size={15} /> Unassign
+              </Link>
+            ) : null}
+            <Link to={`/hardware/${asset.id}/transfer${returnQs}`} className="btn vad-btn-transfer">
+              <ArrowRightLeft size={15} /> Transfer
             </Link>
-          ) : null}
-          {actions?.checkin ? (
-            <Link to={`/hardware/${asset.id}/checkin${returnQs}`} className="btn vad-btn-transfer">
-              <UserMinus size={15} /> Unassign
+            <Link to={`/hardware/${asset.id}/edit${returnQs}`} className="btn vad-btn-edit">
+              <Pencil size={15} /> Edit asset
             </Link>
-          ) : null}
-          <Link to={`/hardware/${asset.id}/transfer${returnQs}`} className="btn vad-btn-transfer">
-            <ArrowRightLeft size={15} /> Transfer
-          </Link>
-          <Link to={`/hardware/${asset.id}/edit${returnQs}`} className="btn vad-btn-edit">
-            <Pencil size={15} /> Edit asset
-          </Link>
-          <Link to={`/maintenances/create?asset_id=${asset.id}`} className="btn vad-btn-transfer">
-            <Wrench size={15} /> Maintenance
-          </Link>
-          <button type="button" className="btn vad-btn-transfer" onClick={onPrintLabel}>
-            <Printer size={15} /> Print label
-          </button>
+            <Link to={`/maintenances/create?asset_id=${asset.id}`} className="btn vad-btn-transfer">
+              <Wrench size={15} /> Maintenance
+            </Link>
+            <button type="button" className="btn vad-btn-transfer" onClick={onPrintLabel}>
+              <Printer size={15} /> Print label
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
 
       <section className="vad-hero" aria-label="Asset overview">
         <div className="vad-hero__media">

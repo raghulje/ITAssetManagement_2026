@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { downloadCsv } from '../utils/csv'
 import { useToast } from './Toast'
+import { fxVariantFromColor, playKpiClick } from '../lib/kpiFx'
 
 export function Box({
   title,
@@ -57,6 +58,92 @@ export function PageBack({
   )
 }
 
+const CARD_MARKS: Record<string, string[]> = {
+  'fas fa-barcode': ['fas fa-barcode', 'fas fa-qrcode', 'fas fa-laptop', 'fas fa-tag', 'fas fa-check'],
+  'fas fa-save': ['fas fa-save', 'fas fa-key', 'fas fa-id-badge', 'fas fa-file', 'fas fa-check'],
+  'fas fa-keyboard': ['fas fa-keyboard', 'fas fa-desktop', 'fas fa-plug', 'fas fa-box', 'fas fa-check'],
+  'fas fa-tint': ['fas fa-tint', 'fas fa-box-open', 'fas fa-cubes', 'fas fa-box', 'fas fa-check'],
+  'fas fa-hdd': ['fas fa-hdd', 'fas fa-desktop', 'fas fa-server', 'fas fa-barcode', 'fas fa-check'],
+  'fas fa-users': ['fas fa-users', 'fas fa-user', 'fas fa-id-badge', 'fas fa-building', 'fas fa-check'],
+  'fas fa-user-check': ['fas fa-user-check', 'fas fa-laptop', 'fas fa-barcode', 'fas fa-user', 'fas fa-check'],
+  'fas fa-warehouse': ['fas fa-warehouse', 'fas fa-boxes', 'fas fa-barcode', 'fas fa-box', 'fas fa-check'],
+  'fas fa-calendar-times': ['fas fa-calendar-times', 'fas fa-clock', 'fas fa-exclamation-triangle', 'fas fa-laptop', 'fas fa-barcode'],
+}
+
+const CARD_SUB: Record<string, string> = {
+  Assets: 'Tracked hardware',
+  Licenses: 'Software licenses',
+  Accessories: 'Peripherals',
+  Consumables: 'Stock items',
+  Components: 'Installed parts',
+  'Active employees': 'Currently active',
+  Assigned: 'Checked out',
+  'In stock': 'Ready to deploy',
+  'EOL due': 'Nearing end of life',
+}
+
+export function KpiCard({
+  count,
+  label,
+  color,
+  icon,
+  hint,
+  share,
+  total,
+  linked = false,
+}: {
+  count: number | string
+  label: string
+  color: string
+  icon: string
+  hint?: ReactNode
+  share?: number
+  total?: number
+  linked?: boolean
+}) {
+  const text = typeof count === 'number' ? count.toLocaleString() : count
+  const pct = share == null || !Number.isFinite(share) ? null : Math.max(0, Math.min(100, Math.round(share)))
+  const marks = CARD_MARKS[icon] || [icon, icon, icon, icon, icon]
+  const subtitle = hint ?? CARD_SUB[label]
+  return (
+    <div className={`dashboard small-box ${color}${pct != null ? ' has-meter' : ''}`}>
+      <span className="small-box-glow" aria-hidden="true" />
+      <div className="small-box-head">
+        <span className="small-box-badge" aria-hidden="true"><i className={icon} /></span>
+        <span className="small-box-copy">
+          <span className="small-box-label">{label}</span>
+          {subtitle ? <span className="small-box-hint">{subtitle}</span> : null}
+        </span>
+        {linked || pct != null ? (
+          <span className="small-box-chip">
+            <i className="fas fa-arrow-right" aria-hidden="true" />
+            {pct != null ? `${pct}%` : null}
+          </span>
+        ) : null}
+      </div>
+      <div className="small-box-body">
+        <div>
+          <div className="small-box-num">{text}</div>
+          <div className="small-box-foot">
+            {pct != null && total != null ? (
+              <><b>{pct}%</b> of {total.toLocaleString()} assets</>
+            ) : linked ? 'View all' : 'Overview'}
+          </div>
+        </div>
+        <span className="small-box-marks" aria-hidden="true">
+          {marks.map((name, n) => <i key={`${name}-${n}`} className={name} />)}
+        </span>
+      </div>
+      {pct != null ? (
+        <div className="small-box-meter">
+          <span className="small-box-meter-track"><span style={{ width: `${pct}%` }} /></span>
+          <em>{pct}%</em>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function SmallBox({
   to,
   count,
@@ -65,6 +152,8 @@ export function SmallBox({
   icon,
   colClass = 'col-lg-2 col-xs-6',
   footer,
+  share,
+  total,
 }: {
   to?: string
   count: number | string
@@ -73,22 +162,34 @@ export function SmallBox({
   icon: string
   colClass?: string
   footer?: string
+  share?: number
+  total?: number
 }) {
   const box = (
-    <div className={`dashboard small-box ${color}`}>
-      <div className="inner">
-        <h3>{typeof count === 'number' ? count.toLocaleString() : count}</h3>
-        <p>{label}</p>
-      </div>
-      <div className="icon" aria-hidden="true"><i className={icon} /></div>
-      <span className="small-box-footer">
-        {footer || (to ? <>View all <i className="fas fa-arrow-right" /></> : 'Overview')}
-      </span>
-    </div>
+    <KpiCard
+      count={count}
+      label={label}
+      color={color}
+      icon={icon}
+      hint={footer}
+      share={share}
+      total={total}
+      linked={Boolean(to)}
+    />
   )
   return (
-    <div className={colClass}>
-      {to ? <Link to={to} className="small-box-link">{box}</Link> : <div className="small-box-static">{box}</div>}
+    <div className={colClass} data-aos="zoom-in">
+      {to ? (
+        <Link
+          to={to}
+          className="small-box-link"
+          onClick={(e: MouseEvent<HTMLAnchorElement>) => playKpiClick(fxVariantFromColor(color), e.currentTarget)}
+        >
+          {box}
+        </Link>
+      ) : (
+        <div className="small-box-static">{box}</div>
+      )}
     </div>
   )
 }

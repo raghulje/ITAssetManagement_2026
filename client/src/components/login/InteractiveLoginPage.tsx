@@ -68,7 +68,7 @@ export default function InteractiveLoginPage({ onSubmit: onSubmitProp, ssoHref, 
           particleCount: 70,
           spread: 62,
           origin: { y: 0.55, x: 0.5 },
-          colors: ['#0F9D8A', '#34D399', '#3B82F6', '#F97316'],
+          colors: ['#17a2b4', '#5fe0e6', '#3B82F6', '#F97316'],
         })
       }
     } catch (err) {

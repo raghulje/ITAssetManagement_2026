@@ -6,8 +6,8 @@
   --vad-ink: #0F172A;
   --vad-muted: #64748B;
   --vad-border: #E2E8F0;
-  --vad-teal: #0F9D8A;
-  --vad-teal-soft: rgba(15, 157, 138, 0.12);
+  --vad-teal: #17a2b4;
+  --vad-teal-soft: rgba(23, 162, 180, 0.12);
   --vad-radius: 16px;
   --vad-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.04);
   --vad-shadow-hover: 0 8px 24px rgba(15, 23, 42, 0.1);
@@ -20,6 +20,37 @@
   color: var(--vad-ink);
   max-width: 1280px;
   margin: 0 auto;
+}
+
+.vad-form-banner {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin: 0 0 4px;
+  padding: 18px 20px 16px;
+  border-radius: 18px;
+  background:
+    linear-gradient(105deg, rgba(15, 23, 42, 0.94) 0%, rgba(30, 41, 59, 0.88) 48%, rgba(15, 23, 42, 0.7) 100%),
+    var(--scene, url('/art/asset-it-form.jpg')) right center / cover no-repeat;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(20, 90, 120, 0.12);
+  color: #fff;
+}
+.vad-form-banner .vad-crumb,
+.vad-form-banner .vad-title-row { position: relative; z-index: 1; }
+.vad-form-banner .vad-crumb,
+.vad-form-banner .vad-crumb a,
+.vad-form-banner .vad-crumb__current,
+.vad-form-banner .vad-title-block p { color: rgba(226, 232, 240, 0.92); }
+.vad-form-banner .vad-crumb a:hover { color: #fff; }
+.vad-form-banner .vad-title-block h1 { color: #fff; }
+.vad-form-banner .vad-back-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+.vad-form-banner .vad-actions .btn {
+  backdrop-filter: blur(6px);
 }
 
 .vad-crumb {
@@ -51,8 +82,8 @@
 }
 
 .vad-back-btn:hover {
-  border-color: rgba(15, 157, 138, 0.45);
-  color: #0F9D8A;
+  border-color: rgba(23, 162, 180, 0.45);
+  color: #17a2b4;
   background: #f0fdfa;
 }
 
@@ -117,8 +148,8 @@
 }
 
 .vad-btn-edit {
-  background: #0F9D8A !important;
-  border-color: #0F9D8A !important;
+  background: #17a2b4 !important;
+  border-color: #17a2b4 !important;
   color: #fff !important;
 }
 
@@ -149,22 +180,22 @@
 .vad-btn-delete:hover { background: #fef2f2 !important; }
 
 .vad-card--highlight {
-  border-color: rgba(15, 157, 138, 0.55) !important;
+  border-color: rgba(23, 162, 180, 0.55) !important;
   animation: vad-assign-pulse 2.2s ease;
   box-shadow:
-    0 0 0 3px rgba(15, 157, 138, 0.28),
-    0 14px 32px rgba(15, 157, 138, 0.14);
+    0 0 0 3px rgba(23, 162, 180, 0.28),
+    0 14px 32px rgba(23, 162, 180, 0.14);
 }
 
 @keyframes vad-assign-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(15, 157, 138, 0.5), 0 8px 20px rgba(15, 23, 42, 0.06);
+    box-shadow: 0 0 0 0 rgba(23, 162, 180, 0.5), 0 8px 20px rgba(15, 23, 42, 0.06);
   }
   35% {
-    box-shadow: 0 0 0 8px rgba(15, 157, 138, 0.18), 0 14px 32px rgba(15, 157, 138, 0.16);
+    box-shadow: 0 0 0 8px rgba(23, 162, 180, 0.18), 0 14px 32px rgba(23, 162, 180, 0.16);
   }
   100% {
-    box-shadow: 0 0 0 3px rgba(15, 157, 138, 0.22), 0 10px 24px rgba(15, 23, 42, 0.06);
+    box-shadow: 0 0 0 3px rgba(23, 162, 180, 0.22), 0 10px 24px rgba(15, 23, 42, 0.06);
   }
 }
 
@@ -331,7 +362,7 @@
   font-size: 1.4rem;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: #0F9D8A;
+  color: #17a2b4;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
