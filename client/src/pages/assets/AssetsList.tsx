@@ -552,6 +552,9 @@ export default function AssetsList() {
               >
                 <i className="fas fa-link" /> Export QR Url
               </button>
+              <Link to="/hardware/latest-data" className="btn btn-default btn-sm">
+                <i className="fas fa-file-excel" /> Compare latest data
+              </Link>
               <button
                 type="button"
                 className="btn btn-default btn-sm"

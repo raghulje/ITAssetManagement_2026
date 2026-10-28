@@ -10,10 +10,11 @@ import { formatAppDateTime } from '../../lib/datetime'
 import { openLabelPrintWindow, printAssetLabels, type LabelPrintSheet } from '../../lib/printLabelPreview'
 import AssetRecordHero from './detail/AssetRecordHero'
 import AssetOverviewTab from './detail/AssetOverviewTab'
+import AssetAdditionalTab from './detail/AssetAdditionalTab'
 import AssetCapturesTab, { normalizeCaptureRows } from './detail/AssetCapturesTab'
 import type { CaptureRow } from '../../components/QrAssetCapturePanel'
 
-type TabId = 'overview' | 'attachments' | 'history' | 'agent' | 'maintenance' | 'captures'
+type TabId = 'overview' | 'details' | 'attachments' | 'history' | 'agent' | 'maintenance' | 'captures'
 
 type AgentStatus = {
   registered?: boolean
@@ -234,8 +235,14 @@ export default function AssetDetail() {
   )
   const custody = history.filter((x) => ['checkout', 'checkin', 'replace_in', 'replace_out', 'transfer'].includes(String(x.action_type)))
 
+  const detailFields = (a.additional_details && typeof a.additional_details === 'object'
+    && (a.additional_details as { fields?: Record<string, string> }).fields)
+    ? Object.keys((a.additional_details as { fields: Record<string, string> }).fields).length
+    : 0
+
   const tabs: Array<{ id: TabId; label: string; count?: number }> = [
     { id: 'overview', label: 'Overview' },
+    { id: 'details', label: 'Additional Details', count: detailFields || undefined },
     { id: 'captures', label: 'Captures', count: captures.length || undefined },
     { id: 'maintenance', label: 'Maintenance', count: maintenances.length },
     { id: 'agent', label: 'Agent' },
@@ -291,6 +298,8 @@ export default function AssetDetail() {
             }}
           />
         ) : null}
+
+        {tab === 'details' ? <AssetAdditionalTab asset={a} /> : null}
 
         {tab === 'captures' && id ? (
           <AssetCapturesTab

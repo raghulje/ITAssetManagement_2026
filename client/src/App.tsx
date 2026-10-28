@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import AssetsList from './pages/assets/AssetsList'
 import AssetDetail from './pages/assets/AssetDetail'
 import AssetForm from './pages/assets/AssetForm'
+import LatestAssetCompare from './pages/assets/LatestAssetCompare'
 import { AssetCheckout, AssetCheckin } from './pages/assets/AssetCheckout'
 import AssetTransfer from './pages/assets/AssetTransfer'
 import {
@@ -108,6 +109,7 @@ export default function App() {
                 <Route path="/hardware" element={<AssetsList />} />
                 <Route path="/labels" element={<LabelsModule />} />
                 <Route path="/hardware/create" element={<AssetForm />} />
+                <Route path="/hardware/latest-data" element={<LatestAssetCompare />} />
                 {/* Audit feature — restore when needed
                 <Route path="/hardware/audit/due" element={<AuditDue />} />
                 <Route path="/hardware/bulkaudit" element={<BulkAudit />} />

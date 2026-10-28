@@ -6,7 +6,7 @@ import { all, get, run, now, limitSql } from '../db/index.js'
 import { fail, okItem, okList, okMessage } from '../utils/response.js'
 import { logAction } from '../services/actionLog.js'
 import { transformAsset } from '../services/transformers.js'
-import { recordUpload, storageRoot } from '../services/uploads.js'
+import { makeMultiUploader, recordUpload, storageRoot } from '../services/uploads.js'
 import { actorLabel, notifyWorkflow, resolveAssigneeEmail } from '../services/notify.js'
 import { actionLogDomainSql, assertRecordDomainAccess, inventoryDomainClause, loadItemDomain } from '../services/domainAuth.js'
 import { ASSET_AGE_DATE_SQL } from '../utils/period.js'
@@ -1013,6 +1013,69 @@ settingsRouter.post('/migrate-14102026', async (req, res) => {
   } catch (e) {
     return fail(res, e instanceof Error ? e.message : 'migrate-14102026 failed', 500)
   }
+})
+
+settingsRouter.post('/migrate_comparision_feature', async (req, res) => {
+  try {
+    const { runNamedSchemaMigrations } = await import('../services/schemaMigrate.js')
+    const result = await runNamedSchemaMigrations(['059_asset_additional_details'])
+    await logAction({
+      userId: req.user?.id,
+      actionType: 'migrate_comparision_feature',
+      itemType: 'settings',
+      itemId: 1,
+      note: `Comparison feature migration applied ${result.applied.length}; skipped ${result.skipped.length}`,
+      meta: result,
+    })
+    const applied = result.applied.length ? result.applied.join(', ') : 'none'
+    return okMessage(
+      res,
+      result.applied.length
+        ? `migrate_comparision_feature applied: ${applied}.`
+        : 'migrate_comparision_feature is already applied on this server.',
+      result,
+    )
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'migrate_comparision_feature failed', 500)
+  }
+})
+
+settingsRouter.post('/load_original_asset_sheets', (req, res) => {
+  const upload = makeMultiUploader('private_uploads/original-asset-sheets', 'files', 12)
+  upload(req, res, async (err) => {
+    if (err) return fail(res, err instanceof Error ? err.message : 'Upload failed')
+    const files = (req.files as Express.Multer.File[] | undefined) || []
+    if (!files.length) return fail(res, 'Choose the original asset workbooks')
+    try {
+      const { ingestOriginalWorkbooks } = await import('../services/originalAssetSheets.js')
+      const result = ingestOriginalWorkbooks(files.map((file) => ({ path: file.path, name: file.originalname })))
+      await logAction({
+        userId: req.user?.id,
+        actionType: 'load_original_asset_sheets',
+        itemType: 'settings',
+        itemId: 1,
+        note: `Loaded ${result.files} workbook(s), ${result.serials} serials`,
+        meta: result,
+      })
+      return okMessage(
+        res,
+        `load_original_asset_sheets stored ${result.serials} serials from ${result.files} workbook(s).`,
+        result,
+      )
+    } catch (e) {
+      return fail(res, e instanceof Error ? e.message : 'Could not read the original asset sheets', 500)
+    }
+  })
+})
+
+settingsRouter.get('/original-asset-sheets', async (_req, res) => {
+  const { loadOriginalIndex } = await import('../services/originalAssetSheets.js')
+  const index = loadOriginalIndex()
+  return okItem(res, {
+    files: index.files,
+    serials: index.bySerial.size,
+    updated_at: index.updated_at,
+  })
 })
 
 settingsRouter.post('/run-battery-recordings-migration', async (req, res) => {

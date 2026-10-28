@@ -14,6 +14,8 @@ const dirs = [
   'public/barcodes',
   'public/labels',
   'private_uploads/imports',
+  'private_uploads/latest-asset-data',
+  'private_uploads/original-asset-sheets',
   'private_uploads/assets',
   'private_uploads/users',
   'private_uploads/licenses',

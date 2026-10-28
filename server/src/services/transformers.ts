@@ -126,6 +126,12 @@ export async function transformAsset(id: number) {
       ? { date: a.asset_eol_date, formatted: a.asset_eol_date }
       : null,
     notes: a.notes,
+    additional_details: (() => {
+      const raw = a.additional_details
+      if (raw == null || raw === '') return null
+      if (typeof raw === 'object') return raw
+      try { return JSON.parse(String(raw)) } catch { return null }
+    })(),
     received_condition: a.received_condition || null,
     domain_attrs: (() => {
       const raw = a.domain_attrs

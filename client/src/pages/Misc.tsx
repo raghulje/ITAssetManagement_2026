@@ -467,6 +467,8 @@ export function SettingsGeneral() {
   const [tagMigrateBusy, setTagMigrateBusy] = useState(false)
   const [tagRegenBusy, setTagRegenBusy] = useState(false)
   const [schemaMigrateBusy, setSchemaMigrateBusy] = useState(false)
+  const [originalBusy, setOriginalBusy] = useState(false)
+  const [originalFiles, setOriginalFiles] = useState<FileList | null>(null)
   const [spaceSeedBusy, setSpaceSeedBusy] = useState(false)
   const [migStatus, setMigStatus] = useState<{ pending: string[]; applied: string[] } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -763,9 +765,93 @@ export function SettingsGeneral() {
         >
           {schemaMigrateBusy ? 'Applying…' : 'migrate-14102026'}
         </button>
+        <button
+          type="button"
+          className="btn btn-theme"
+          style={{ marginLeft: 8 }}
+          disabled={schemaMigrateBusy || !canEdit}
+          onClick={() => {
+            if (!window.confirm(
+              'Run migrate_comparision_feature on this server?\n\nThis adds only the additional-details column used by Compare latest data. Older pending migrations are not run.',
+            )) return
+            setSchemaMigrateBusy(true)
+            setError('')
+            setOkMsg('')
+            api<{ messages?: string[] }>('/settings/migrate_comparision_feature', { method: 'POST' })
+              .then((res) => {
+                const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'migrate_comparision_feature applied'
+                setOkMsg(msg)
+                toast.success(msg)
+                return api<{ pending: string[]; applied: string[] }>('/settings/migrations')
+              })
+              .then((s) => {
+                if (s) setMigStatus({ pending: s.pending || [], applied: s.applied || [] })
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setSchemaMigrateBusy(false))
+          }}
+        >
+          {schemaMigrateBusy ? 'Applying…' : 'migrate_comparision_feature'}
+        </button>
         <p className="help-block" style={{ marginTop: 12, marginBottom: 0 }}>
           Agent id and notify email: <a href="/settings/battery">Settings → Battery Degradation</a>.
         </p>
+      </Box>
+
+      <Box title="Original asset sheets" type="primary">
+        <p className="help-block" style={{ marginTop: 0 }}>
+          Upload the workbooks that were used to create the assets, such as OverAll Asset Lists.
+          They are matched by serial number when Compare latest data finds no asset.
+          The new asset then keeps the old asset number, company, assignee, model, invoice, and cost.
+          This does not run database migrations.
+        </p>
+        <input
+          type="file"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          multiple
+          disabled={originalBusy || !canEdit}
+          onChange={(e) => setOriginalFiles(e.target.files)}
+        />
+        <button
+          type="button"
+          className="btn btn-theme"
+          style={{ marginLeft: 8 }}
+          disabled={originalBusy || !canEdit || !originalFiles?.length}
+          onClick={() => {
+            if (!originalFiles?.length) return
+            setOriginalBusy(true)
+            setError('')
+            setOkMsg('')
+            const fd = new FormData()
+            Array.from(originalFiles).forEach((file) => fd.append('files', file))
+            const t = localStorage.getItem('refex_token')
+            fetch(`${getApiBase()}/settings/load_original_asset_sheets`, {
+              method: 'POST',
+              headers: t ? { Authorization: `Bearer ${t}` } : {},
+              body: fd,
+            })
+              .then(async (res) => {
+                const data = await res.json().catch(() => ({})) as { messages?: string[]; message?: string }
+                if (!res.ok) {
+                  const messages = Array.isArray(data.messages) ? data.messages : [data.message || 'Upload failed']
+                  throw new Error(messages.join(', '))
+                }
+                const msg = Array.isArray(data.messages) ? data.messages.join(' ') : 'load_original_asset_sheets complete'
+                setOkMsg(msg)
+                toast.success(msg)
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setOriginalBusy(false))
+          }}
+        >
+          {originalBusy ? 'Loading…' : 'load_original_asset_sheets'}
+        </button>
       </Box>
 
       <Box title="Seed office floors & Admin inventory" type="primary">

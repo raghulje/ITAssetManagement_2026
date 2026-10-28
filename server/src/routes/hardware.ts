@@ -22,6 +22,8 @@ import {
 import { requireActiveEmployee } from '../services/employeeStatus.js'
 import { requireItAssetManager } from '../services/permissions.js'
 import { generateMissingAssetQr, deviceBrandSerial, publicAssetPageUrl } from '../services/assetQr.js'
+import { applyLatestAssetUpdates, compareLatestAssetUpload } from '../services/latestAssetData.js'
+import { makeUploader } from '../services/uploads.js'
 import {
   captureDiskPath,
   deregisterAssetCaptures,
@@ -33,6 +35,7 @@ import {
 } from '../services/assetCaptures.js'
 
 const router = Router()
+const uploadLatestReport = makeUploader('private_uploads/latest-asset-data', 'file')
 
 function parseDomainAttrs(raw: unknown): Record<string, string> | null {
   if (raw == null || raw === '') return null
@@ -566,6 +569,41 @@ router.get('/qr/export', async (req, res) => {
     return res.send(csv)
   } catch (e) {
     return fail(res, e instanceof Error ? e.message : 'QR export failed', 500)
+  }
+})
+
+router.post('/latest-data/preview', (req, res) => {
+  uploadLatestReport(req, res, async (err) => {
+    if (err) return fail(res, err instanceof Error ? err.message : 'Upload failed')
+    if (!req.file) return fail(res, 'Choose the latest asset workbook')
+    try {
+      const result = await compareLatestAssetUpload(
+        req.file.filename,
+        req.user?.permissions,
+        req.query.domain || req.query.domain_id,
+      )
+      return okItem(res, result)
+    } catch (e) {
+      return fail(res, e instanceof Error ? e.message : 'Could not read the workbook')
+    }
+  })
+})
+
+router.post('/latest-data/apply', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.asset_ids) ? req.body.asset_ids.map((id: unknown) => Number(id)) : []
+    const rowIndexes = Array.isArray(req.body?.row_indexes) ? req.body.row_indexes.map((id: unknown) => Number(id)) : []
+    const result = await applyLatestAssetUpdates({
+      uploadId: String(req.body?.upload_id || ''),
+      assetIds: ids,
+      rowIndexes,
+      userId: req.user?.id,
+      perms: req.user?.permissions,
+      requestedDomain: req.query.domain || req.query.domain_id || req.body?.domain,
+    })
+    return okItem(res, result)
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Update failed')
   }
 })
 

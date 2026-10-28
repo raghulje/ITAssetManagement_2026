@@ -119,6 +119,82 @@ export const hardwareApi = {
     const qs = q.toString()
     return `/hardware/qr/export${qs ? `?${qs}` : ''}`
   },
+  previewLatestData: async (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const q = new URLSearchParams()
+    const domain = storedInventoryDomain()
+    if (domain) q.set('domain', domain)
+    const qs = q.toString()
+    const headers: Record<string, string> = { Accept: 'application/json' }
+    const t = token()
+    if (t) headers.Authorization = `Bearer ${t}`
+    const res = await fetch(`${getApiBase()}/hardware/latest-data/preview${qs ? `?${qs}` : ''}`, {
+      method: 'POST',
+      headers,
+      body: fd,
+    })
+    const data = await res.json().catch(() => ({})) as {
+      messages?: string | string[]
+      message?: string
+    }
+    if (!res.ok) {
+      const messages = Array.isArray(data.messages)
+        ? data.messages
+        : [String(data.messages || data.message || 'Upload failed')]
+      throw new ApiError(res.status, messages)
+    }
+    return data as {
+      upload_id: string
+      summary: {
+        rows: number
+        columns: number
+        columns_with_values: number
+        matched: number
+        updates: number
+        unchanged: number
+        unmatched: number
+        ambiguous: number
+        skipped: number
+        storage_ready: boolean
+        original_serials: number
+      }
+      detail_columns: string[]
+      rows: Array<{
+        row_index: number
+        endpoint: string
+        serial: string
+        model: string
+        site: string
+        last_user: string
+        email: string
+        status: 'update' | 'unchanged' | 'unmatched' | 'ambiguous' | 'skipped'
+        match_by: string
+        reason: string
+        asset_id: number | null
+        asset_tag: string | null
+        asset_name: string | null
+        changes: Array<{ field: string; label: string; from: string; to: string; source?: string }>
+        review: Array<{ label: string; report: string; system: string }>
+      }>
+    }
+  },
+  applyLatestData: (uploadId: string, rowIndexes: number[]) => {
+    const q = new URLSearchParams()
+    const domain = storedInventoryDomain()
+    if (domain) q.set('domain', domain)
+    const qs = q.toString()
+    return api<{
+      updated: number
+      created: number
+      skipped: number
+      failed: string[]
+      created_rows?: Array<{ row_index: number; asset_id: number; asset_tag: string }>
+    }>(
+      `/hardware/latest-data/apply${qs ? `?${qs}` : ''}`,
+      { method: 'POST', json: { upload_id: uploadId, row_indexes: rowIndexes } },
+    )
+  },
   nextTag: (params: {
     company_id?: string | number
     legal_entity_id?: string | number

@@ -353,8 +353,12 @@ export function moduleGate(module: ModuleKey) {
     } else if (req.method === 'POST') {
       if (/\/(checkout|checkin|replace|checkinbytag)\b/i.test(path) || /\/(checkout|checkin|replace)\b/i.test(req.path)) {
         action = 'checkout'
-      } else if (/\/(complete|audit|call|sync-call|sync-all|close|run-migrations|run-battery-migration|run-battery-recordings-migration|migrate-14102026|seed-admin-spaces|migrate-asset-tags|regenerate-asset-tags|reset-qr)\b/i.test(req.path)) {
+      } else if (/\/(complete|audit|call|sync-call|sync-all|close|run-migrations|run-battery-migration|run-battery-recordings-migration|migrate-14102026|migrate_comparision_feature|load_original_asset_sheets|seed-admin-spaces|migrate-asset-tags|regenerate-asset-tags|reset-qr)\b/i.test(req.path)) {
         action = 'edit'
+      } else if (/\/latest-data\/apply\b/i.test(path)) {
+        action = 'edit'
+      } else if (/\/latest-data\/preview\b/i.test(path)) {
+        action = 'view'
       } else if (/\/labels\b/i.test(path) || /\/labels\b/i.test(req.baseUrl || '') || /\/qr\/generate-missing\b/i.test(path)) {
         // Print label and bulk QR mint are not "create asset" — allow with view or edit
         action = 'view'
