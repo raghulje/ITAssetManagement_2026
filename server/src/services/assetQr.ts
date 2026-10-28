@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import QRCode from 'qrcode'
-import { get, run, now } from '../db/index.js'
+import { all, get, run, now } from '../db/index.js'
 import { storageRoot } from './uploads.js'
 
 const QR_DIR = path.join(storageRoot, 'public/assets/qr')
@@ -138,6 +138,56 @@ export async function ensureAssetQr(assetId: number, opts?: { refreshImage?: boo
     qr_image_path: `public/assets/qr/${token}.png`,
     created_png: needsWrite,
   }
+}
+
+/** Mint a permanent QR and public URL for every asset that does not have one yet. Existing tokens stay as they are. */
+export async function generateMissingAssetQr(filter: { sql: string; params: unknown[] }) {
+  const missing = await all<{ id: number }>(`
+    SELECT a.id
+    FROM assets a
+    WHERE a.deleted_at IS NULL
+      AND (
+        a.qr_token IS NULL OR TRIM(a.qr_token) = ''
+        OR a.qr_url IS NULL OR TRIM(a.qr_url) = ''
+        OR a.qr_image_path IS NULL OR TRIM(a.qr_image_path) = ''
+      )
+      ${filter.sql}
+    ORDER BY a.id
+  `, filter.params)
+
+  let generated = 0
+  let failed = 0
+  for (const row of missing) {
+    try {
+      await ensureAssetQr(Number(row.id))
+      generated += 1
+    } catch {
+      failed += 1
+    }
+  }
+
+  const totalRow = await get<{ c: number }>(`
+    SELECT COUNT(*) AS c FROM assets a
+    WHERE a.deleted_at IS NULL ${filter.sql}
+  `, filter.params)
+  const total = Number(totalRow?.c || 0)
+
+  return {
+    generated,
+    failed,
+    already: Math.max(0, total - missing.length),
+    missing: missing.length,
+  }
+}
+
+/** "Dell - HNMN264" or "MacBook Pro - FVFWR5T6HV29": product name when it has more than one word, otherwise the brand. */
+export function deviceBrandSerial(manufacturer: string, model: string, serial: string) {
+  const man = manufacturer.trim()
+  const mod = model.trim()
+  const brand = (mod.includes(' ') ? mod : '') || man || mod
+  const ser = serial.trim()
+  if (brand && ser) return `${brand} - ${ser}`
+  return brand || ser
 }
 
 export async function markLabelPrinted(assetId: number) {

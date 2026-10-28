@@ -102,6 +102,23 @@ export const hardwareApi = {
     return api<{ statuses: string[]; assignees: string[] }>(`/hardware/facets?${q}`)
   },
   get: (id: number | string) => api<Record<string, unknown>>(`/hardware/${id}`),
+  generateMissingQr: () => {
+    const q = new URLSearchParams()
+    const domain = storedInventoryDomain()
+    if (domain) q.set('domain', domain)
+    const qs = q.toString()
+    return api<{ generated: number; failed: number; already: number; missing: number }>(
+      `/hardware/qr/generate-missing${qs ? `?${qs}` : ''}`,
+      { method: 'POST' },
+    )
+  },
+  qrExportPath: () => {
+    const q = new URLSearchParams()
+    const domain = storedInventoryDomain()
+    if (domain) q.set('domain', domain)
+    const qs = q.toString()
+    return `/hardware/qr/export${qs ? `?${qs}` : ''}`
+  },
   nextTag: (params: {
     company_id?: string | number
     legal_entity_id?: string | number

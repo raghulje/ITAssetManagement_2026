@@ -21,6 +21,7 @@ import {
 } from '../services/domainAuth.js'
 import { requireActiveEmployee } from '../services/employeeStatus.js'
 import { requireItAssetManager } from '../services/permissions.js'
+import { generateMissingAssetQr, deviceBrandSerial, publicAssetPageUrl } from '../services/assetQr.js'
 import {
   captureDiskPath,
   deregisterAssetCaptures,
@@ -499,6 +500,72 @@ router.get('/agent-sync-logs', async (req, res) => {
     return okList(res, rows)
   } catch (e) {
     return fail(res, e instanceof Error ? e.message : 'Failed to load agent sync logs', 500)
+  }
+})
+
+/** Mint QR + public URL for assets in this domain that do not have one yet. */
+router.post('/qr/generate-missing', async (req, res) => {
+  try {
+    const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id || req.body?.domain, 'a')
+    const result = await generateMissingAssetQr({ sql: domain.sql, params: domain.params })
+    return okItem(res, result)
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'QR generation failed', 500)
+  }
+})
+
+/** CSV: QR, Asset Name, Company , Device Brand and Serial Number Details */
+router.get('/qr/export', async (req, res) => {
+  try {
+    const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
+    const hasAssetMfr = await tableHasColumn('assets', 'manufacturer_id')
+    const rows = await all<{
+      asset_tag: string
+      serial: string | null
+      qr_token: string
+      company_name: string | null
+      manufacturer_name: string | null
+      model_name: string | null
+    }>(`
+      SELECT a.asset_tag, a.serial, a.qr_token,
+        c.name AS company_name,
+        ${hasAssetMfr ? 'COALESCE(am.name, mm.name)' : 'mm.name'} AS manufacturer_name,
+        m.name AS model_name
+      FROM assets a
+      LEFT JOIN companies c ON c.id = a.company_id
+      LEFT JOIN models m ON m.id = a.model_id
+      LEFT JOIN manufacturers mm ON mm.id = m.manufacturer_id
+      ${hasAssetMfr ? 'LEFT JOIN manufacturers am ON am.id = a.manufacturer_id' : ''}
+      WHERE a.deleted_at IS NULL
+        AND a.qr_token IS NOT NULL AND TRIM(a.qr_token) <> ''
+        ${domain.sql}
+      ORDER BY a.asset_tag ASC, a.id ASC
+    `, domain.params)
+
+    const header = 'QR,Asset Name,Company ,Device Brand and Serial Number Details'
+    const lines = rows.map((row) => {
+      const cells = [
+        publicAssetPageUrl(String(row.qr_token)),
+        String(row.asset_tag || '').trim(),
+        String(row.company_name || '').trim(),
+        deviceBrandSerial(
+          String(row.manufacturer_name || ''),
+          String(row.model_name || ''),
+          String(row.serial || ''),
+        ),
+      ]
+      return cells.map((cell) => {
+        const s = String(cell ?? '')
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+      }).join(',')
+    })
+    const csv = `\uFEFF${[header, ...lines].join('\n')}`
+    const filename = `assets-qr-urls-${new Date().toISOString().slice(0, 10)}.csv`
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    return res.send(csv)
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'QR export failed', 500)
   }
 })
 

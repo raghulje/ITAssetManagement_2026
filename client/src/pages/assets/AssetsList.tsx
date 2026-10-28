@@ -7,7 +7,7 @@ import { ModuleInsights } from '../../components/ModuleInsights'
 import AssetPeriodPicker, { getEmptyPeriodState, type PeriodState } from '../../components/AssetPeriodPicker'
 import { api, dashboardApi, hardwareApi, mastersApi, type SelectOption } from '../../api/client'
 import { openLabelPrintWindow, printAssetLabels, type LabelPrintSheet } from '../../lib/printLabelPreview'
-import { downloadCsv } from '../../utils/csv'
+import { downloadAuthedCsv, downloadCsv } from '../../utils/csv'
 import { useAuth } from '../../api/AuthContext'
 
 type Row = Record<string, unknown>
@@ -332,6 +332,44 @@ export default function AssetsList() {
     return data
   }
 
+  const [qrBusy, setQrBusy] = useState(false)
+
+  const generateMissingQr = async () => {
+    setQrBusy(true)
+    setBulkMsg('')
+    try {
+      const res = await hardwareApi.generateMissingQr()
+      const generated = Number(res.generated || 0)
+      const already = Number(res.already || 0)
+      const failed = Number(res.failed || 0)
+      if (generated === 0 && failed === 0) {
+        setBulkMsg(`Every asset already has a QR. ${already.toLocaleString('en-IN')} ready.`)
+      } else {
+        setBulkMsg(
+          `Generated QR and public URL for ${generated.toLocaleString('en-IN')} asset(s). ${already.toLocaleString('en-IN')} already had one.${failed ? ` ${failed.toLocaleString('en-IN')} failed.` : ''}`,
+        )
+      }
+      load()
+    } catch (e) {
+      setBulkMsg(e instanceof Error ? e.message : 'QR generation failed')
+    } finally {
+      setQrBusy(false)
+    }
+  }
+
+  const exportQrUrls = async () => {
+    setQrBusy(true)
+    setBulkMsg('')
+    try {
+      await downloadAuthedCsv(hardwareApi.qrExportPath(), `assets-qr-urls-${new Date().toISOString().slice(0, 10)}.csv`)
+      setBulkMsg('Exported QR URLs')
+    } catch (e) {
+      setBulkMsg(e instanceof Error ? e.message : 'QR export failed')
+    } finally {
+      setQrBusy(false)
+    }
+  }
+
   const exportRows = async () => {
     const cols = exportableColumns
     const data = await fetchMatchingRows()
@@ -498,6 +536,22 @@ export default function AssetsList() {
               <Link to="/maintenances/create" className="btn btn-default btn-sm"><i className="fas fa-wrench" /> Add Maintenance</Link>
             </div>
             <div className="asset-toolbar-tools">
+              <button
+                type="button"
+                className="btn btn-theme btn-sm"
+                onClick={() => { void generateMissingQr() }}
+                disabled={qrBusy}
+              >
+                <i className="fas fa-qrcode" /> {qrBusy ? 'Working…' : 'Generate missing QR'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-default btn-sm"
+                onClick={() => { void exportQrUrls() }}
+                disabled={qrBusy}
+              >
+                <i className="fas fa-link" /> Export QR Url
+              </button>
               <button
                 type="button"
                 className="btn btn-default btn-sm"

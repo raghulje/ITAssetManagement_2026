@@ -355,8 +355,8 @@ export function moduleGate(module: ModuleKey) {
         action = 'checkout'
       } else if (/\/(complete|audit|call|sync-call|sync-all|close|run-migrations|run-battery-migration|run-battery-recordings-migration|migrate-14102026|seed-admin-spaces|migrate-asset-tags|regenerate-asset-tags|reset-qr)\b/i.test(req.path)) {
         action = 'edit'
-      } else if (/\/labels\b/i.test(path) || /\/labels\b/i.test(req.baseUrl || '')) {
-        // Print label is not "create asset" — allow with view or edit
+      } else if (/\/labels\b/i.test(path) || /\/labels\b/i.test(req.baseUrl || '') || /\/qr\/generate-missing\b/i.test(path)) {
+        // Print label and bulk QR mint are not "create asset" — allow with view or edit
         action = 'view'
       } else {
         action = 'create'
