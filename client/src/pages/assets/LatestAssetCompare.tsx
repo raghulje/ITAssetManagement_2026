@@ -2,6 +2,7 @@ import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AppLayout from '../../layout/AppLayout'
 import { hardwareApi } from '../../api/client'
+import { getApiBase } from '../../api/baseUrl'
 
 type Change = { field: string; label: string; from: string; to: string; source?: string }
 type Review = { label: string; report: string; system: string }
@@ -73,6 +74,8 @@ export default function LatestAssetCompare() {
   const [open, setOpen] = useState<number | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
+  const [sheetBusy, setSheetBusy] = useState(false)
+  const [originalFiles, setOriginalFiles] = useState<FileList | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -105,6 +108,38 @@ export default function LatestAssetCompare() {
       setError(e instanceof Error ? e.message : 'Could not read the workbook')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const loadOriginalSheets = async () => {
+    if (!originalFiles?.length) {
+      setError('Choose OverAll Asset Lists and the other workbooks used to create the assets')
+      return
+    }
+    setSheetBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      const fd = new FormData()
+      Array.from(originalFiles).forEach((item) => fd.append('files', item))
+      const token = localStorage.getItem('refex_token')
+      const res = await fetch(`${getApiBase()}/settings/load_original_asset_sheets`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      })
+      const data = await res.json().catch(() => ({})) as { messages?: string[]; message?: string }
+      if (!res.ok) {
+        const messages = Array.isArray(data.messages) ? data.messages : [data.message || 'Upload failed']
+        throw new Error(messages.join(', '))
+      }
+      const msg = Array.isArray(data.messages) ? data.messages.join(' ') : 'Original asset sheets loaded'
+      setMessage(msg)
+      if (file) await compare()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load the original asset sheets')
+    } finally {
+      setSheetBusy(false)
     }
   }
 
@@ -201,7 +236,22 @@ export default function LatestAssetCompare() {
         {message ? <div className="callout callout-success"><p>{message}</p></div> : null}
         {summary && summary.original_serials === 0 ? (
           <div className="callout callout-warning">
-            <p>Original asset sheets are not loaded. New assets can still be created from this report. In Admin, use load_original_asset_sheets first if you want the old asset number, company, invoice, and cost copied onto those new assets.</p>
+            <p>
+              Original asset sheets are not loaded on this server. Choose <strong>OverAll Asset Lists 1.xlsx</strong> and <strong>RIL Asset Couriered List.xlsx</strong>, then click load_original_asset_sheets.
+              New assets will then keep the old asset number, company, invoice, and cost. The same button is also under Settings → General → Original asset sheets.
+            </p>
+            <div className="latest-data__upload">
+              <input
+                type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                multiple
+                disabled={sheetBusy || busy}
+                onChange={(e) => setOriginalFiles(e.target.files)}
+              />
+              <button type="button" className="btn btn-theme" disabled={sheetBusy || busy || !originalFiles?.length} onClick={() => { void loadOriginalSheets() }}>
+                {sheetBusy ? 'Loading…' : 'load_original_asset_sheets'}
+              </button>
+            </div>
           </div>
         ) : null}
         {summary && !summary.storage_ready ? (

@@ -517,20 +517,21 @@ router.post('/qr/generate-missing', async (req, res) => {
   }
 })
 
-/** CSV: QR, Asset Name, Company , Device Brand and Serial Number Details */
+/** CSV: QR, Asset Name, Company , Device Brand and Serial Number Details, Old asset tag, Serial */
 router.get('/qr/export', async (req, res) => {
   try {
     const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
     const hasAssetMfr = await tableHasColumn('assets', 'manufacturer_id')
     const rows = await all<{
       asset_tag: string
+      old_asset_tag: string | null
       serial: string | null
       qr_token: string
       company_name: string | null
       manufacturer_name: string | null
       model_name: string | null
     }>(`
-      SELECT a.asset_tag, a.serial, a.qr_token,
+      SELECT a.asset_tag, a.old_asset_tag, a.serial, a.qr_token,
         c.name AS company_name,
         ${hasAssetMfr ? 'COALESCE(am.name, mm.name)' : 'mm.name'} AS manufacturer_name,
         m.name AS model_name
@@ -545,7 +546,7 @@ router.get('/qr/export', async (req, res) => {
       ORDER BY a.asset_tag ASC, a.id ASC
     `, domain.params)
 
-    const header = 'QR,Asset Name,Company ,Device Brand and Serial Number Details'
+    const header = 'QR,Asset Name,Company ,Device Brand and Serial Number Details,Old asset tag,Serial'
     const lines = rows.map((row) => {
       const cells = [
         publicAssetPageUrl(String(row.qr_token)),
@@ -556,6 +557,8 @@ router.get('/qr/export', async (req, res) => {
           String(row.model_name || ''),
           String(row.serial || ''),
         ),
+        String(row.old_asset_tag || '').trim(),
+        String(row.serial || '').trim(),
       ]
       return cells.map((cell) => {
         const s = String(cell ?? '')
