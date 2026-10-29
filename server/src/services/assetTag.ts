@@ -19,9 +19,10 @@ export function currentFyTagSegment(d = new Date()): string {
   return `${start}-${String(start + 1).slice(-2)}`
 }
 
-/** Company-name segment used in asset tags, e.g. Sparzana Aviation Private Limited → SPARZANAAVIATIONPRIVATELIMITED. */
+/** Company name kept in the asset tag, with its spaces and capitalization. */
 export function companyTagCode(name: string): string {
-  return tagSegment(name, 'ASSET', 32)
+  const text = String(name ?? '').replace(/[\u00a0\u2007\u202f]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return text || 'ASSET'
 }
 
 export async function resolveTagCodeParts(opts: {

@@ -990,9 +990,9 @@ export function SettingsGeneral() {
       <Box title="Asset company names" type="primary">
         <p className="help-block" style={{ marginTop: 0 }}>
           Upload <strong>New_Asset_Company.csv</strong>. Each asset is matched by its QR link, then by Asset Name.
-          The company is set from <strong>Assset Based - Company Name</strong>, and that name replaces the company
-          code at the start of the asset name. <code>AVIATION-LAPTOP-0001</code> for Sparzana Aviation Private Limited
-          becomes <code>SPARZANAAVIATIONPRIVATELIMITED-LAPTOP-0001</code>. Rows with a blank company are skipped.
+          The company is set from <strong>Assset Based - Company Name</strong>, and that full name replaces the company
+          code at the start of the asset name. <code>REFEXHOLDINGPRIVATELIMITED-LAPTOP-2026-27-0002</code> becomes{' '}
+          <code>Refex Holding Private Limited-LAPTOP-2026-27-0002</code>. Rows with a blank company are skipped.
           If two assets would get the same name, the later number moves to the next free value.
         </p>
         <input
@@ -1009,7 +1009,7 @@ export function SettingsGeneral() {
           onClick={() => {
             if (!companySheet) return
             if (!window.confirm(
-              'Apply Assset Based - Company Name from this sheet?\n\nThe company on each matched asset is updated, and the company code at the start of the asset name is replaced.',
+              'Apply Assset Based - Company Name from this sheet?\n\nThe company on each matched asset is updated, and the start of the asset name becomes the full company name.',
             )) return
             setCompanySheetBusy(true)
             setError('')
