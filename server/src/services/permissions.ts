@@ -353,7 +353,7 @@ export function moduleGate(module: ModuleKey) {
     } else if (req.method === 'POST') {
       if (/\/(checkout|checkin|replace|checkinbytag)\b/i.test(path) || /\/(checkout|checkin|replace)\b/i.test(req.path)) {
         action = 'checkout'
-      } else if (/\/(complete|audit|call|sync-call|sync-all|close|run-migrations|run-battery-migration|run-battery-recordings-migration|migrate-14102026|migrate_comparision_feature|load_original_asset_sheets|seed-admin-spaces|migrate-asset-tags|regenerate-asset-tags|reset-qr)\b/i.test(req.path)) {
+      } else if (/\/(complete|audit|call|sync-call|sync-all|close|run-migrations|run-battery-migration|run-battery-recordings-migration|migrate-14102026|migrate_comparision_feature|load_original_asset_sheets|apply_asset_company_names|seed-admin-spaces|migrate-asset-tags|regenerate-asset-tags|reset-qr)\b/i.test(req.path)) {
         action = 'edit'
       } else if (/\/latest-data\/apply\b/i.test(path)) {
         action = 'edit'

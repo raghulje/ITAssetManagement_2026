@@ -6,7 +6,7 @@ import { all, get, run, now, limitSql } from '../db/index.js'
 import { fail, okItem, okList, okMessage } from '../utils/response.js'
 import { logAction } from '../services/actionLog.js'
 import { transformAsset } from '../services/transformers.js'
-import { makeMultiUploader, recordUpload, storageRoot } from '../services/uploads.js'
+import { makeMultiUploader, makeUploader, recordUpload, storageRoot } from '../services/uploads.js'
 import { actorLabel, notifyWorkflow, resolveAssigneeEmail } from '../services/notify.js'
 import { actionLogDomainSql, assertRecordDomainAccess, inventoryDomainClause, loadItemDomain } from '../services/domainAuth.js'
 import { ASSET_AGE_DATE_SQL } from '../utils/period.js'
@@ -1064,6 +1064,33 @@ settingsRouter.post('/load_original_asset_sheets', (req, res) => {
       )
     } catch (e) {
       return fail(res, e instanceof Error ? e.message : 'Could not read the original asset sheets', 500)
+    }
+  })
+})
+
+settingsRouter.post('/apply_asset_company_names', (req, res) => {
+  const upload = makeUploader('private_uploads/imports', 'file')
+  upload(req, res, async (err) => {
+    if (err) return fail(res, err instanceof Error ? err.message : 'Upload failed')
+    if (!req.file) return fail(res, 'Choose New_Asset_Company.csv')
+    try {
+      const { applyAssetCompanySheet } = await import('../services/assetCompanyRetag.js')
+      const result = await applyAssetCompanySheet(req.file.path)
+      await logAction({
+        userId: req.user?.id,
+        actionType: 'apply_asset_company_names',
+        itemType: 'settings',
+        itemId: 1,
+        note: `Updated ${result.updated}; retagged ${result.retagged}; failed ${result.failed}`,
+        meta: result,
+      })
+      return okMessage(
+        res,
+        `Asset company names applied — ${result.updated} updated, ${result.retagged} asset names retagged, ${result.renumbered} numbers adjusted, ${result.skipped} skipped, ${result.failed} failed.`,
+        result,
+      )
+    } catch (e) {
+      return fail(res, e instanceof Error ? e.message : 'Could not apply the asset company sheet', 500)
     }
   })
 })

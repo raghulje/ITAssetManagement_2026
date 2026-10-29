@@ -469,6 +469,8 @@ export function SettingsGeneral() {
   const [schemaMigrateBusy, setSchemaMigrateBusy] = useState(false)
   const [originalBusy, setOriginalBusy] = useState(false)
   const [originalFiles, setOriginalFiles] = useState<FileList | null>(null)
+  const [companySheetBusy, setCompanySheetBusy] = useState(false)
+  const [companySheet, setCompanySheet] = useState<File | null>(null)
   const [spaceSeedBusy, setSpaceSeedBusy] = useState(false)
   const [migStatus, setMigStatus] = useState<{ pending: string[]; applied: string[] } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -940,7 +942,7 @@ export function SettingsGeneral() {
       <Box title="Regenerate asset tags (keep Old Asset Tag)" type="warning">
         <p className="help-block" style={{ marginTop: 0 }}>
           Updates <strong>Asset Tag</strong> to the current format{' '}
-          <code>COMPANY/ENTITY-TYPE-2026-27-0001</code> (India FY Apr–Mar).{' '}
+          <code>COMPANYNAME-TYPE-2026-27-0001</code> (India FY Apr–Mar). The company part is the company name, not a short code such as AVIATION.{' '}
           <strong>Old Asset Tag is never changed</strong> — existing values stay as they are.
           Assets already on the current FY pattern are skipped. Missing company/entity or asset type
           are reported as failed. Reprint labels after regenerating if tags are printed.
@@ -982,6 +984,63 @@ export function SettingsGeneral() {
           }}
         >
           {tagRegenBusy ? 'Regenerating…' : 'Regenerate Asset Tags (keep Old)'}
+        </button>
+      </Box>
+
+      <Box title="Asset company names" type="primary">
+        <p className="help-block" style={{ marginTop: 0 }}>
+          Upload <strong>New_Asset_Company.csv</strong>. Each asset is matched by its QR link, then by Asset Name.
+          The company is set from <strong>Assset Based - Company Name</strong>, and that name replaces the company
+          code at the start of the asset name. <code>AVIATION-LAPTOP-0001</code> for Sparzana Aviation Private Limited
+          becomes <code>SPARZANAAVIATIONPRIVATELIMITED-LAPTOP-0001</code>. Rows with a blank company are skipped.
+          If two assets would get the same name, the later number moves to the next free value.
+        </p>
+        <input
+          type="file"
+          accept=".csv,.xlsx,.xls,text/csv"
+          disabled={companySheetBusy || !canEdit}
+          onChange={(e) => setCompanySheet(e.target.files?.[0] || null)}
+        />
+        <button
+          type="button"
+          className="btn btn-theme"
+          style={{ marginLeft: 8 }}
+          disabled={companySheetBusy || !canEdit || !companySheet}
+          onClick={() => {
+            if (!companySheet) return
+            if (!window.confirm(
+              'Apply Assset Based - Company Name from this sheet?\n\nThe company on each matched asset is updated, and the company code at the start of the asset name is replaced.',
+            )) return
+            setCompanySheetBusy(true)
+            setError('')
+            setOkMsg('')
+            const fd = new FormData()
+            fd.append('file', companySheet)
+            const t = localStorage.getItem('refex_token')
+            fetch(`${getApiBase()}/settings/apply_asset_company_names`, {
+              method: 'POST',
+              headers: t ? { Authorization: `Bearer ${t}` } : {},
+              body: fd,
+            })
+              .then(async (res) => {
+                const data = await res.json().catch(() => ({})) as { messages?: string[]; message?: string; payload?: { errors?: string[] } }
+                if (!res.ok) {
+                  const messages = Array.isArray(data.messages) ? data.messages : [data.message || 'Upload failed']
+                  throw new Error(messages.join(', '))
+                }
+                const msg = Array.isArray(data.messages) ? data.messages.join(' ') : 'Asset company names applied'
+                const errs = data.payload?.errors?.length ? `\n${data.payload.errors.slice(0, 10).join('\n')}` : ''
+                setOkMsg(msg + errs)
+                toast.success(msg)
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setCompanySheetBusy(false))
+          }}
+        >
+          {companySheetBusy ? 'Applying…' : 'apply_asset_company_names'}
         </button>
       </Box>
 

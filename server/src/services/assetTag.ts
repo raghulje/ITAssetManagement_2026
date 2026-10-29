@@ -19,26 +19,30 @@ export function currentFyTagSegment(d = new Date()): string {
   return `${start}-${String(start + 1).slice(-2)}`
 }
 
+/** Company-name segment used in asset tags, e.g. Sparzana Aviation Private Limited → SPARZANAAVIATIONPRIVATELIMITED. */
+export function companyTagCode(name: string): string {
+  return tagSegment(name, 'ASSET', 32)
+}
+
 export async function resolveTagCodeParts(opts: {
   companyId?: number | null
   legalEntityId?: number | null
   categoryId?: number | null
 }): Promise<{ code: string; type: string; prefix: string; fy: string }> {
   let code = 'ASSET'
-  if (opts.legalEntityId) {
+  if (opts.companyId) {
+    const co = await get<{ name: string }>(
+      `SELECT name FROM companies WHERE id = ? AND deleted_at IS NULL`,
+      [opts.companyId],
+    )
+    if (co?.name) code = companyTagCode(co.name)
+  }
+  if (code === 'ASSET' && opts.legalEntityId) {
     const le = await get<{ code: string }>(
       `SELECT code FROM legal_entities WHERE id = ? AND deleted_at IS NULL`,
       [opts.legalEntityId],
     )
     if (le?.code) code = tagSegment(le.code, 'ASSET')
-  }
-  if (code === 'ASSET' && opts.companyId) {
-    const co = await get<{ code: string | null; name: string }>(
-      `SELECT code, name FROM companies WHERE id = ? AND deleted_at IS NULL`,
-      [opts.companyId],
-    )
-    if (co?.code) code = tagSegment(co.code, 'ASSET')
-    else if (co?.name) code = tagSegment(co.name, 'ASSET', 12)
   }
 
   let type = 'ASSET'
