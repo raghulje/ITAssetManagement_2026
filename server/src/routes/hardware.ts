@@ -517,26 +517,43 @@ router.post('/qr/generate-missing', async (req, res) => {
   }
 })
 
-/** CSV: QR, Asset Name, Company , Device Brand and Serial Number Details, Old asset tag, Serial */
+/** Keep TYPE-FY-#### or TYPE-#### from the asset name and put the HRMS legal-entity code in front. */
+function entityAssetTag(assetTag: string, entityCode: string): string {
+  const code = entityCode.trim()
+  if (!code) return ''
+  const tag = assetTag.trim()
+  const tail = tag.match(/-([A-Za-z0-9]+(?:-\d{4}-\d{2})?-\d+)$/)
+  if (tail) return `${code}${tail[0]}`
+  return tag ? `${code}-${tag}` : code
+}
+
+/** CSV: QR, Asset Name, Company , Device Brand and Serial Number Details, Old asset tag, Serial, legal entity, Entity Asset Tag, Manufacturer */
 router.get('/qr/export', async (req, res) => {
   try {
     const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
     const hasAssetMfr = await tableHasColumn('assets', 'manufacturer_id')
+    const hasLegal = await tableHasColumn('assets', 'legal_entity_id')
     const rows = await all<{
       asset_tag: string
       old_asset_tag: string | null
       serial: string | null
       qr_token: string
+      company_id: number | null
       company_name: string | null
+      company_code: string | null
+      asset_entity_code: string | null
       manufacturer_name: string | null
       model_name: string | null
     }>(`
-      SELECT a.asset_tag, a.old_asset_tag, a.serial, a.qr_token,
+      SELECT a.asset_tag, a.old_asset_tag, a.serial, a.qr_token, a.company_id,
         c.name AS company_name,
+        c.code AS company_code,
+        ${hasLegal ? 'le.code' : 'NULL'} AS asset_entity_code,
         ${hasAssetMfr ? 'COALESCE(am.name, mm.name)' : 'mm.name'} AS manufacturer_name,
         m.name AS model_name
       FROM assets a
       LEFT JOIN companies c ON c.id = a.company_id
+      ${hasLegal ? 'LEFT JOIN legal_entities le ON le.id = a.legal_entity_id AND le.deleted_at IS NULL' : ''}
       LEFT JOIN models m ON m.id = a.model_id
       LEFT JOIN manufacturers mm ON mm.id = m.manufacturer_id
       ${hasAssetMfr ? 'LEFT JOIN manufacturers am ON am.id = a.manufacturer_id' : ''}
@@ -546,8 +563,50 @@ router.get('/qr/export', async (req, res) => {
       ORDER BY a.asset_tag ASC, a.id ASC
     `, domain.params)
 
-    const header = 'QR,Asset Name,Company ,Device Brand and Serial Number Details,Old asset tag,Serial'
+    const entityRows = await all<{ company_id: number; code: string }>(`
+      SELECT company_id, code
+      FROM legal_entities
+      WHERE deleted_at IS NULL AND code IS NOT NULL AND TRIM(code) <> ''
+    `)
+    const entitiesByCompany = new Map<number, string[]>()
+    for (const entity of entityRows) {
+      const companyId = Number(entity.company_id)
+      const code = String(entity.code || '').trim()
+      if (!companyId || !code) continue
+      const list = entitiesByCompany.get(companyId) || []
+      if (!list.includes(code)) list.push(code)
+      entitiesByCompany.set(companyId, list)
+    }
+    const popularRows = await all<{ company_id: number; code: string }>(`
+      SELECT c.id AS company_id, e.legal_entity_code AS code
+      FROM employees e
+      INNER JOIN companies c ON c.deleted_at IS NULL AND c.name = e.refex_company_name
+      WHERE e.deleted_at IS NULL
+        AND e.legal_entity_code IS NOT NULL AND TRIM(e.legal_entity_code) <> ''
+      GROUP BY c.id, e.legal_entity_code
+      ORDER BY COUNT(*) DESC, e.legal_entity_code ASC
+    `)
+    const popularEntity = new Map<number, string>()
+    for (const row of popularRows) {
+      const companyId = Number(row.company_id)
+      if (!popularEntity.has(companyId)) popularEntity.set(companyId, String(row.code || '').trim())
+    }
+    const legalEntityCode = (row: { company_id: number | null; company_code: string | null; asset_entity_code: string | null }) => {
+      const direct = String(row.asset_entity_code || '').trim()
+      if (direct) return direct
+      const companyId = Number(row.company_id || 0)
+      const list = entitiesByCompany.get(companyId) || []
+      if (list.length === 1) return list[0]
+      const popular = popularEntity.get(companyId) || ''
+      if (popular && (!list.length || list.includes(popular))) return popular
+      const companyCode = String(row.company_code || '').trim()
+      if (companyCode && (!list.length || list.includes(companyCode))) return companyCode
+      return list[0] || companyCode || popular
+    }
+
+    const header = 'QR,Asset Name,Company ,Device Brand and Serial Number Details,Old asset tag,Serial,legal entity,Entity Asset Tag,Manufacturer'
     const lines = rows.map((row) => {
+      const entity = legalEntityCode(row)
       const cells = [
         publicAssetPageUrl(String(row.qr_token)),
         String(row.asset_tag || '').trim(),
@@ -559,6 +618,9 @@ router.get('/qr/export', async (req, res) => {
         ),
         String(row.old_asset_tag || '').trim(),
         String(row.serial || '').trim(),
+        entity,
+        entityAssetTag(String(row.asset_tag || ''), entity),
+        String(row.manufacturer_name || '').trim(),
       ]
       return cells.map((cell) => {
         const s = String(cell ?? '')
