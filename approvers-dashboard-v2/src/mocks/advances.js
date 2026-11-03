@@ -1,0 +1,82 @@
+export const advanceStats = {
+    submitted: { amount: 0, requests: 0 },
+    claimed: { amount: 0, requests: 0 },
+}
+
+export const advanceRequests = [
+    {
+        id: 'ADV-001',
+        employeeName: 'Arjun Mehta',
+        avatar: 'AM',
+        purpose: 'Client visit to Bangalore',
+        travelFrom: 'Chennai',
+        travelTo: 'Bangalore',
+        travelDate: 'Mar 25, 2026',
+        returnDate: 'Mar 27, 2026',
+        requestedAmount: 8500,
+        approvedAmount: 8500,
+        status: 'approved',
+        submittedOn: 'Mar 10, 2026',
+        remarks: 'Approved for travel expenses',
+    },
+    {
+        id: 'ADV-002',
+        employeeName: 'Priya Sharma',
+        avatar: 'PS',
+        purpose: 'Training workshop in Mumbai',
+        travelFrom: 'Delhi',
+        travelTo: 'Mumbai',
+        travelDate: 'Apr 2, 2026',
+        returnDate: 'Apr 4, 2026',
+        requestedAmount: 12000,
+        approvedAmount: null,
+        status: 'pending',
+        submittedOn: 'Mar 15, 2026',
+        remarks: '',
+    },
+    {
+        id: 'ADV-003',
+        employeeName: 'Rahul Nair',
+        avatar: 'RN',
+        purpose: 'Sales meeting in Hyderabad',
+        travelFrom: 'Pune',
+        travelTo: 'Hyderabad',
+        travelDate: 'Apr 8, 2026',
+        returnDate: 'Apr 9, 2026',
+        requestedAmount: 6500,
+        approvedAmount: null,
+        status: 'rejected',
+        submittedOn: 'Mar 12, 2026',
+        remarks: 'Budget exceeded for the quarter',
+    },
+    {
+        id: 'ADV-004',
+        employeeName: 'Sneha Krishnan',
+        avatar: 'SK',
+        purpose: 'Project kickoff meeting in Delhi',
+        travelFrom: 'Bangalore',
+        travelTo: 'Delhi',
+        travelDate: 'Apr 15, 2026',
+        returnDate: 'Apr 17, 2026',
+        requestedAmount: 15000,
+        approvedAmount: null,
+        status: 'pending',
+        submittedOn: 'Mar 18, 2026',
+        remarks: '',
+    },
+]
+
+export const dashboardCardStats = {
+    expenses: {
+        submitted: { amount: 17600, requests: 1 },
+        claimed: { amount: 0, requests: 0 },
+    },
+    advances: {
+        submitted: { amount: 0, requests: 0 },
+        claimed: { amount: 0, requests: 0 },
+    },
+    travel: {
+        submitted: { amount: 0, requests: 0 },
+        claimed: { amount: 0, requests: 0 },
+    },
+}

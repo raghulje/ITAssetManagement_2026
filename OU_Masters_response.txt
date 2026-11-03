@@ -1,0 +1,797 @@
+{
+    "IsValid": true,
+    "ErrorMessage": null,
+    "ValidationMessages": [],
+    "Warning": [],
+    "InfoMessage": [],
+    "Data": [
+        [
+            {
+                "OU_ID": "c134169aac82463e",
+                "OU_CODE": "3iMEM",
+                "OU_NAME": "3i Medical Equipment Manufacturing Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "1cb77db1ab6f408c",
+                "OU_CODE": "MedT",
+                "OU_NAME": "3i Medical Technologies Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "4c36f62d162245fe",
+                "OU_CODE": "MedT",
+                "OU_NAME": "3iMed Tech",
+                "OU_PARENT_ID": "1cb77db1ab6f408c",
+                "OU_PARENT_NAME": "3i Medical Technologies Private Limited",
+                "OU_PARENT_CODE": "MedT"
+            },
+            {
+                "OU_ID": "dca6c2feba624b44",
+                "OU_CODE": "MEMF",
+                "OU_NAME": "3iMEM_Med Tech",
+                "OU_PARENT_ID": "c134169aac82463e",
+                "OU_PARENT_NAME": "3i Medical Equipment Manufacturing Private Limited",
+                "OU_PARENT_CODE": "3iMEM"
+            },
+            {
+                "OU_ID": "574493aa0ef74523",
+                "OU_CODE": "ADMS_MedTech",
+                "OU_NAME": "ADMS_MedTech",
+                "OU_PARENT_ID": "0b28172581774a4c",
+                "OU_PARENT_NAME": "Adonis Medical Systems Private Limited",
+                "OU_PARENT_CODE": "ADMS"
+            },
+            {
+                "OU_ID": "0b28172581774a4c",
+                "OU_CODE": "ADMS",
+                "OU_NAME": "Adonis Medical Systems Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "835f0b91d0ad400e",
+                "OU_CODE": "AJOF",
+                "OU_NAME": "AJ Office",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "C936F10FAC2F4419",
+                "OU_CODE": "AJ Office_Infrastructure",
+                "OU_NAME": "AJ Office_Infrastructure",
+                "OU_PARENT_ID": "835f0b91d0ad400e",
+                "OU_PARENT_NAME": "AJ Office",
+                "OU_PARENT_CODE": "AJOF"
+            },
+            {
+                "OU_ID": "314654a18d2e4729",
+                "OU_CODE": "SPV-AEPL",
+                "OU_NAME": "Athenese Energy Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "BD0E6B8548F047F0",
+                "OU_CODE": "Aviation",
+                "OU_NAME": "Aviation",
+                "OU_PARENT_ID": "a7b4da17938b4cf6",
+                "OU_PARENT_NAME": "Sparzana Aviation Private Limited",
+                "OU_PARENT_CODE": "SAPL"
+            },
+            {
+                "OU_ID": "00952e8ab84644dc",
+                "OU_CODE": "CBG_Coimbatore",
+                "OU_NAME": "CBG_Coimbatore",
+                "OU_PARENT_ID": "b2aad02d9eb241f1",
+                "OU_PARENT_NAME": "Refex CBG SPV (Coimbatore) Limited",
+                "OU_PARENT_CODE": "RCBE"
+            },
+            {
+                "OU_ID": "9e4427d7ced347ff",
+                "OU_CODE": "CBG_Madurai",
+                "OU_NAME": "CBG_Madurai",
+                "OU_PARENT_ID": "47e557ab23f94236",
+                "OU_PARENT_NAME": "Refex CBG SPV (Madurai) Limited",
+                "OU_PARENT_CODE": "RMDU"
+            },
+            {
+                "OU_ID": "08006c8c5c374829",
+                "OU_CODE": "CBG_Salem",
+                "OU_NAME": "CBG_Salem",
+                "OU_PARENT_ID": "a41f9dcb74bd4c7c",
+                "OU_PARENT_NAME": "Refex CBG SPV (Salem) Limited",
+                "OU_PARENT_CODE": "RSAL"
+            },
+            {
+                "OU_ID": "266a86744dff4db8",
+                "OU_CODE": "SPV-EDPL",
+                "OU_NAME": "Engender Developers Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "C14B79FD43D5415C",
+                "OU_CODE": "EV Fleet",
+                "OU_NAME": "EV Fleet",
+                "OU_PARENT_ID": "51c0d52057e64223",
+                "OU_PARENT_NAME": "Refex EV Fleet Services Private Limited",
+                "OU_PARENT_CODE": "REVF"
+            },
+            {
+                "OU_ID": "714DC830B0AE436A",
+                "OU_CODE": "Green Mobility",
+                "OU_NAME": "Green Mobility",
+                "OU_PARENT_ID": "575bc2f56dfd4d64",
+                "OU_PARENT_NAME": "Refex Green Mobility Limited",
+                "OU_PARENT_CODE": "RGML"
+            },
+            {
+                "OU_ID": "DA4C5C9952544330",
+                "OU_CODE": "Investment",
+                "OU_NAME": "Investment",
+                "OU_PARENT_ID": "af0e7375f7df4951",
+                "OU_PARENT_NAME": "Refex Capital Advisors LLP",
+                "OU_PARENT_CODE": "RCAL"
+            },
+            {
+                "OU_ID": "8CCA68A8A3E243CB",
+                "OU_CODE": "Pharma Products",
+                "OU_NAME": "Pharma Products",
+                "OU_PARENT_ID": "a44d7b492fd1407a",
+                "OU_PARENT_NAME": "Refex Life Sciences Private Limited",
+                "OU_PARENT_CODE": "ANFC"
+            },
+            {
+                "OU_ID": "be7f59f14b004d88",
+                "OU_CODE": "RLFC",
+                "OU_NAME": "R L Fine Chem Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "65AE8D3AEE5640A7",
+                "OU_CODE": "RARP_Airport",
+                "OU_NAME": "RARP_Airport",
+                "OU_PARENT_ID": "6afe08c4d9db4628",
+                "OU_PARENT_NAME": "Refex Airports Retail Private Limited",
+                "OU_PARENT_CODE": "RARP"
+            },
+            {
+                "OU_ID": "6A2ABDA7265349C8",
+                "OU_CODE": "RARS_Airport",
+                "OU_NAME": "RARS_Airport",
+                "OU_PARENT_ID": "1eaa573982b945e5",
+                "OU_PARENT_NAME": "Refex Airports Retail Srinagar Private Limited",
+                "OU_PARENT_CODE": "RARS"
+            },
+            {
+                "OU_ID": "d9e073ce1ad1463a",
+                "OU_CODE": "RATPL_Airport",
+                "OU_NAME": "RATPL_Airport",
+                "OU_PARENT_ID": "4f60d37ebbeb41b9",
+                "OU_PARENT_NAME": "Refex Airport and Transportation Private Limited",
+                "OU_PARENT_CODE": "RATPL"
+            },
+            {
+                "OU_ID": "4f60d37ebbeb41b9",
+                "OU_CODE": "RATPL",
+                "OU_NAME": "Refex Airport and Transportation Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "6afe08c4d9db4628",
+                "OU_CODE": "RARP",
+                "OU_NAME": "Refex Airports Retail Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "1eaa573982b945e5",
+                "OU_CODE": "RARS",
+                "OU_NAME": "Refex Airports Retail Srinagar Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "af0e7375f7df4951",
+                "OU_CODE": "RCAL",
+                "OU_NAME": "Refex Capital Advisors LLP",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "b2aad02d9eb241f1",
+                "OU_CODE": "RCBE",
+                "OU_NAME": "Refex CBG SPV (Coimbatore) Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "47e557ab23f94236",
+                "OU_CODE": "RMDU",
+                "OU_NAME": "Refex CBG SPV (Madurai) Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "a41f9dcb74bd4c7c",
+                "OU_CODE": "RSAL",
+                "OU_NAME": "Refex CBG SPV (Salem) Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "b933338f2db5484b",
+                "OU_CODE": "REPPL",
+                "OU_NAME": "Refex Engineering Products Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "99c70e133c5942d8",
+                "OU_CODE": "RGEL",
+                "OU_NAME": "Refex Green Energy Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "575bc2f56dfd4d64",
+                "OU_CODE": "RGML",
+                "OU_NAME": "Refex Green Mobility Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "d7084db8fcae40da",
+                "OU_CODE": "RGPL",
+                "OU_NAME": "Refex Green Power Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "11b3a9f0e84b438c",
+                "OU_CODE": "Refex",
+                "OU_NAME": "Refex Group",
+                "OU_PARENT_ID": "",
+                "OU_PARENT_NAME": "",
+                "OU_PARENT_CODE": ""
+            },
+            {
+                "OU_ID": "93d46791d99646c6",
+                "OU_CODE": "RHPL",
+                "OU_NAME": "Refex Holding Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "8c73f40d97404d9b",
+                "OU_CODE": "RIL",
+                "OU_NAME": "Refex Industries Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "a44d7b492fd1407a",
+                "OU_CODE": "ANFC",
+                "OU_NAME": "Refex Life Sciences Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "5f7d556fb47745ba",
+                "OU_CODE": "RRIL",
+                "OU_NAME": "Refex Renewables & Infrastructure Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "a0395f971a3d4b99",
+                "OU_CODE": "RSS",
+                "OU_NAME": "Refex Shared Services Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "7470ccde71fa4063",
+                "OU_CODE": "RSSPL",
+                "OU_NAME": "Refex Sustainability Solutions Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "51c0d52057e64223",
+                "OU_CODE": "REVF",
+                "OU_NAME": "Refex EV Fleet Services Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "77DBAA40767F470B",
+                "OU_CODE": "Refrigerant",
+                "OU_NAME": "Refrigerant",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "03e1adde0b524ff9",
+                "OU_CODE": "REPPL_Wind",
+                "OU_NAME": "REPPL_Wind",
+                "OU_PARENT_ID": "b933338f2db5484b",
+                "OU_PARENT_NAME": "Refex Engineering Products Private Limited",
+                "OU_PARENT_CODE": "REPPL"
+            },
+            {
+                "OU_ID": "47586dd4d5c14ff5",
+                "OU_CODE": "RGEL_Wind",
+                "OU_NAME": "RGEL_Wind",
+                "OU_PARENT_ID": "99c70e133c5942d8",
+                "OU_PARENT_NAME": "Refex Green Energy Limited",
+                "OU_PARENT_CODE": "RGEL"
+            },
+            {
+                "OU_ID": "8BFDA8F23FBD4796",
+                "OU_CODE": "RGPL_O&M Solar",
+                "OU_NAME": "RGPL_O&M Solar",
+                "OU_PARENT_ID": "d7084db8fcae40da",
+                "OU_PARENT_NAME": "Refex Green Power Limited",
+                "OU_PARENT_CODE": "RGPL"
+            },
+            {
+                "OU_ID": "DDE93EEF3AB74B43",
+                "OU_CODE": "RGPL_Shared Services",
+                "OU_NAME": "RGPL_Shared Services",
+                "OU_PARENT_ID": "d7084db8fcae40da",
+                "OU_PARENT_NAME": "Refex Green Power Limited",
+                "OU_PARENT_CODE": "RGPL"
+            },
+            {
+                "OU_ID": "10615EB2DA914D1C",
+                "OU_CODE": "RGPL_Solar",
+                "OU_NAME": "RGPL_Solar",
+                "OU_PARENT_ID": "d7084db8fcae40da",
+                "OU_PARENT_NAME": "Refex Green Power Limited",
+                "OU_PARENT_CODE": "RGPL"
+            },
+            {
+                "OU_ID": "0141cbf20efc4901",
+                "OU_CODE": "RHPL_Group Shared Services",
+                "OU_NAME": "RHPL_Group Shared Services",
+                "OU_PARENT_ID": "93d46791d99646c6",
+                "OU_PARENT_NAME": "Refex Holding Private Limited",
+                "OU_PARENT_CODE": "RHPL"
+            },
+            {
+                "OU_ID": "5BD49E5D2C9D407F",
+                "OU_CODE": "RIL_Ash Handling",
+                "OU_NAME": "RIL_Ash Handling",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "4577C7860539411E",
+                "OU_CODE": "RIL_Infrastructure",
+                "OU_NAME": "RIL_Infrastructure",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "bdd589f424124912",
+                "OU_CODE": "RIL_Mining Services",
+                "OU_NAME": "RIL_Mining Services",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "14C65DB9CC8E4C4A",
+                "OU_CODE": "RIL_Power Trading",
+                "OU_NAME": "RIL_Power Trading",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "432cc61aff864861",
+                "OU_CODE": "RIL_RMC",
+                "OU_NAME": "RIL_RMC",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "DE521696DA6A4034",
+                "OU_CODE": "RIL_Shared Services",
+                "OU_NAME": "RIL_Shared Services",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "9CD41E6FD33048FD",
+                "OU_CODE": "RIL_Solar",
+                "OU_NAME": "RIL_Solar",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "d6034edb17ec4d57",
+                "OU_CODE": "RIL_Shared Service",
+                "OU_NAME": "RIL_SS",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "FA359FD02170478A",
+                "OU_CODE": "RRIL_CBG",
+                "OU_NAME": "RRIL_CBG",
+                "OU_PARENT_ID": "5f7d556fb47745ba",
+                "OU_PARENT_NAME": "Refex Renewables & Infrastructure Limited",
+                "OU_PARENT_CODE": "RRIL"
+            },
+            {
+                "OU_ID": "788598172C8E4000",
+                "OU_CODE": "RRIL_Coal & Ash",
+                "OU_NAME": "RRIL_Coal & Ash",
+                "OU_PARENT_ID": "5f7d556fb47745ba",
+                "OU_PARENT_NAME": "Refex Renewables & Infrastructure Limited",
+                "OU_PARENT_CODE": "RRIL"
+            },
+            {
+                "OU_ID": "5985F7E754AC4A8E",
+                "OU_CODE": "RRIL_O&M Solar",
+                "OU_NAME": "RRIL_O&M Solar",
+                "OU_PARENT_ID": "5f7d556fb47745ba",
+                "OU_PARENT_NAME": "Refex Renewables & Infrastructure Limited",
+                "OU_PARENT_CODE": "RRIL"
+            },
+            {
+                "OU_ID": "94BB5AB4CC494318",
+                "OU_CODE": "RRIL_Shared Services",
+                "OU_NAME": "RRIL_Shared Services",
+                "OU_PARENT_ID": "5f7d556fb47745ba",
+                "OU_PARENT_NAME": "Refex Renewables & Infrastructure Limited",
+                "OU_PARENT_CODE": "RRIL"
+            },
+            {
+                "OU_ID": "AAEC82FA3BAF4392",
+                "OU_CODE": "RRIL_Solar",
+                "OU_NAME": "RRIL_Solar",
+                "OU_PARENT_ID": "5f7d556fb47745ba",
+                "OU_PARENT_NAME": "Refex Renewables & Infrastructure Limited",
+                "OU_PARENT_CODE": "RRIL"
+            },
+            {
+                "OU_ID": "9bb2a559764a466c",
+                "OU_CODE": "RSS_Ash Handling",
+                "OU_NAME": "RSS_Ash Handling",
+                "OU_PARENT_ID": "a0395f971a3d4b99",
+                "OU_PARENT_NAME": "Refex Shared Services Private Limited",
+                "OU_PARENT_CODE": "RSS"
+            },
+            {
+                "OU_ID": "b4e07911c68c4416",
+                "OU_CODE": "RSS_Shared Services",
+                "OU_NAME": "RSS_Shared Services",
+                "OU_PARENT_ID": "a0395f971a3d4b99",
+                "OU_PARENT_NAME": "Refex Shared Services Private Limited",
+                "OU_PARENT_CODE": "RSS"
+            },
+            {
+                "OU_ID": "6ec82c33cebd46f4",
+                "OU_CODE": "RSSPL_CBG",
+                "OU_NAME": "RSSPL_CBG",
+                "OU_PARENT_ID": "7470ccde71fa4063",
+                "OU_PARENT_NAME": "Refex Sustainability Solutions Private Limited",
+                "OU_PARENT_CODE": "RSSPL"
+            },
+            {
+                "OU_ID": "9b5d30295eb14ad7",
+                "OU_CODE": "SPV-SCEPL",
+                "OU_NAME": "Scorch Solar Energy Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "c2db9a3e6ab14ab4",
+                "OU_CODE": "SPV-SSTPL",
+                "OU_NAME": "Sherisha Solar Spv Two Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "cc0d2aa284094e87",
+                "OU_CODE": "SPV-SSEPL",
+                "OU_NAME": "Singe Solar Energy Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "2771fca0fa624cf9",
+                "OU_CODE": "SPV-SEPL",
+                "OU_NAME": "Sourashakthi Energy Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "50827f5e2215406c",
+                "OU_CODE": "SPV-SPEPL",
+                "OU_NAME": "Spangle Energy Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "a7b4da17938b4cf6",
+                "OU_CODE": "SAPL",
+                "OU_NAME": "Sparzana Aviation Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "254f22ce76dd4e42",
+                "OU_CODE": "SREPL",
+                "OU_NAME": "Spectrum Renewable Energy Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "9D07D15D73EB4F3F",
+                "OU_CODE": "SPV_AEPL_Solar",
+                "OU_NAME": "SPV_AEPL_Solar",
+                "OU_PARENT_ID": "314654a18d2e4729",
+                "OU_PARENT_NAME": "Athenese Energy Private Limited",
+                "OU_PARENT_CODE": "SPV-AEPL"
+            },
+            {
+                "OU_ID": "63D7DBE00212499C",
+                "OU_CODE": "SPV_EDPL_O&M Solar",
+                "OU_NAME": "SPV_EDPL_O&M Solar",
+                "OU_PARENT_ID": "266a86744dff4db8",
+                "OU_PARENT_NAME": "Engender Developers Private Limited",
+                "OU_PARENT_CODE": "SPV-EDPL"
+            },
+            {
+                "OU_ID": "BDF7DDD25EFF4FE2",
+                "OU_CODE": "SPV_SCEPL_O&M Solar",
+                "OU_NAME": "SPV_SCEPL_O&M Solar",
+                "OU_PARENT_ID": "9b5d30295eb14ad7",
+                "OU_PARENT_NAME": "Scorch Solar Energy Private Limited",
+                "OU_PARENT_CODE": "SPV-SCEPL"
+            },
+            {
+                "OU_ID": "C9CA024D099B4D6F",
+                "OU_CODE": "SPV_SEPL_O&M Solar",
+                "OU_NAME": "SPV_SEPL_O&M Solar",
+                "OU_PARENT_ID": "2771fca0fa624cf9",
+                "OU_PARENT_NAME": "Sourashakthi Energy Private Limited",
+                "OU_PARENT_CODE": "SPV-SEPL"
+            },
+            {
+                "OU_ID": "f42473122dbf4fc5",
+                "OU_CODE": "SPV_SPEPL_O&M Solar",
+                "OU_NAME": "SPV_SPEPL_O&M Solar",
+                "OU_PARENT_ID": "50827f5e2215406c",
+                "OU_PARENT_NAME": "Spangle Energy Private Limited",
+                "OU_PARENT_CODE": "SPV-SPEPL"
+            },
+            {
+                "OU_ID": "930C474A0B424D35",
+                "OU_CODE": "SPV_SSTP_Solar",
+                "OU_NAME": "SPV_SSTP_Solar",
+                "OU_PARENT_ID": "c2db9a3e6ab14ab4",
+                "OU_PARENT_NAME": "Sherisha Solar Spv Two Private Limited",
+                "OU_PARENT_CODE": "SPV-SSTPL"
+            },
+            {
+                "OU_ID": "ad14a92f46bd4107",
+                "OU_CODE": "SPV_SSTPL_O&M Solar",
+                "OU_NAME": "SPV_SSTPL_O&M Solar",
+                "OU_PARENT_ID": "c2db9a3e6ab14ab4",
+                "OU_PARENT_NAME": "Sherisha Solar Spv Two Private Limited",
+                "OU_PARENT_CODE": "SPV-SSTPL"
+            },
+            {
+                "OU_ID": "6159D5452A414705",
+                "OU_CODE": "SPV_STPHPL_O&M Solar",
+                "OU_NAME": "SPV_STPHPL_O&M Solar",
+                "OU_PARENT_ID": "97ddda7857b44253",
+                "OU_PARENT_NAME": "STPL Horticulture Private Limited",
+                "OU_PARENT_CODE": "SPV-STPHPL"
+            },
+            {
+                "OU_ID": "96C4440B5D2B4C97",
+                "OU_CODE": "SPV_SWEPL_O&M Solar",
+                "OU_NAME": "SPV_SWEPL_O&M Solar",
+                "OU_PARENT_ID": "db11c6b218024fda",
+                "OU_PARENT_NAME": "Swelter Energy Private Limited",
+                "OU_PARENT_CODE": "SPV-SWEPL"
+            },
+            {
+                "OU_ID": "F3D33BE479BE41CD",
+                "OU_CODE": "SPV_TSPPL_O&M Solar",
+                "OU_NAME": "SPV_TSPPL_O&M Solar",
+                "OU_PARENT_ID": "06f9119dc1bb4193",
+                "OU_PARENT_NAME": "Torrid Solar Power Private Limited",
+                "OU_PARENT_CODE": "SPV-TSPPL"
+            },
+            {
+                "OU_ID": "c32c8bccf2644a89",
+                "OU_CODE": "SREPL_CBG",
+                "OU_NAME": "SREPL_CBG",
+                "OU_PARENT_ID": "254f22ce76dd4e42",
+                "OU_PARENT_NAME": "Spectrum Renewable Energy Private Limited",
+                "OU_PARENT_CODE": "SREPL"
+            },
+            {
+                "OU_ID": "97ddda7857b44253",
+                "OU_CODE": "SPV-STPHPL",
+                "OU_NAME": "STPL Horticulture Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "F5079CAF0D864909",
+                "OU_CODE": "STPL_ Coal & Ash",
+                "OU_NAME": "STPL_ Coal & Ash",
+                "OU_PARENT_ID": "93d46791d99646c6",
+                "OU_PARENT_NAME": "Refex Holding Private Limited",
+                "OU_PARENT_CODE": "RHPL"
+            },
+            {
+                "OU_ID": "6833FF704AEB414F",
+                "OU_CODE": "STPL_Corporate _ Shared Services",
+                "OU_NAME": "STPL_Corporate _ Shared Services",
+                "OU_PARENT_ID": "93d46791d99646c6",
+                "OU_PARENT_NAME": "Refex Holding Private Limited",
+                "OU_PARENT_CODE": "RHPL"
+            },
+            {
+                "OU_ID": "6B81F998DC594785",
+                "OU_CODE": "STPL_Shared Services",
+                "OU_NAME": "STPL_Shared Services",
+                "OU_PARENT_ID": "93d46791d99646c6",
+                "OU_PARENT_NAME": "Refex Holding Private Limited",
+                "OU_PARENT_CODE": "RHPL"
+            },
+            {
+                "OU_ID": "5D5A861B682F4D21",
+                "OU_CODE": "STPL_Solar",
+                "OU_NAME": "STPL_Solar",
+                "OU_PARENT_ID": "93d46791d99646c6",
+                "OU_PARENT_NAME": "Refex Holding Private Limited",
+                "OU_PARENT_CODE": "RHPL"
+            },
+            {
+                "OU_ID": "db11c6b218024fda",
+                "OU_CODE": "SPV-SWEPL",
+                "OU_NAME": "Swelter Energy Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "92e0a44180194345",
+                "OU_CODE": "SPV-TSEPL",
+                "OU_NAME": "Taper Solar Energy Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "D95257B947F24CDE",
+                "OU_CODE": "Thermal Projects",
+                "OU_NAME": "Thermal Projects",
+                "OU_PARENT_ID": "8c73f40d97404d9b",
+                "OU_PARENT_NAME": "Refex Industries Limited",
+                "OU_PARENT_CODE": "RIL"
+            },
+            {
+                "OU_ID": "06f9119dc1bb4193",
+                "OU_CODE": "SPV-TSPPL",
+                "OU_NAME": "Torrid Solar Power Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "F2358D00CBB94903",
+                "OU_CODE": "VBEF_CBG",
+                "OU_NAME": "VBEF_CBG",
+                "OU_PARENT_ID": "8e9ead9985854d99",
+                "OU_PARENT_NAME": "Vyzag Bio-Energy Fuel Private Limited",
+                "OU_PARENT_CODE": "VBEF"
+            },
+            {
+                "OU_ID": "e544a6957a89410a",
+                "OU_CODE": "VRPL",
+                "OU_NAME": "Venwind Refex Power Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "fd599abad94c4772",
+                "OU_CODE": "VRPSL",
+                "OU_NAME": "Venwind Refex Power Services Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            },
+            {
+                "OU_ID": "d4c404249ad54be5",
+                "OU_CODE": "VRPL_Shared Services",
+                "OU_NAME": "VRPL_Shared Services",
+                "OU_PARENT_ID": "e544a6957a89410a",
+                "OU_PARENT_NAME": "Venwind Refex Power Limited",
+                "OU_PARENT_CODE": "VRPL"
+            },
+            {
+                "OU_ID": "834162CD416D4DD6",
+                "OU_CODE": "VRPL_Wind",
+                "OU_NAME": "VRPL_Wind",
+                "OU_PARENT_ID": "e544a6957a89410a",
+                "OU_PARENT_NAME": "Venwind Refex Power Limited",
+                "OU_PARENT_CODE": "VRPL"
+            },
+            {
+                "OU_ID": "033369a02bbf4784",
+                "OU_CODE": "VRPSL_Wind",
+                "OU_NAME": "VRPSL_Wind",
+                "OU_PARENT_ID": "fd599abad94c4772",
+                "OU_PARENT_NAME": "Venwind Refex Power Services Limited",
+                "OU_PARENT_CODE": "VRPSL"
+            },
+            {
+                "OU_ID": "8e9ead9985854d99",
+                "OU_CODE": "VBEF",
+                "OU_NAME": "Vyzag Bio-Energy Fuel Private Limited",
+                "OU_PARENT_ID": "11b3a9f0e84b438c",
+                "OU_PARENT_NAME": "Refex Group",
+                "OU_PARENT_CODE": "Refex"
+            }
+        ]
+    ],
+    "FormAccess": null,
+    "UIModelList": null
+}

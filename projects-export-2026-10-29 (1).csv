@@ -1,0 +1,69 @@
+﻿PROJECT
+Field,Value
+Project name,testing
+Project ID,PRJ--FY026-0048
+Item ID,PRJ-0048
+Status,Open
+RAG,Amber
+Priority,Low
+Progress %,0
+Total tasks,0
+Completed tasks,0
+Company,
+Entity,N/A
+Department,N/A
+Business function,Administration
+Function type,
+Function category,
+Function sub category,
+Application,
+Project type,
+Project request,
+Vendor,
+Tech stack,
+Owner,Reginold J
+Owner email,
+Business owner,Raghul J E
+Business owner email,
+Sponsor,Pravinkumar
+Sponsor email,
+COS owner,
+Developer,
+Project manager,Murugesh Kumar
+Requester,Raghul J E
+Watchers,
+Created by,Raghul J E
+Start date,2026-10-28
+Planned end date,2026-10-31
+Previous end date,2026-10-31
+Revised end date,
+Revised count,0
+Delay days,0
+Aging days,0
+TAT days,3
+Hours,0
+TCO efforts,
+Risk,N/A
+Risk mitigation,Yes
+Risk mitigation details,
+Governance frequency,Weekly
+AI usage,No
+AI details,
+Reports available,No
+Integrated with Tally,No
+Integrated with SAP,No
+Integrated with Power BI,No
+BRD available,No
+Process document available,No
+Support available,No
+CB analysis available,No
+Created,2026-10-28
+Modified,2026-10-28
+Resolved,
+Closed,
+
+TASKS
+Task name,Task ID,Task type,Status,Workflow status,Priority,Assignee,Assignee email,Company,Entity,Functions,Business function,Function type,Project,Project ID,Start date,End date,Original end date,Previous end date,Revised end date,Revised count,Delay days,Aging days,Created,Closed,Task detail
+
+SUBTASKS
+Parent task,Parent task ID,Subtask,Summary,Status,Workflow status,Priority,Assignee,Created by,Project,Project ID,Created,Aging days,End date

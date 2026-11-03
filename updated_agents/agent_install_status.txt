@@ -1,0 +1,6 @@
+﻿TASK_STATE=Queued
+LAST_RESULT=0
+LAST_RUN=08/12/2026 18:24:29
+2026-08-10 14:36:01  Installed scheduled task ITAgent_2026 → C:\ProgramData\ITAgent_2026\run.cmd
+2026-08-10 14:36:02  Service start → http://10.5.7.225:3001/api/v1 poll=30000ms
+2026-08-12 17:48:34  Service start → https://asset.refexone.com/api/v1 poll=30000ms

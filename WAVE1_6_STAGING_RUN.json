@@ -1,0 +1,180 @@
+{
+  "source": "ITAssetManagement_2026",
+  "target": "ITAssetManagement_2026_test",
+  "source_written_to": false,
+  "mysql_bin": "C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin",
+  "created_target": true,
+  "clone_bytes": 5013500,
+  "clone_method": "mysqldump | mysql",
+  "source_selected": "itassetmanagement_2026",
+  "target_selected": "itassetmanagement_2026_test",
+  "baseline_source": {
+    "database": "itassetmanagement_2026",
+    "tables": {
+      "asset_domains": false,
+      "asset_types": false,
+      "categories_parent_id": false,
+      "categories_domain_id": false,
+      "models_asset_type_id": false
+    },
+    "categories_total": 27,
+    "models_total": 366,
+    "assets_total": 1204,
+    "assets_without_model": 0,
+    "categories_by_type": {
+      "asset": 7,
+      "accessory": 7,
+      "consumable": 5,
+      "component": 4,
+      "license": 4
+    },
+    "asset_id_min": 9,
+    "asset_id_max": 1212,
+    "distinct_asset_tags": 1204
+  },
+  "baseline_target": {
+    "database": "itassetmanagement_2026_test",
+    "tables": {
+      "asset_domains": false,
+      "asset_types": false,
+      "categories_parent_id": false,
+      "categories_domain_id": false,
+      "models_asset_type_id": false
+    },
+    "categories_total": 27,
+    "models_total": 366,
+    "assets_total": 1204,
+    "assets_without_model": 0,
+    "categories_by_type": {
+      "asset": 7,
+      "accessory": 7,
+      "consumable": 5,
+      "component": 4,
+      "license": 4
+    },
+    "asset_id_min": 9,
+    "asset_id_max": 1212,
+    "distinct_asset_tags": 1204
+  },
+  "execution": [
+    {
+      "file": "030_classification_asset_domains_and_types.sql",
+      "target_database": "itassetmanagement_2026_test",
+      "database_verified": true,
+      "status": "APPLIED",
+      "errors": null
+    },
+    {
+      "file": "031_classification_categories_parent_domain.sql",
+      "target_database": "itassetmanagement_2026_test",
+      "database_verified": true,
+      "status": "APPLIED",
+      "errors": null
+    },
+    {
+      "file": "032_classification_models_asset_type_id.sql",
+      "target_database": "itassetmanagement_2026_test",
+      "database_verified": true,
+      "status": "APPLIED",
+      "errors": null
+    },
+    {
+      "file": "033_classification_safe_backfill.sql",
+      "target_database": "itassetmanagement_2026_test",
+      "database_verified": true,
+      "status": "APPLIED",
+      "errors": null
+    }
+  ],
+  "after": {
+    "after_030": {
+      "asset_domains": true,
+      "asset_types": true
+    },
+    "after_031": {
+      "parent_id": true,
+      "domain_id": true,
+      "categories_total": 27,
+      "nested": 0
+    },
+    "after_032": {
+      "asset_type_id": true,
+      "nullable": "YES",
+      "models_total": 366,
+      "models_null_type": 366
+    },
+    "after_033": {
+      "asset_types": [
+        {
+          "id": 4,
+          "name": "Desktop",
+          "category_name": "Desktop",
+          "domain_name": "IT"
+        },
+        {
+          "id": 1,
+          "name": "Laptop",
+          "category_name": "Laptop",
+          "domain_name": "IT"
+        },
+        {
+          "id": 3,
+          "name": "Mobile",
+          "category_name": "Mobile",
+          "domain_name": "IT"
+        },
+        {
+          "id": 2,
+          "name": "Monitor",
+          "category_name": "Monitor",
+          "domain_name": "IT"
+        },
+        {
+          "id": 7,
+          "name": "Other",
+          "category_name": "Other",
+          "domain_name": "IT"
+        },
+        {
+          "id": 5,
+          "name": "Printer",
+          "category_name": "Printer",
+          "domain_name": "IT"
+        },
+        {
+          "id": 6,
+          "name": "Tablet",
+          "category_name": "Tablet",
+          "domain_name": "IT"
+        }
+      ],
+      "categories_with_domain": 7,
+      "categories_null_domain": 20,
+      "nested_categories": 0,
+      "models_with_asset_type": 366,
+      "models_null_asset_type": 0,
+      "assets_full_chain": 1204,
+      "assets_unresolved": 0
+    }
+  },
+  "source_after_unchanged_tables": {
+    "asset_domains": false,
+    "asset_types": false,
+    "categories_parent_id": false,
+    "categories_domain_id": false,
+    "models_asset_type_id": false
+  },
+  "source_still_lacks_wave1_schema": true,
+  "integrity": {
+    "source_assets": 1204,
+    "target_assets": 1204,
+    "source_models": 366,
+    "target_models": 366,
+    "source_categories": 27,
+    "target_categories": 27,
+    "source_asset_id_min": 9,
+    "target_asset_id_min": 9,
+    "source_asset_id_max": 1212,
+    "target_asset_id_max": 1212
+  }
+}

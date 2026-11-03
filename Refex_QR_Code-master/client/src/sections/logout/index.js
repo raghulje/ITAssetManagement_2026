@@ -1,1 +1,0 @@
-export {default as LogoutView } from './logout-view';

@@ -1,0 +1,129 @@
+﻿PROJECT
+Field,Value
+Project name,Application Testing Report - Project & Task Management
+Project ID,PRJ--FY026-0190
+Item ID,PRJ-0190
+Status,Open
+RAG,Green
+Priority,High
+Progress %,13
+Total tasks,38
+Completed tasks,5
+Company,Refex Shared Services Private Limited
+Entity,N/A
+Department,N/A
+Business function,Information Technology
+Function type,Tech Application
+Function category,
+Function sub category,
+Application,
+Project type,Tech
+Project request,New
+Vendor,
+Tech stack,
+Owner,Pravin Kumar Raja
+Owner email,
+Business owner,Srivaths Varadharajan
+Business owner email,
+Sponsor,
+Sponsor email,
+COS owner,
+Developer,Raghul J E
+Project manager,Gowtham S
+Requester,Keerthana M
+Watchers,
+Created by,Keerthana M
+Start date,2026-10-27
+Planned end date,2025-12-31
+Previous end date,2025-11-01
+Revised end date,2026-10-31
+Revised count,2
+Delay days,0
+Aging days,0
+TAT days,4
+Hours,0
+TCO efforts,
+Risk,N/A
+Risk mitigation,Yes
+Risk mitigation details,
+Governance frequency,Daily
+AI usage,No
+AI details,
+Reports available,No
+Integrated with Tally,No
+Integrated with SAP,No
+Integrated with Power BI,No
+BRD available,No
+Process document available,No
+Support available,No
+CB analysis available,No
+Created,2026-10-27
+Modified,2026-10-27
+Resolved,
+Closed,
+
+TASKS
+Task name,Task ID,Task type,Status,Workflow status,Priority,Assignee,Assignee email,Company,Entity,Functions,Business function,Function type,Project,Project ID,Start date,End date,Original end date,Previous end date,Revised end date,Revised count,Delay days,Aging days,Created,Closed,Task detail
+"Auto refresh of the page - User might find difficult each time to refresh & view the form , instead Auto refresh can be done for the application",Task-PRJ--FY026-0190-038,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Auto Refresh - each time user has to refresh manually to see the data or field properly has been entered or changes done.
+2- If its auto Refreshed and shown each page in right track . User can have easily access of the application since the response of the application takes time to direct or redirect the page .
+3- User will find complicate to refresh everytime"
+Mobile application - Task tracker filter - task field if choose any one of the task and assignee yet there is no level of validating the assigned to & secondary assignee,Task-PRJ--FY026-0190-037,New,Open,InProgress,High,Pravin Kumar Raja,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- In the task tracker filter - listed one particular task and mentioned the secondary assignee whereas user know the task priority is for the assigned to person .
+2- In that case its validating all the task in the chosen name of assignee, its not validating the priority of the who should do it as primary
+3- In secondary assignee might not been support that task which is marked in assignee list , he can reassign again or it will be in delayed place.
+4- if its validate the task primary assignee & secondary assignee can have the visibility of task and work status will be clear"
+mobile application - check the export option is working for employee,Task-PRJ--FY026-0190-036,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- check the export options in mobile application .
+2- when i click the export option am not receiving any PNG or excel"
+email Notification - Action required Task task id mentioned which is not proper header,Task-PRJ--FY026-0190-035,New,Open,InProgress,High,Pravin Kumar Raja,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- No clarity on the Email notificaiton for Action required task created .
+2- Receiving email notification as Action Required: Task Task-PRJ--FY026-0190-033"
+email Notification - Mention the priority of the Task,Task-PRJ--FY026-0190-034,New,Open,InProgress,High,Pravin Kumar Raja,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Email notification - comes with task who created , date but the priority of the task is missed in the notification"
+Mobile application - Created field is there but in web application project health overview has no created filter . Again need clarity,Task-PRJ--FY026-0190-033,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- In mobile application & web application some changes is there like created field in mobile application even filter field option too. 
+2- in web application only evaluation of the project created as stages filters there .
+3- No clarity of keeping extra field what is the difference"
+"Mobile application - In task page if i create task with blank details , its accepting and creating as task",Task-PRJ--FY026-0190-032,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Mobile application - task should not be created as blank one. keep mandatory field like project so that blank image will not processed and create a task
+Mobile application Refex one - Create Task in task tracker is not working check,Task-PRJ--FY026-0190-031,New,Completed,Completed,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,Information Technology,Information Technology,Tech Application,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,2026-10-27,1- web application & mobile application both the same issues has been found
+In MD dashboard - if any of the member has been selected and need to check his project and details it shows wrong information,Task-PRJ--FY026-0190-030,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- In MD dashboard - if i choose any of the member and view there project & task details , its not showing proper data 
+2- Mismatching or wrong information shown"
+"MD task page - Filter evaluation check, if chosen field is not showing data",Task-PRJ--FY026-0190-029,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- verify the filter evaluation for task in My team , if chosen field is not showing the data then its has to be verified"
+"PM head - Check the dashboard since each over view of project , task based on the application is shows empty data though it has data .",Task-PRJ--FY026-0190-028,New,Completed,Completed,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-27,2026-10-30,2x,0,0,2026-10-27,2026-10-27,1- Check the dashboard of PM HEAD entirely.
+Assigned to & secondary assignee has no clarity. Mandatory field has been marked as red star like that what is the important for secondary assignee can be given as tooltip icon which will be useful for user to identify,Task-PRJ--FY026-0190-027,New,Completed,Completed,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,2026-10-27,1- make tooltip icon for field which is important and useful for user to identify
+Project Head home screen - if i click my team option and chosen name in member list but the person is not marked in right company list /even i couldnt mark the right company name against that name . list only one company which is wrong,Task-PRJ--FY026-0190-026,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Based on the member list the company has to be identified .
+"Notification whatapp - if default notification has been notified for creating task, why not for assignee which is mandatory",Task-PRJ--FY026-0190-025,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Make the notification setup which is mandatory to be notified for users
+"in whatapp notification- created by person only getting notified , assigned to and secondary assignee is not getting notification",Task-PRJ--FY026-0190-024,New,Open,InProgress,High,Pravin Kumar Raja,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Need to know whether notification is enabled or not .
+Project manager - My team task list is not listed in the dashboard report also no visible in tast tracker,Task-PRJ--FY026-0190-023,New,Open,InProgress,High,Pravin Kumar Raja,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Check the MY team dashboard for Project manager - Reports and data is not matched properly, also no visibility"
+"Project manager - create Task dashboard data is not proper , if data in my items shows 0, whereas in progress is 21",Task-PRJ--FY026-0190-022,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Check the data count and based on the filter choosen data has to be validated properly in stages
+In whatsapp notification- Assigned to details is missing & priority is missing,Task-PRJ--FY026-0190-021,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- In whatsapp notification - Assigned to & priority is missing , if its visibile can have clear status of the task"
+"Project creation - so many fields are there, need classification on which entity or company requires what field or components.",Task-PRJ--FY026-0190-020,New,Open,InProgress,High,Pravin Kumar Raja,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Documents to be uploaded and field/components are so many in Project management yet the classification for each differs based on the company/entity required .
+2- Instead of keeping all components based on entity requirement field /component can be seen. so user can access easily."
+"Ceo Dashboard - My team option is not there , check",Task-PRJ--FY026-0190-019,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Ceo Dashboard - My team view is not there only . All companies filter option can been seen the list of project and task, but his reporting team list and view is no there"
+Need to check the Report of CTO dashboard since created Project can been seen where as against that project Task created by had no visibility in that case Reports count differs . Also like all member field create another field for created by .,Task-PRJ--FY026-0190-018,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Report count will be mismatched when created by list is not there .
+CTO dashboard - Created by member list is missing so that there is no visibility of created and their task count .,Task-PRJ--FY026-0190-017,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Created by member list is missing so that there is no visibility of created and there task count .
+2- Assigned list alone have visibility which no clarity"
+"CTO Task dashboard - Team Report Data of Task shows only 1, Check the Reports of Team task",Task-PRJ--FY026-0190-016,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- CTO Task dashboard - My team task report shows only 1 , so created task details and even in the Team task there is no visibility"
+CTO dashboard - Task dashboard My team task - All Project field is not listing .,Task-PRJ--FY026-0190-015,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Check the Fields whether the filter works properly
+Check the filter option which you have given to All level . Since even filters has been marked clearly . i can see only empty no datas,Task-PRJ--FY026-0190-014,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- check the filters option which is there in application even after entered properly. i cannot see the created task or related details.
+CTO dashboard - There is no visibility of his team task against the project created .,Task-PRJ--FY026-0190-013,New,Open,InProgress,Medium,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Task dashboard - if i choose the my team task option to check the task given which the project has been created has no visibility.
+Project manager - Task dashboard has no visibility of his team Task created list,Task-PRJ--FY026-0190-012,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Team view for Task dashboard - has not visibility of newly created task details .
+2- In project over view can have visibility of Task created list against that project."
+"Task dashboard of employee - Task created by me has shown 99+, exact count cannot be calculated?",Task-PRJ--FY026-0190-011,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- The visibility of Task created by me should have the exact count which is easily dragged and communicated .
+2- Then in that calculation we can validate the progression, completed details"
+In employee dashboard - Task tracker - create Task field is not working .,Task-PRJ--FY026-0190-010,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-27,2026-10-27,2026-10-27,,,1,0,2026-10-27,,1- Task tracker in employee dashboard - create task field is not working check
+Employee dashboard - Edit & view option for Task management can be easy for user to close or mention or reassign in the same place like creating an task in dashboard itself,Task-PRJ--FY026-0190-009,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Edit & view option in the dashboard which make user to work easily like creating a task in the dashboard.
+2- Instead of redirecting each fields to edited in the task management."
+email notification - received plain since i havent mentioned any details clearly . Mark the mandatory field in whatapp bot task creation so that email notification can have proper status,Task-PRJ--FY026-0190-008,New,Open,InProgress,High,Pravin Kumar Raja,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Mark mandatory field to update in task at whatapp bot so that if the request has been raised as email notification will have clear status about the task.
+2- if the mark mandatory field is not Placed, user will create without anything as an task . there wont be any proper classification of task"
+"email notification - i have created 6 task and project which i havent received email notification where as when i raise in whatsapp bot, receiving notification for assignee as my name",Task-PRJ--FY026-0190-007,New,Open,InProgress,High,Pravin Kumar Raja,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- email notification - i have not received email notification for recently created project & task .
+2- Yet what app notification shows task has been created .
+3- Raised in whatapp bot task , receiving email when i assigned my name in task assignee
+4- there is no clarity for these"
+whats app bot - next as an option to create task which has no clarity about the update of the task .,Task-PRJ--FY026-0190-006,New,Open,InProgress,High,Pravin Kumar Raja,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- In whatsapp bot - if i choose next its directing to task and i dont have clarity to create task.
+2- Reason to create task that which is not listed will consider as an task to create and respective team will solve or for what ?"
+Project manager Dashboard - Team Task All project field is not showing the newly created project name,Task-PRJ--FY026-0190-005,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Check the Project Manager dashboard My team - Task tracker is not showing the newly created Project name also the task
+Project Head Dashboard My team- if i click the Project i cannot see the task assigned against that project,Task-PRJ--FY026-0190-004,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,1- Project Head My team view - when Project health over view - if the click the newly created Project cant see the Task created against the project
+"keep export option common, in that case if export has been given it can drag project with task & subtask history can be exported easily .",Task-PRJ--FY026-0190-003,New,Completed,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-30,2026-10-30,2026-10-30,,,0,0,2026-10-27,,"1- Export option in project extracts only project which means i can see the project details alone .
+2- If export option is common so that i can drag project with task, subtask too ."
+"Check in app notification, it shows PMT final WA failed for Employee, Manager, CTO",Task-PRJ--FY026-0190-002,New,Open,InProgress,High,Raghul J E,,Refex Shared Services Private Limited,Refex Shared Services Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-27,2026-10-27,2026-10-27,,,1,0,2026-10-27,,"1- Check the in app notification for all users, 
+2- if i click the notification bell button it shows PMT FINAL WA fails for Employee, Manager, CTO"
+"Employee dashboard - Task tracker All status filed shows only open & completed, Close option is missing",Task-PRJ--FY026-0190-001,New,Completed,Completed,High,Raghul J E,,Refex Shared Services Private Limited,Refex Holding Private Limited,,,,Application Testing Report - Project & Task Management,PRJ--FY026-0190,2026-10-27,2026-10-27,2026-10-27,2026-10-27,,,0,0,2026-10-27,,1- Check the Task tracker - form field which has all option for employee to track easily
+
+SUBTASKS
+Parent task,Parent task ID,Subtask,Summary,Status,Workflow status,Priority,Assignee,Created by,Project,Project ID,Created,Aging days,End date

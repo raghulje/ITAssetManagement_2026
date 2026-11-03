@@ -1,0 +1,13 @@
+{
+  "name": "itagent-2026",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node sync.mjs",
+    "watch": "node sync.mjs --loop"
+  },
+  "dependencies": {
+    "systeminformation": "^5.25.11"
+  }
+}

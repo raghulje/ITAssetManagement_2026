@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Brother PT-P900W Asset Tag</title>
+
+    <style>
+      @page {
+        size: 22mm 36mm;
+        margin: 0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 22mm;
+        height: 36mm;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+      }
+
+      /* Physical label: 36mm wide x 28mm long */
+      .label {
+        position: relative;
+        width: 22mm;
+        height: 36mm;
+        overflow: hidden;
+        margin: 0;
+        padding: 0;
+      }
+
+      /*
+       Printable content: 32mm x 28mm after rotation.
+       Before rotation: 28mm x 32mm.
+       Centered within the 36mm tape width.
+    */
+      .label-content {
+        position: absolute;
+        top: 0;
+
+        width: 36mm;
+        height: 22mm;
+
+        transform-origin: top left;
+        transform: translateY(36mm) rotate(-90deg);
+
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 1mm;
+        padding: 1mm;
+      }
+
+      /* QR code: approximately 35% of content width */
+      .qr-section {
+        width: 12mm;
+        height: 12mm;
+        flex: 0 0 12mm;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .qr-section img {
+        display: block;
+        width: 12mm;
+        height: 12mm;
+        object-fit: contain;
+      }
+
+      /* Three rows on the right */
+      .text-section {
+        flex: 1;
+        min-width: 0;
+
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 1.2mm;
+        overflow: hidden;
+      }
+
+      .text-row {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+
+        font-family: Arial, sans-serif;
+        font-size: 7pt;
+        font-weight: bold;
+        line-height: 1.1;
+        color: #000;
+
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: clip;
+      }
+
+      @media print {
+        html,
+        body,
+        .label {
+          margin: 0;
+          padding: 0;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="label">
+      <div class="label-content">
+        <!-- QR code -->
+        <div class="qr-section">
+          <img
+            src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=ASSET001"
+            alt="Asset QR Code"
+          />
+        </div>
+
+        <!-- Asset details -->
+        <div class="text-section">
+          <div class="text-row">Murugesh Kumar</div>
+          <div class="text-row">ASSET: 10001</div>
+          <div class="text-row">LAPTOP DELL</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
