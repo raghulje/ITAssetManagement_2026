@@ -58,6 +58,7 @@ import BatterySettings from './pages/settings/BatterySettings'
 import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset'
 import SsoCallback from './pages/SsoCallback'
 import PublicAsset from './pages/assets/PublicAsset'
+import AssetScanner from './pages/assets/AssetScanner'
 import LabelsModule from './pages/labels/LabelsModule'
 import LogoutPage from './pages/Logout'
 import {
@@ -107,6 +108,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/hardware" element={<AssetsList />} />
+                <Route path="/scan" element={<AssetScanner />} />
                 <Route path="/labels" element={<LabelsModule />} />
                 <Route path="/hardware/create" element={<AssetForm />} />
                 <Route path="/hardware/latest-data" element={<LatestAssetCompare />} />

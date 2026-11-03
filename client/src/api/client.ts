@@ -99,7 +99,11 @@ export const hardwareApi = {
   facets: (params: Record<string, string | number | undefined> = {}) => {
     const q = new URLSearchParams()
     Object.entries(withActiveDomain(params)).forEach(([k, v]) => { if (v !== undefined && v !== '') q.set(k, String(v)) })
-    return api<{ statuses: string[]; assignees: string[] }>(`/hardware/facets?${q}`)
+    return api<{
+      statuses: string[]
+      assignees: string[]
+      registrars?: Array<{ id: number; name: string; email?: string | null; username?: string | null }>
+    }>(`/hardware/facets?${q}`)
   },
   get: (id: number | string) => api<Record<string, unknown>>(`/hardware/${id}`),
   generateMissingQr: () => {

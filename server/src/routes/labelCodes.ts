@@ -15,6 +15,7 @@ import { logAction } from '../services/actionLog.js'
 import { transformAsset } from '../services/transformers.js'
 import { inventoryDomainColumnsReady, resolveWriteDomainId, tableHasColumn } from '../services/domainAuth.js'
 import { publicAssetPageUrl } from '../services/assetQr.js'
+import { stampRegisteredBy } from '../services/assetRegistrar.js'
 
 const router = Router()
 
@@ -114,7 +115,7 @@ router.post('/:token/register', async (req, res) => {
   cols.push(
     'name', 'serial', 'model_id', 'status_id', 'company_id', 'legal_entity_id',
     'department_id', 'supplier_id', 'location_id', 'rtd_location_id', 'notes',
-    'requestable', 'byod', 'created_at', 'updated_at',
+    'requestable', 'byod', 'created_by', 'created_at', 'updated_at',
   )
   vals.push(
     b.name || null,
@@ -128,7 +129,7 @@ router.post('/:token/register', async (req, res) => {
     b.location_id || b.rtd_location_id ? Number(b.location_id || b.rtd_location_id) : null,
     b.rtd_location_id ? Number(b.rtd_location_id) : null,
     b.notes ? String(b.notes).trim() : null,
-    0, 0, ts, ts,
+    0, 0, req.user?.id || null, ts, ts,
   )
 
   let assetId: number
@@ -151,6 +152,7 @@ router.post('/:token/register', async (req, res) => {
     await run(`UPDATE assets SET deleted_at = ?, updated_at = ? WHERE id = ?`, [ts, ts, assetId])
     return fail(res, 'This label is already registered. Scan again to view details.', 409)
   }
+  await stampRegisteredBy(assetId, req.user?.id).catch(() => undefined)
   await logAction({
     userId: req.user?.id,
     actionType: 'create',

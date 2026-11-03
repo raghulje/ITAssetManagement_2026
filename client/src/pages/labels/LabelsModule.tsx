@@ -152,7 +152,8 @@ export default function LabelsModule() {
                 placeholder="AM-000001 or scan…"
                 onKeyDown={(e) => { if (e.key === 'Enter') openLookup() }}
               />
-              <button type="button" className="btn btn-theme" onClick={openLookup}>Open</button>
+              <button type="button" className="btn btn-default" onClick={openLookup}>Open</button>
+              <Link to="/scan" className="btn btn-theme">Scan with camera</Link>
             </div>
           </Box>
         </div>

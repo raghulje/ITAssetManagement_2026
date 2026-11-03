@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { all, get, run, now } from '../db/index.js'
 import { logAction } from './actionLog.js'
 import { allocateAssetTag } from './assetTag.js'
+import { ensureAssetQr } from './assetQr.js'
 import {
   allowedDomainCodes,
   canAccessDomainId,
@@ -11,25 +12,31 @@ import {
   inventoryDomainColumnsReady,
   loadAssetDomains,
   resolveImportDomainId,
+  tableHasColumn,
   type AssetDomainRow,
 } from './domainAuth.js'
 
-export const IMPORT_FIELDS: Record<string, { key: string; label: string; required?: boolean; aliases?: string[] }[]> = {
+export const IMPORT_FIELDS: Record<string, { key: string; label: string; required?: boolean; aliases?: string[]; sample?: boolean }[]> = {
   asset: [
-    { key: 'asset_tag', label: 'Asset Tag (legacy → old_asset_tag)', required: true, aliases: ['tag', 'asset', 'assettag', 'old_asset_tag'] },
-    { key: 'category', label: 'Asset Type', required: false, aliases: ['asset_type', 'type', 'category'] },
-    { key: 'name', label: 'Name' },
+    { key: 'name', label: 'Asset Name', aliases: ['assetname', 'name'] },
+    { key: 'company', label: 'Company', aliases: ['companyname'] },
+    { key: 'device_brand_serial', label: 'Device Brand and Serial Number Details', aliases: ['devicebrandandserialnumberdetails', 'brandserial'] },
+    { key: 'old_asset_tag', label: 'Old asset tag', aliases: ['oldassettag'] },
     { key: 'serial', label: 'Serial', aliases: ['serialnumber', 'serial_number'] },
-    { key: 'model', label: 'Model', required: true },
-    { key: 'status', label: 'Status' },
-    { key: 'company', label: 'Company' },
-    { key: 'location', label: 'Location' },
-    { key: 'supplier', label: 'Supplier', aliases: ['vendor'] },
-    { key: 'purchase_date', label: 'Purchase Date', aliases: ['purchasedate'] },
-    { key: 'purchase_cost', label: 'Purchase Cost', aliases: ['cost', 'purchasecost'] },
-    { key: 'order_number', label: 'Purchase Order Number', aliases: ['po', 'ponumber', 'ordernumber', 'purchaseordernumber'] },
-    { key: 'notes', label: 'Notes' },
-    { key: 'assigned_to', label: 'Assign to Username', aliases: ['assigned', 'username', 'assignee'] },
+    { key: 'legal_entity', label: 'legal entity', aliases: ['legalentity', 'entity', 'entitycode'] },
+    { key: 'entity_asset_tag', label: 'Entity Asset Tag', aliases: ['entityassettag'] },
+    { key: 'manufacturer', label: 'Manufacturer', aliases: ['make', 'brand'] },
+    { key: 'asset_tag', label: 'Asset Tag', sample: false, aliases: ['tag', 'assettag'] },
+    { key: 'category', label: 'Asset Type', sample: false, aliases: ['asset_type', 'type', 'category'] },
+    { key: 'model', label: 'Model', sample: false },
+    { key: 'status', label: 'Status', sample: false },
+    { key: 'location', label: 'Location', sample: false },
+    { key: 'supplier', label: 'Supplier', sample: false, aliases: ['vendor'] },
+    { key: 'purchase_date', label: 'Purchase Date', sample: false, aliases: ['purchasedate'] },
+    { key: 'purchase_cost', label: 'Purchase Cost', sample: false, aliases: ['cost', 'purchasecost'] },
+    { key: 'order_number', label: 'Purchase Order Number', sample: false, aliases: ['po', 'ponumber', 'ordernumber', 'purchaseordernumber'] },
+    { key: 'notes', label: 'Notes', sample: false },
+    { key: 'assigned_to', label: 'Assign to Username', sample: false, aliases: ['assigned', 'username', 'assignee'] },
   ],
   user: [
     { key: 'first_name', label: 'First Name', required: true, aliases: ['firstname', 'first'] },
@@ -159,15 +166,25 @@ async function findOrCreateByName(table: string, name: string, extra: Record<str
   }
 }
 
-async function resolveModel(name: string, categoryId?: number | null) {
+function splitBrandSerial(value: string) {
+  const text = value.trim()
+  const idx = text.lastIndexOf(' - ')
+  if (idx <= 0) return { brand: text, serial: '' }
+  return { brand: text.slice(0, idx).trim(), serial: text.slice(idx + 3).trim() }
+}
+
+async function resolveModel(name: string, categoryId?: number | null, manufacturerId?: number | null) {
   if (!name) return null
-  const m = await get<{ id: number; category_id: number | null }>(
-    `SELECT id, category_id FROM models WHERE name = ? AND deleted_at IS NULL LIMIT 1`,
+  const m = await get<{ id: number; category_id: number | null; manufacturer_id: number | null }>(
+    `SELECT id, category_id, manufacturer_id FROM models WHERE name = ? AND deleted_at IS NULL LIMIT 1`,
     [name],
   )
   if (m) {
     if (categoryId && !m.category_id) {
       await run(`UPDATE models SET category_id = ?, updated_at = ? WHERE id = ?`, [categoryId, now(), m.id])
+    }
+    if (manufacturerId && !m.manufacturer_id) {
+      await run(`UPDATE models SET manufacturer_id = ?, updated_at = ? WHERE id = ?`, [manufacturerId, now(), m.id])
     }
     return m.id
   }
@@ -178,10 +195,20 @@ async function resolveModel(name: string, categoryId?: number | null) {
   }
   const ts = now()
   const info = await run(
-    `INSERT INTO models (name, category_id, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-    [name, catId, ts, ts],
+    `INSERT INTO models (name, category_id, manufacturer_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    [name, catId, manufacturerId || null, ts, ts],
   )
   return info.insertId
+}
+
+async function resolveLegalEntity(codeOrName: string) {
+  const label = codeOrName.trim()
+  if (!label) return null
+  const row = await get<{ id: number }>(
+    `SELECT id FROM legal_entities WHERE deleted_at IS NULL AND (code = ? OR name = ?) LIMIT 1`,
+    [label, label],
+  )
+  return row?.id ? Number(row.id) : null
 }
 
 async function resolveStatus(name: string) {
@@ -317,13 +344,21 @@ export async function processImport(opts: {
     const rowNum = i + 2
     try {
       if (opts.type === 'asset') {
-        const legacyTag = cell(row, map, 'asset_tag')
-        const modelName = cell(row, map, 'model')
-        if (!legacyTag || !modelName) throw new Error('asset_tag and model are required')
+        const brandSerial = splitBrandSerial(cell(row, map, 'device_brand_serial'))
+        const serial = cell(row, map, 'serial') || brandSerial.serial
+        const manufacturerName = cell(row, map, 'manufacturer')
+        const assetName = cell(row, map, 'name')
+        const modelName = cell(row, map, 'model') || brandSerial.brand || manufacturerName || assetName
+        const explicitTag = cell(row, map, 'entity_asset_tag') || cell(row, map, 'asset_tag')
+        const oldTag = cell(row, map, 'old_asset_tag')
+        if (!assetName && !serial && !explicitTag && !oldTag && !modelName) {
+          throw new Error('Asset Name, serial, or asset tag is required')
+        }
         const categoryName = cell(row, map, 'category')
         let categoryId: number | null = null
         if (categoryName) categoryId = await ensureCategory(categoryName, 'asset', ts)
-        const modelId = await resolveModel(modelName, categoryId)
+        const manufacturerId = manufacturerName ? await findOrCreateByName('manufacturers', manufacturerName) : null
+        const modelId = modelName ? await resolveModel(modelName, categoryId, manufacturerId) : null
         if (!categoryId && modelId) {
           const m = await get<{ category_id: number | null }>(`SELECT category_id FROM models WHERE id = ?`, [modelId])
           categoryId = m?.category_id ? Number(m.category_id) : null
@@ -336,68 +371,98 @@ export async function processImport(opts: {
         }
         const statusId = await resolveStatus(cell(row, map, 'status'))
         const companyId = await findOrCreateByName('companies', cell(row, map, 'company'))
+        const legalEntityId = await resolveLegalEntity(cell(row, map, 'legal_entity'))
         const locationId = await findOrCreateByName('locations', cell(row, map, 'location'), { company_id: companyId })
         const supplierId = await findOrCreateByName('suppliers', cell(row, map, 'supplier'))
-        // Match by legacy tag (old) or current system tag
-        const existing = await get<{ id: number; domain_id?: number | null }>(
-          domainReady
-            ? `SELECT id, domain_id FROM assets WHERE deleted_at IS NULL AND (old_asset_tag = ? OR asset_tag = ?) LIMIT 1`
-            : `SELECT id FROM assets WHERE deleted_at IS NULL AND (old_asset_tag = ? OR asset_tag = ?) LIMIT 1`,
-          [legacyTag, legacyTag],
-        )
+        const matchTag = explicitTag || oldTag
+        const existing = matchTag
+          ? await get<{ id: number; domain_id?: number | null }>(
+            domainReady
+              ? `SELECT id, domain_id FROM assets WHERE deleted_at IS NULL AND (asset_tag = ? OR old_asset_tag = ?) LIMIT 1`
+              : `SELECT id FROM assets WHERE deleted_at IS NULL AND (asset_tag = ? OR old_asset_tag = ?) LIMIT 1`,
+            [matchTag, matchTag],
+          )
+          : serial
+            ? await get<{ id: number; domain_id?: number | null }>(
+              domainReady
+                ? `SELECT id, domain_id FROM assets WHERE deleted_at IS NULL AND serial = ? LIMIT 1`
+                : `SELECT id FROM assets WHERE deleted_at IS NULL AND serial = ? LIMIT 1`,
+              [serial],
+            )
+            : undefined
         const cost = cell(row, map, 'purchase_cost') ? Number(cell(row, map, 'purchase_cost')) : null
+        const hasAssetMfr = await tableHasColumn('assets', 'manufacturer_id')
         if (existing && opts.updateExisting) {
           assertTouch(existing.domain_id)
           await run(`
-            UPDATE assets SET name=?, serial=?, model_id=?, status_id=?, company_id=?, location_id=?, rtd_location_id=COALESCE(?, rtd_location_id),
-              supplier_id=?, purchase_date=NULLIF(?,''), purchase_cost=?, order_number=NULLIF(?,''), notes=?,
-              old_asset_tag=COALESCE(old_asset_tag, ?), updated_at=?, deleted_at=NULL
+            UPDATE assets SET name=COALESCE(?, name), serial=COALESCE(?, serial), model_id=COALESCE(?, model_id), status_id=?,
+              company_id=COALESCE(?, company_id), legal_entity_id=COALESCE(?, legal_entity_id),
+              location_id=COALESCE(?, location_id), rtd_location_id=COALESCE(?, rtd_location_id),
+              supplier_id=COALESCE(?, supplier_id), purchase_date=COALESCE(NULLIF(?,''), purchase_date),
+              purchase_cost=COALESCE(?, purchase_cost), order_number=COALESCE(NULLIF(?,''), order_number),
+              notes=COALESCE(?, notes), old_asset_tag=COALESCE(?, old_asset_tag), updated_at=?, deleted_at=NULL
+              ${hasAssetMfr ? ', manufacturer_id=COALESCE(?, manufacturer_id)' : ''}
             WHERE id=?
           `, [
-            cell(row, map, 'name') || null, cell(row, map, 'serial') || null, modelId, statusId, companyId, locationId, locationId,
+            assetName || null, serial || null, modelId, statusId, companyId, legalEntityId, locationId, locationId,
             supplierId, cell(row, map, 'purchase_date'), cost, cell(row, map, 'order_number'), cell(row, map, 'notes') || null,
-            legacyTag, ts, existing.id,
+            oldTag || null, ts,
+            ...(hasAssetMfr ? [manufacturerId] : []),
+            existing.id,
           ])
+          await ensureAssetQr(existing.id).catch(() => undefined)
           updated++
         } else if (existing) {
-          throw new Error(`Asset tag ${legacyTag} already exists`)
+          throw new Error(`Asset ${explicitTag || oldTag || serial} already exists`)
         } else {
-          if (!companyId) throw new Error('company is required to generate asset tag')
+          if (!companyId && !legalEntityId) throw new Error('Company or legal entity is required to generate the asset tag')
           if (!categoryId) throw new Error('asset type/category is required to generate asset tag')
-          const newTag = await allocateAssetTag({
-            companyId,
-            legalEntityId: null,
-            categoryId,
-          })
+          if (!modelId) throw new Error('A model, device brand, or asset name is required')
+          let newTag = explicitTag
+          if (newTag) {
+            const clash = await get<{ id: number }>(`SELECT id FROM assets WHERE asset_tag = ? LIMIT 1`, [newTag])
+            if (clash) throw new Error(`Asset tag ${newTag} already exists`)
+          } else {
+            newTag = await allocateAssetTag({
+              companyId,
+              legalEntityId,
+              categoryId,
+            })
+          }
           const info = await run(
             domainReady
               ? `
-            INSERT INTO assets (domain_id, asset_tag, old_asset_tag, name, serial, model_id, status_id, company_id, location_id, rtd_location_id, supplier_id,
+            INSERT INTO assets (domain_id, asset_tag, old_asset_tag, name, serial, model_id, status_id, company_id, legal_entity_id, location_id, rtd_location_id, supplier_id,
               purchase_date, purchase_cost, order_number, notes, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?,''), ?, NULLIF(?,''), ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?,''), ?, NULLIF(?,''), ?, ?, ?)
           `
               : `
-            INSERT INTO assets (asset_tag, old_asset_tag, name, serial, model_id, status_id, company_id, location_id, rtd_location_id, supplier_id,
+            INSERT INTO assets (asset_tag, old_asset_tag, name, serial, model_id, status_id, company_id, legal_entity_id, location_id, rtd_location_id, supplier_id,
               purchase_date, purchase_cost, order_number, notes, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?,''), ?, NULLIF(?,''), ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?,''), ?, NULLIF(?,''), ?, ?, ?)
           `,
             domainReady
               ? [
-                importDomainId, newTag, legacyTag, cell(row, map, 'name') || null, cell(row, map, 'serial') || null, modelId, statusId, companyId, locationId, locationId,
+                importDomainId, newTag, oldTag || null, assetName || modelName, serial || null, modelId, statusId, companyId, legalEntityId, locationId, locationId,
                 supplierId, cell(row, map, 'purchase_date'), cost, cell(row, map, 'order_number'), cell(row, map, 'notes') || null, ts, ts,
               ]
               : [
-                newTag, legacyTag, cell(row, map, 'name') || null, cell(row, map, 'serial') || null, modelId, statusId, companyId, locationId, locationId,
+                newTag, oldTag || null, assetName || modelName, serial || null, modelId, statusId, companyId, legalEntityId, locationId, locationId,
                 supplierId, cell(row, map, 'purchase_date'), cost, cell(row, map, 'order_number'), cell(row, map, 'notes') || null, ts, ts,
               ],
           )
+          const newId = Number(info.insertId)
+          if (hasAssetMfr && manufacturerId) {
+            await run(`UPDATE assets SET manufacturer_id = ? WHERE id = ?`, [manufacturerId, newId])
+          }
+          await ensureAssetQr(newId).catch(() => undefined)
           created++
           const username = cell(row, map, 'assigned_to')
           if (username) {
             const user = await get<{ id: number }>(`SELECT id FROM users WHERE username = ? AND deleted_at IS NULL`, [username])
             if (user) {
               await run(`UPDATE assets SET assigned_to=?, assigned_type='user', last_checkout=?, checkout_counter=checkout_counter+1 WHERE id=?`,
-                [user.id, ts, info.insertId])
+                [user.id, ts, newId])
             }
           }
         }

@@ -20,6 +20,9 @@ import {
   softDeleteAssetCapture,
 } from '../services/assetCaptures.js'
 import { logAction } from '../services/actionLog.js'
+import { stampRegisteredBy } from '../services/assetRegistrar.js'
+import { ensureP2pAssetColumns } from '../services/p2pColumns.js'
+import { tableHasColumn } from '../services/domainAuth.js'
 
 const router = Router()
 
@@ -167,6 +170,8 @@ router.get('/assets/:token', authRequired, requireItAssetManager, async (req, re
 
   if (!asset) return fail(res, 'Asset not found', 404)
 
+  const extras = await publicPurchaseExtras(Number(asset.id))
+  const manufacturerName = await publicManufacturerName(Number(asset.id), asset.manufacturer_name)
   const qrToken = String(asset.qr_token || token)
   const imagePath = asset.qr_image_path
     ? `/storage/${String(asset.qr_image_path).replace(/\\/g, '/').replace(/^public\//, '')}`
@@ -181,7 +186,7 @@ router.get('/assets/:token', authRequired, requireItAssetManager, async (req, re
     serial: asset.serial,
     model: asset.model_name,
     model_number: asset.model_number,
-    manufacturer: asset.manufacturer_name,
+    manufacturer: manufacturerName,
     status: asset.assigned_to ? 'Assigned' : asset.status_name,
     status_type: asset.assigned_to ? 'deployed' : asset.status_type,
     company: asset.company_name,
@@ -193,7 +198,13 @@ router.get('/assets/:token', authRequired, requireItAssetManager, async (req, re
     supplier: asset.supplier_name,
     purchase_date: asset.purchase_date,
     purchase_cost: asset.purchase_cost,
-    order_number: asset.order_number,
+    order_number: extras?.po_number || asset.order_number,
+    po_number: extras?.po_number || asset.order_number || null,
+    grn_number: extras?.grn_number || null,
+    invoice_number: extras?.invoice_number || null,
+    invoice_date: extras?.invoice_date || null,
+    registered_by: extras?.registered_by || null,
+    registered_at: extras?.registered_at || null,
     warranty_months: asset.warranty_months,
     asset_eol_date: asset.asset_eol_date,
     notes: asset.notes,
@@ -236,6 +247,7 @@ router.post('/assets/:token/captures', authRequired, requireItAssetManager, (req
       const rel = path.relative(storageRoot, req.file.path).replace(/\\/g, '/')
       const lat = req.body?.latitude != null && req.body?.latitude !== '' ? Number(req.body.latitude) : null
       const lng = req.body?.longitude != null && req.body?.longitude !== '' ? Number(req.body.longitude) : null
+      await stampRegisteredBy(asset.id, req.user?.id).catch(() => undefined)
       const id = await insertAssetCapture({
         assetId: asset.id,
         userId: req.user?.id,
@@ -295,5 +307,59 @@ router.delete('/assets/:token/captures/:id', authRequired, requireItAssetManager
   if (!row) return fail(res, 'Capture not found', 404)
   return okMessage(res, 'Capture deleted')
 })
+
+async function publicPurchaseExtras(assetId: number) {
+  try {
+    await ensureP2pAssetColumns()
+  } catch {
+    return null
+  }
+  const row = await get<{
+    grn_number: string | null
+    invoice_number: string | null
+    invoice_date: string | null
+    po_number: string | null
+    registered_by: number | null
+    registered_at: string | null
+    registered_by_name: string | null
+    registered_by_email: string | null
+    registered_by_username: string | null
+  }>(`
+    SELECT a.grn_number, a.invoice_number, a.invoice_date, a.po_number, a.registered_by, a.registered_at,
+      TRIM(CONCAT(u.first_name, ' ', u.last_name)) AS registered_by_name,
+      u.email AS registered_by_email,
+      u.username AS registered_by_username
+    FROM assets a
+    LEFT JOIN users u ON u.id = a.registered_by
+    WHERE a.id = ?
+  `, [assetId])
+  if (!row) return null
+  return {
+    grn_number: row.grn_number,
+    invoice_number: row.invoice_number,
+    invoice_date: row.invoice_date,
+    po_number: row.po_number,
+    registered_at: row.registered_at,
+    registered_by: row.registered_by
+      ? {
+        id: Number(row.registered_by),
+        name: row.registered_by_name,
+        email: row.registered_by_email,
+        username: row.registered_by_username,
+      }
+      : null,
+  }
+}
+
+async function publicManufacturerName(assetId: number, fallback: unknown) {
+  if (!(await tableHasColumn('assets', 'manufacturer_id'))) return fallback || null
+  const row = await get<{ name: string | null }>(`
+    SELECT mf.name
+    FROM assets a
+    LEFT JOIN manufacturers mf ON mf.id = a.manufacturer_id
+    WHERE a.id = ?
+  `, [assetId])
+  return row?.name || fallback || null
+}
 
 export default router

@@ -130,6 +130,7 @@ export default function AssetForm() {
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(isEdit)
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([])
+  const [poOnFile, setPoOnFile] = useState(false)
   const [imagePath, setImagePath] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [pendingImage, setPendingImage] = useState<File | null>(null)
@@ -445,6 +446,22 @@ export default function AssetForm() {
     }
     if (!isEdit && !form.company_id && !form.legal_entity_id) {
       setError('Company or legal entity is required to generate the asset tag')
+      setTab('details')
+      return
+    }
+    const cost = Number(form.purchase_cost)
+    if (!form.purchase_cost.trim() || !Number.isFinite(cost) || cost <= 0) {
+      setError('Purchase Cost (INR) is required')
+      setTab('details')
+      return
+    }
+    if (!form.order_number.trim()) {
+      setError('Purchase Order Number is required')
+      setTab('details')
+      return
+    }
+    if (!pendingFiles.some((p) => p.kind === 'po') && !poOnFile) {
+      setError('Purchase Order (PO) upload is required')
       setTab('details')
       return
     }
@@ -821,7 +838,8 @@ export default function AssetForm() {
             onPendingChange={setPendingFiles}
             stagingMode={!isEdit}
             assetId={isEdit ? id : null}
-            required={!isEdit}
+            required
+            onAttachedChange={setPoOnFile}
             onPoExtracted={applyPoExtracted}
           />
 
@@ -846,22 +864,26 @@ export default function AssetForm() {
             />
           </Field>
 
-          <Field label="Purchase Cost (INR)">
+          <Field label="Purchase Cost (INR)" required>
             <input
               type="number"
+              min="0.01"
+              step="0.01"
               className="form-control"
               value={form.purchase_cost}
               onChange={(e) => set('purchase_cost', e.target.value)}
               placeholder="e.g. 45000"
+              required
             />
           </Field>
 
-          <Field label="Purchase Order Number">
+          <Field label="Purchase Order Number" required>
             <input
               className="form-control"
               value={form.order_number}
               onChange={(e) => set('order_number', e.target.value)}
               placeholder="e.g. PO-2026-00123"
+              required
             />
           </Field>
 

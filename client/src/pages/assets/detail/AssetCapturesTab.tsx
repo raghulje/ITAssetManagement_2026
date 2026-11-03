@@ -8,6 +8,7 @@ import {
   DEREGISTER_CONFIRM,
   MIN_SIDE_PHOTOS,
   firstPackStatus,
+  isAppleManufacturer,
 } from '../../../components/QrAssetCapturePanel'
 import {
   CaptureLightbox,
@@ -15,11 +16,15 @@ import {
   type CaptureMediaItem,
 } from '../../../components/CaptureMediaPreview'
 
+type Person = { id?: number; name?: string | null; email?: string | null; username?: string | null } | null
+
 type Props = {
   assetId: number | string
   rows: CaptureRow[]
   qrToken?: string | null
   canDeregister?: boolean
+  manufacturer?: string | null
+  registeredBy?: Person
   onDeregistered?: () => void
 }
 
@@ -28,13 +33,16 @@ export default function AssetCapturesTab({
   rows,
   qrToken,
   canDeregister,
+  manufacturer,
+  registeredBy,
   onDeregistered,
 }: Props) {
   const [archived, setArchived] = useState<CaptureRow[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [viewer, setViewer] = useState<{ items: CaptureMediaItem[]; index: number } | null>(null)
-  const pack = firstPackStatus(rows)
+  const apple = isAppleManufacturer(manufacturer)
+  const pack = firstPackStatus(rows, { licenseRequired: !apple })
   const photos = rows.filter((r) => r.kind === 'photo')
   const serials = rows.filter((r) => r.kind === 'serial')
   const licenses = rows.filter((r) => r.kind === 'license')
@@ -78,6 +86,13 @@ export default function AssetCapturesTab({
           ) : null}
         </div>
       </div>
+      {registeredBy?.id || registeredBy?.name ? (
+        <p className="help-block">
+          Registered by {registeredBy.name || registeredBy.username || 'user'}
+          {registeredBy.email ? ` · ${registeredBy.email}` : ''}
+          {registeredBy.id != null ? ` · User #${registeredBy.id}` : ''}
+        </p>
+      ) : null}
       {error ? <p className="text-danger">{error}</p> : null}
       <p className="help-block">
         After an employee is relieved or the asset moves to another site, tap
@@ -100,12 +115,16 @@ export default function AssetCapturesTab({
           <ul className="qr-capture-req">
             <li className={pack.sidesOk ? 'is-done' : ''}>All sides — {pack.sides}/{MIN_SIDE_PHOTOS}</li>
             <li className={pack.serialOk ? 'is-done' : ''}>Serial number photo — {pack.serialOk ? 'yes' : 'missing'}</li>
-            <li className={pack.licenseOk ? 'is-done' : ''}>Windows/Apple license key — {pack.licenseOk ? 'yes' : 'missing'}</li>
+            {apple ? null : (
+              <li className={pack.licenseOk ? 'is-done' : ''}>Windows license key — {pack.licenseOk ? 'yes' : 'missing'}</li>
+            )}
             <li className={pack.videoOk ? 'is-done' : ''}>10-second video — {pack.videoOk ? 'yes' : 'missing'}</li>
           </ul>
           <CaptureGroup title={`All sides (${photos.length})`} items={photos} onOpen={setViewer} />
           <CaptureGroup title={`Serial number (${serials.length})`} items={serials} onOpen={setViewer} />
-          <CaptureGroup title={`Windows/Apple license key (${licenses.length})`} items={licenses} onOpen={setViewer} />
+          {apple && !licenses.length ? null : (
+            <CaptureGroup title={`Windows license key (${licenses.length})`} items={licenses} onOpen={setViewer} />
+          )}
           <CaptureGroup title={`Video (${videos.length})`} items={videos} onOpen={setViewer} video />
         </>
       )}
@@ -142,7 +161,12 @@ function toMediaItems(items: CaptureRow[]): CaptureMediaItem[] {
     key: String(row.id),
     src: authorizedMediaUrl(row.url),
     isVideo: row.kind === 'video' || String(row.mime_type || '').startsWith('video/'),
-    caption: row.address || formatAppDateTime(row.captured_at),
+    caption: [
+      row.address || formatAppDateTime(row.captured_at),
+      row.captured_by?.name || row.captured_by?.email
+        ? `By ${row.captured_by?.name || row.captured_by?.email}${row.captured_by?.id != null ? ` (#${row.captured_by.id})` : ''}`
+        : '',
+    ].filter(Boolean).join(' · '),
     coords: row.latitude != null && row.longitude != null
       ? `${Number(row.latitude).toFixed(5)}, ${Number(row.longitude).toFixed(5)}`
       : null,
@@ -213,6 +237,9 @@ export function normalizeCaptureRows(raw: Record<string, unknown>[]): CaptureRow
       address: (r.address as string | null) ?? null,
       deleted_at: (r.deleted_at as string | null) ?? null,
       url: String(r.url || ''),
+      captured_by: (r.captured_by && typeof r.captured_by === 'object')
+        ? r.captured_by as CaptureRow['captured_by']
+        : null,
     }
   })
 }

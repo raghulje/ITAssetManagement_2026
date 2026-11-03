@@ -14,6 +14,17 @@ import {
 import { assetImageSrc, getApiBase, getStorageBase } from '../../../api/baseUrl'
 import { Field, dash, dateVal, initials, money, nestName, statusClass, statusTone } from './helpers'
 
+function registrarText(value: unknown) {
+  if (!value || typeof value !== 'object') return '—'
+  const user = value as { id?: number; name?: string | null; email?: string | null; username?: string | null }
+  const parts = [
+    user.name || user.username || '',
+    user.email || '',
+    user.id != null ? `User #${user.id}` : '',
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : '—'
+}
+
 type Props = {
   asset: Record<string, unknown>
   assignRef: RefObject<HTMLElement | null>
@@ -182,7 +193,11 @@ export default function AssetOverviewTab({
           </div>
           <dl className="vad-info-grid vad-info-grid--2">
             <Field label="Supplier / vendor">{nestName(asset.supplier)}</Field>
-            <Field label="PO number">{dash(asset.order_number)}</Field>
+            <Field label="PO number">{dash(asset.po_number || asset.order_number)}</Field>
+            <Field label="GRN number">{dash(asset.grn_number)}</Field>
+            <Field label="Invoice number">{dash(asset.invoice_number)}</Field>
+            <Field label="Invoice date">{dateVal(asset.invoice_date)}</Field>
+            <Field label="Registered by">{registrarText(asset.registered_by)}</Field>
             <Field label="Purchase date">{dateVal(asset.purchase_date)}</Field>
             <Field label="Warranty (months)">{dash(asset.warranty_months)}</Field>
             <Field label="EOL date">{dateVal(asset.asset_eol_date)}</Field>

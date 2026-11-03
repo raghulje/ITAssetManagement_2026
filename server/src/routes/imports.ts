@@ -32,9 +32,17 @@ router.get('/sample/:type', (req, res) => {
   const type = String(req.params.type || 'asset')
   const fields = IMPORT_FIELDS[type]
   if (!fields) return fail(res, 'Unknown type')
-  const header = fields.map((f) => f.label).join(',')
-  const sample = fields.map((f) => {
-    if (f.key === 'asset_tag') return 'REF-1001'
+  const sampleFields = fields.filter((f) => f.sample !== false)
+  const header = sampleFields.map((f) => f.label).join(',')
+  const sample = sampleFields.map((f) => {
+    if (f.key === 'asset_tag' || f.key === 'entity_asset_tag') return 'MEMF-LAPTOP-2026-27-0001'
+    if (type === 'asset' && f.key === 'name') return 'MacBook Pro 14'
+    if (f.key === 'company') return 'Refex'
+    if (f.key === 'device_brand_serial') return 'MacBook Pro 14 - C02SERIAL01'
+    if (f.key === 'old_asset_tag') return 'OLD-100'
+    if (f.key === 'serial') return 'C02SERIAL01'
+    if (f.key === 'legal_entity') return 'MEMF'
+    if (f.key === 'manufacturer') return 'Apple'
     if (f.key === 'model') return 'Laptop Model'
     if (f.key === 'qty' || f.key === 'seats') return '10'
     if (f.key === 'username') return 'user.name'

@@ -29,6 +29,7 @@ import { groupsRouter } from './routes/groups.js'
 import { geoRouter } from './routes/geo.js'
 import { spacesRouter } from './routes/spaces.js'
 import { batteryIssuesRouter } from './routes/batteryIssues.js'
+import p2pWebhookRouter from './routes/p2pWebhook.js'
 import { storageRoot } from './services/uploads.js'
 import { moduleGate, requirePerm } from './services/permissions.js'
 
@@ -105,7 +106,7 @@ export function createApp() {
       product: 'Refex Asset Management',
       version: '1.1.0',
       serve_client: process.env.SERVE_CLIENT === 'true',
-      features: ['imports', 'labels', 'uploads', 'signatures', 'reports', 'public-qr', 'agent-sync', 'agent-remote-scan', 'saml-sso'],
+      features: ['imports', 'labels', 'uploads', 'signatures', 'reports', 'public-qr', 'agent-sync', 'agent-remote-scan', 'saml-sso', 'p2p-grn'],
     })
   })
 
@@ -115,6 +116,7 @@ export function createApp() {
   // QR scan (JWT + IT Asset Manager) + device agent (API key)
   app.use('/api/v1/public', publicAssetsRouter)
   app.use('/api/v1/agent', agentRouter)
+  app.use('/api/v1/webhooks/p2p', p2pWebhookRouter)
 
   const api = express.Router()
   api.use(authRequired)

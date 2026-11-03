@@ -22,6 +22,7 @@ export type CaptureRow = {
   longitude?: number | null
   address?: string | null
   deleted_at?: string | null
+  captured_by?: { id?: number; name?: string | null; email?: string | null; username?: string | null } | null
   url: string
 }
 
@@ -43,11 +44,19 @@ export type StagedCapture = {
 
 export const MIN_SIDE_PHOTOS = 4
 
-export function firstPackStatus(items: Array<{ kind: string }>) {
+/** Apple devices do not use a Windows license key. */
+export function isAppleManufacturer(name: unknown) {
+  const value = String(name || '').trim().toLowerCase()
+  return value === 'apple' || value.startsWith('apple ') || value.startsWith('apple,')
+}
+
+export function firstPackStatus(items: Array<{ kind: string }>, opts?: { licenseRequired?: boolean }) {
+  const licenseRequired = opts?.licenseRequired !== false
   const sides = items.filter((i) => i.kind === 'photo').length
   const serial = items.filter((i) => i.kind === 'serial').length
   const license = items.filter((i) => i.kind === 'license').length
   const videos = items.filter((i) => i.kind === 'video').length
+  const licenseOk = !licenseRequired || license >= 1
   return {
     sides,
     serial,
@@ -55,9 +64,10 @@ export function firstPackStatus(items: Array<{ kind: string }>) {
     videos,
     sidesOk: sides >= MIN_SIDE_PHOTOS,
     serialOk: serial >= 1,
-    licenseOk: license >= 1,
+    licenseOk,
+    licenseRequired,
     videoOk: videos >= 1,
-    complete: sides >= MIN_SIDE_PHOTOS && serial >= 1 && license >= 1 && videos >= 1,
+    complete: sides >= MIN_SIDE_PHOTOS && serial >= 1 && licenseOk && videos >= 1,
   }
 }
 
@@ -165,6 +175,8 @@ type Props = {
   stagedItems?: StagedCapture[]
   onStagedChange?: (items: StagedCapture[]) => void
   submitBusy?: boolean
+  manufacturer?: string | null
+  onSubmitted?: () => void
 }
 
 export default function QrAssetCapturePanel({
@@ -175,6 +187,8 @@ export default function QrAssetCapturePanel({
   stagedItems = [],
   onStagedChange,
   submitBusy = false,
+  manufacturer = null,
+  onSubmitted,
 }: Props) {
   const [rows, setRows] = useState<CaptureRow[]>([])
   const [localStaged, setLocalStaged] = useState<StagedCapture[]>([])
@@ -186,10 +200,12 @@ export default function QrAssetCapturePanel({
   const [photoBucket, setPhotoBucket] = useState<PhotoBucket>('photo')
   const [gps, setGps] = useState<PrecisePosition | null>(null)
   const [viewer, setViewer] = useState<{ items: CaptureMediaItem[]; index: number } | null>(null)
+  const [justSubmitted, setJustSubmitted] = useState(false)
+  const licenseRequired = !isAppleManufacturer(manufacturer)
 
   const pending = staged ? stagedItems : localStaged
   const combined = [...rows.map((r) => ({ kind: r.kind })), ...pending.map((p) => ({ kind: p.kind }))]
-  const pack = firstPackStatus(combined)
+  const pack = firstPackStatus(combined, { licenseRequired })
   const sideItems = [...rows.filter((r) => r.kind === 'photo'), ...pending.filter((i) => i.kind === 'photo')]
   const serialItems = [...rows.filter((r) => r.kind === 'serial'), ...pending.filter((i) => i.kind === 'serial')]
   const licenseItems = [...rows.filter((r) => r.kind === 'license'), ...pending.filter((i) => i.kind === 'license')]
@@ -302,7 +318,9 @@ export default function QrAssetCapturePanel({
 
   async function submitPending() {
     if (!pack.complete) {
-      setError(`Capture all sides (min ${MIN_SIDE_PHOTOS} photos), the serial number, the Windows/Apple license key, and a 10-second video before submitting.`)
+      setError(licenseRequired
+        ? `Capture all sides (min ${MIN_SIDE_PHOTOS} photos), the serial number, the Windows license key, and a 10-second video before submitting.`
+        : `Capture all sides (min ${MIN_SIDE_PHOTOS} photos), the serial number, and a 10-second video before submitting.`)
       return
     }
     if (!pending.length) {
@@ -323,7 +341,9 @@ export default function QrAssetCapturePanel({
     if (!failedIds.length) {
       pending.forEach((item) => URL.revokeObjectURL(item.previewUrl))
       setLocalStaged([])
-      setNotice('Submitted. Photos and video are stored on this asset.')
+      setJustSubmitted(true)
+      setNotice('Successfully submitted')
+      onSubmitted?.()
     } else {
       pending.filter((item) => !failedIds.includes(item.localId)).forEach((item) => URL.revokeObjectURL(item.previewUrl))
       setLocalStaged(pending.filter((item) => failedIds.includes(item.localId)))
@@ -363,15 +383,25 @@ export default function QrAssetCapturePanel({
       ? `${assetTag} · Windows/Apple license key`
       : `${assetTag} · all sides`
 
-  const savedOnAsset = !staged && rows.length > 0 && pending.length === 0
+  const savedOnAsset = !staged && rows.length > 0 && pending.length === 0 && !justSubmitted
   const showSubmit = staged
     ? pack.complete
     : canUploadSubmit
   const submitHint = savedOnAsset
     ? 'Current photos and video are saved for this location.'
     : !pack.complete
-      ? `Finish the checklist (${MIN_SIDE_PHOTOS} sides + serial photo + license key + 10s video), then submit.`
+      ? `Finish the checklist (${MIN_SIDE_PHOTOS} sides + serial photo${licenseRequired ? ' + Windows license key' : ''} + 10s video), then submit.`
       : `${pending.length} capture(s) ready — tap Submit to store them on this asset.`
+
+  if (justSubmitted) {
+    return (
+      <section className="qr-capture-panel">
+        <div className="callout callout-success qr-capture-notice">
+          <p>Successfully submitted</p>
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="qr-capture-panel">
@@ -379,8 +409,8 @@ export default function QrAssetCapturePanel({
         <div>
           <h2>{staged ? 'First-time field capture' : 'Asset captures'}</h2>
           <p>
-            Capture all sides, the serial number, the Windows/Apple license key, and a 10-second video. Nothing is stored until you tap{' '}
-            <strong>Submit</strong>. If the asset later moves, use <strong>Re-capture latest location</strong>.
+            Capture all sides, the serial number{licenseRequired ? ', the Windows license key' : ''}, and a 10-second video. Nothing is stored until you tap{' '}
+            <strong>Submit</strong>.
           </p>
         </div>
       </header>
@@ -392,9 +422,11 @@ export default function QrAssetCapturePanel({
         <li className={pack.serialOk ? 'is-done' : ''}>
           Serial number photo — {pack.serialOk ? 'captured' : 'required'}
         </li>
-        <li className={pack.licenseOk ? 'is-done' : ''}>
-          Windows/Apple license key — {pack.licenseOk ? 'captured' : 'required'}
-        </li>
+        {licenseRequired ? (
+          <li className={pack.licenseOk ? 'is-done' : ''}>
+            Windows license key — {pack.licenseOk ? 'captured' : 'required'}
+          </li>
+        ) : null}
         <li className={pack.videoOk ? 'is-done' : ''}>
           10-second video — {pack.videoOk ? 'captured' : 'required'}
         </li>
@@ -457,16 +489,17 @@ export default function QrAssetCapturePanel({
         />
       </div>
 
+      {licenseRequired || licenseItems.length > 0 ? (
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
-          <h3 className="qr-capture-panel__sub">Windows/Apple license key ({pack.licenseOk ? '1/1' : '0/1'})</h3>
-          {savedOnAsset ? null : (
+          <h3 className="qr-capture-panel__sub">Windows license key ({pack.licenseOk ? '1/1' : '0/1'})</h3>
+          {savedOnAsset || !licenseRequired ? null : (
             <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('license') }}>
-              <i className="fas fa-key" /> Capture Windows/Apple License Key
+              <i className="fas fa-key" /> Capture Windows license
             </button>
           )}
         </div>
-        <p className="help-block">Photograph the Windows or Apple license key so the characters are readable.</p>
+        <p className="help-block">Photograph the Windows license key so the characters are readable.</p>
         <Gallery
           items={licenseItems}
           busy={working}
@@ -477,6 +510,7 @@ export default function QrAssetCapturePanel({
           onOpen={setViewer}
         />
       </div>
+      ) : null}
 
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">

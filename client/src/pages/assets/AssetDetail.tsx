@@ -307,6 +307,12 @@ export default function AssetDetail() {
             rows={captures}
             qrToken={typeof a.qr_token === 'string' ? a.qr_token : null}
             canDeregister={isItAssetManager}
+            manufacturer={typeof a.manufacturer === 'object' && a.manufacturer && 'name' in (a.manufacturer as object)
+              ? String((a.manufacturer as { name?: string }).name || '')
+              : ''}
+            registeredBy={a.registered_by && typeof a.registered_by === 'object'
+              ? a.registered_by as { id?: number; name?: string | null; email?: string | null; username?: string | null }
+              : null}
             onDeregistered={() => load()}
           />
         ) : null}

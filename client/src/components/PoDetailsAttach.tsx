@@ -16,6 +16,7 @@ type Props = {
   stagingMode: boolean
   assetId?: string | number | null
   required?: boolean
+  onAttachedChange?: (attached: boolean) => void
   onPoExtracted: (fields: PoParseResult) => void | Promise<void>
 }
 
@@ -25,6 +26,7 @@ export default function PoDetailsAttach({
   stagingMode,
   assetId,
   required = false,
+  onAttachedChange,
   onPoExtracted,
 }: Props) {
   const stagedPo = pending.filter((p) => p.kind === 'po')
@@ -126,6 +128,10 @@ export default function PoDetailsAttach({
   }
 
   const displayName = poFile?.name || serverPoName
+
+  useEffect(() => {
+    onAttachedChange?.(Boolean(displayName))
+  }, [displayName, onAttachedChange])
   const busy = ocrBusy || uploadBusy
 
   return (

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { getStorageBase } from '../../api/baseUrl'
 import { api, ApiError, labelCodesApi, mastersApi, type SelectOption } from '../../api/client'
 import { AppSelect, Field } from '../../components/ui'
@@ -8,8 +8,10 @@ import { useAuth } from '../../api/AuthContext'
 import { defaultDomainCode, type DomainCode } from '../../lib/domainScope'
 import { useToast } from '../../components/Toast'
 import { beginRefexOneSso } from '../../utils/loginNext'
+import { assetScanSessionActive, markAssetScanSession } from '../../lib/assetScan'
 import QrAssetCapturePanel, {
   firstPackStatus,
+  isAppleManufacturer,
   MIN_SIDE_PHOTOS,
   stagedUploadMeta,
   uploadQrCapture,
@@ -37,6 +39,12 @@ type PublicAsset = {
   purchase_date?: string | null
   purchase_cost?: number | string | null
   order_number?: string | null
+  po_number?: string | null
+  grn_number?: string | null
+  invoice_number?: string | null
+  invoice_date?: string | null
+  registered_by?: { id?: number; name?: string | null; email?: string | null; username?: string | null } | null
+  registered_at?: string | null
   warranty_months?: number | null
   asset_eol_date?: string | null
   notes?: string | null
@@ -67,7 +75,17 @@ function DetailField({ label, value }: { label: string; value: unknown }) {
   )
 }
 
-function LabelRegisterForm({ token, code, onDone }: { token: string; code: string; onDone: () => void }) {
+function LabelRegisterForm({
+  token,
+  code,
+  onDone,
+  onSubmitted,
+}: {
+  token: string
+  code: string
+  onDone: () => void
+  onSubmitted: () => void
+}) {
   const toast = useToast()
   const { domainScope, activeDomain } = useAuth()
   const [domain, setDomain] = useState<DomainCode>(activeDomain || defaultDomainCode(domainScope))
@@ -81,12 +99,16 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
   const [notes, setNotes] = useState('')
   const [companies, setCompanies] = useState<SelectOption[]>([])
   const [types, setTypes] = useState<SelectOption[]>([])
-  const [models, setModels] = useState<SelectOption[]>([])
+  const [models, setModels] = useState<Array<SelectOption & { manufacturer_name?: string | null }>>([])
   const [statuses, setStatuses] = useState<SelectOption[]>([])
   const [locations, setLocations] = useState<SelectOption[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [staged, setStaged] = useState<StagedCapture[]>([])
+  const [done, setDone] = useState(false)
+  const selectedModel = models.find((row) => String(row.id) === modelId)
+  const manufacturerName = selectedModel?.manufacturer_name || ''
+  const licenseRequired = !isAppleManufacturer(manufacturerName)
 
   useEffect(() => {
     Promise.all([
@@ -132,7 +154,7 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
       setError('Serial number is required')
       return
     }
-    const pack = firstPackStatus(staged)
+    const pack = firstPackStatus(staged, { licenseRequired })
     if (!pack.sidesOk) {
       setError(`Capture all sides — at least ${MIN_SIDE_PHOTOS} photos are required`)
       return
@@ -142,7 +164,7 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
       return
     }
     if (!pack.licenseOk) {
-      setError('A photo of the Windows/Apple license key is required')
+      setError('A photo of the Windows license key is required')
       return
     }
     if (!pack.videoOk) {
@@ -180,7 +202,8 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
         return
       }
       toast.success(`Registered ${code} with ${staged.length} capture(s)`)
-      onDone()
+      setDone(true)
+      onSubmitted()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Register failed')
     } finally {
@@ -188,11 +211,19 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
     }
   }
 
+  if (done) {
+    return (
+      <div className="callout callout-success">
+        <p>Successfully submitted</p>
+      </div>
+    )
+  }
+
   return (
     <form className="form-horizontal" onSubmit={(e) => { void submit(e) }}>
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
       <p className="help-block">
-        First-time registration: enter the serial number, capture all sides (min {MIN_SIDE_PHOTOS} photos), photograph the serial and the Windows/Apple license key, and record a 10-second video. Submit stores everything on this asset.
+        First-time registration: enter the serial number, capture all sides (min {MIN_SIDE_PHOTOS} photos), photograph the serial{licenseRequired ? ' and the Windows license key' : ''}, and record a 10-second video. Submit stores everything on this asset.
       </p>
       <DomainSelect value={domain} onChange={setDomain} allowed={domainScope.codes} required />
       <Field label="Company" required>
@@ -262,6 +293,7 @@ function LabelRegisterForm({ token, code, onDone }: { token: string; code: strin
         stagedItems={staged}
         onStagedChange={setStaged}
         submitBusy={busy}
+        manufacturer={manufacturerName}
       />
       <div className="form-actions">
         <button type="submit" className="btn btn-theme" disabled={busy}>
@@ -290,6 +322,8 @@ function GateCard({ title, children }: { title: string; children: ReactNode }) {
 
 export default function PublicAsset() {
   const { token } = useParams()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { user, can, loading: authLoading, isItAssetManager } = useAuth()
   const [asset, setAsset] = useState<PublicAsset | null>(null)
   const [blank, setBlank] = useState<PublicAsset | null>(null)
@@ -297,6 +331,18 @@ export default function PublicAsset() {
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
   const [redirecting, setRedirecting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const fromScanner = searchParams.get('scan') === '1' || assetScanSessionActive()
+
+  useEffect(() => {
+    if (searchParams.get('scan') === '1') markAssetScanSession()
+  }, [searchParams])
+
+  const finishAndGoHome = () => {
+    setSubmitted(true)
+    if (fromScanner) return
+    window.setTimeout(() => navigate('/', { replace: true }), 1500)
+  }
 
   const load = () => {
     if (!token) return
@@ -346,6 +392,23 @@ export default function PublicAsset() {
     load()
   }, [token, user, authLoading, isItAssetManager])
 
+  if (submitted) {
+    return (
+      <GateCard title="Successfully submitted">
+        <p>Successfully submitted</p>
+        {fromScanner ? (
+          <div className="form-actions">
+            <button type="button" className="btn btn-theme" onClick={() => navigate('/scan')}>
+              Next
+            </button>
+          </div>
+        ) : (
+          <p className="text-muted">Returning to the home page…</p>
+        )}
+      </GateCard>
+    )
+  }
+
   if (authLoading || loading || redirecting) {
     return (
       <GateCard title={redirecting ? 'Signing in' : 'Loading'}>
@@ -382,7 +445,12 @@ export default function PublicAsset() {
             {qrSrc ? <img className="public-asset-qr" src={qrSrc} alt={blank.code} /> : null}
           </header>
           {canRegister ? (
-            <LabelRegisterForm token={String(blank.token || token)} code={String(blank.code)} onDone={load} />
+            <LabelRegisterForm
+              token={String(blank.token || token)}
+              code={String(blank.code)}
+              onDone={load}
+              onSubmitted={finishAndGoHome}
+            />
           ) : (
             <p className="text-muted">This sticker is unused. You need permission to create assets to register it.</p>
           )}
@@ -440,7 +508,18 @@ export default function PublicAsset() {
             />
           ) : null}
           <DetailField label="Supplier" value={asset.supplier} />
-          <DetailField label="Purchase Order Number" value={asset.order_number} />
+          <DetailField label="Purchase Order Number" value={asset.po_number || asset.order_number} />
+          <DetailField label="GRN Number" value={asset.grn_number} />
+          <DetailField label="Invoice Number" value={asset.invoice_number} />
+          <DetailField label="Invoice Date" value={asset.invoice_date} />
+          <DetailField
+            label="Registered by"
+            value={asset.registered_by
+              ? [asset.registered_by.name, asset.registered_by.email, asset.registered_by.id != null ? `User #${asset.registered_by.id}` : '']
+                .filter(Boolean)
+                .join(' · ')
+              : null}
+          />
           <DetailField label="Purchase Date" value={asset.purchase_date} />
           <DetailField label="Purchase Cost" value={asset.purchase_cost} />
           <DetailField label="Warranty (months)" value={asset.warranty_months} />
@@ -472,6 +551,8 @@ export default function PublicAsset() {
               token={token}
               assetTag={String(asset.asset_tag || token)}
               assetId={asset.id}
+              manufacturer={asset.manufacturer}
+              onSubmitted={finishAndGoHome}
             />
           </>
         ) : null}

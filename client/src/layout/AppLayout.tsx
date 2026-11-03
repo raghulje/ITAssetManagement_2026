@@ -189,7 +189,7 @@ function resolveSection(pathname: string, search = ''): SectionKey | null {
   // Asset opened from an employee record should stay under People in the sidebar
   const from = new URLSearchParams(search).get('from')
   if (from === 'employee' && pathname.startsWith('/hardware')) return 'people'
-  if (pathname.startsWith('/hardware') || pathname.startsWith('/maintenances')) return 'assets'
+  if (pathname.startsWith('/hardware') || pathname.startsWith('/maintenances') || pathname.startsWith('/scan') || pathname.startsWith('/labels')) return 'assets'
   if (pathname.startsWith('/employees') || pathname.startsWith('/users')) return 'people'
   if (pathname.startsWith('/spaces')) return 'spaces'
   if (
@@ -453,6 +453,7 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
           <div className="navbar-custom-menu">
             <ul className="navbar-nav">
               {can('assets.view') ? <li><NavLink to="/hardware" title="Assets"><i className="fas fa-barcode" /></NavLink></li> : null}
+              {can('assets.view') ? <li><NavLink to="/scan" title="Scan asset"><i className="fas fa-camera" /></NavLink></li> : null}
               {can('assets.view') ? <li><NavLink to="/labels" title="QR / Barcode"><i className="fas fa-qrcode" /></NavLink></li> : null}
               {showLicenses ? <li><NavLink to="/licenses" title="Licenses"><i className="fas fa-save" /></NavLink></li> : null}
               {can('accessories.view') ? <li><NavLink to="/accessories" title="Accessories"><i className="fas fa-keyboard" /></NavLink></li> : null}
@@ -508,6 +509,7 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
           <span className="app-nav-pill" aria-hidden="true" />
           <NavLink to="/" end>Dashboard</NavLink>
           {can('assets.view') ? <NavLink to="/hardware" className={section === 'assets' ? 'active' : undefined}>Assets</NavLink> : null}
+          {can('assets.view') ? <NavLink to="/scan">Scan</NavLink> : null}
           {can('assets.view') ? <NavLink to="/labels">QR / Barcode</NavLink> : null}
           {showLicenses ? <NavLink to="/licenses">Licenses</NavLink> : null}
           {can('accessories.view') ? <NavLink to="/accessories">Accessories</NavLink> : null}

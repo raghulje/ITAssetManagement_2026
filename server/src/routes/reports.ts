@@ -1015,6 +1015,31 @@ settingsRouter.post('/migrate-14102026', async (req, res) => {
   }
 })
 
+settingsRouter.post('/migrate-nov3', async (req, res) => {
+  try {
+    const { runNamedSchemaMigrations } = await import('../services/schemaMigrate.js')
+    const result = await runNamedSchemaMigrations(['060_p2p_grn_and_registrar'])
+    await logAction({
+      userId: req.user?.id,
+      actionType: 'migrate_nov3',
+      itemType: 'settings',
+      itemId: 1,
+      note: `Nov 3 migration applied ${result.applied.length}; skipped ${result.skipped.length}`,
+      meta: result,
+    })
+    const applied = result.applied.length ? result.applied.join(', ') : 'none'
+    return okMessage(
+      res,
+      result.applied.length
+        ? `migrate nov3 applied: ${applied}.`
+        : 'migrate nov3 is already applied on this server.',
+      result,
+    )
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'migrate nov3 failed', 500)
+  }
+})
+
 settingsRouter.post('/migrate_comparision_feature', async (req, res) => {
   try {
     const { runNamedSchemaMigrations } = await import('../services/schemaMigrate.js')

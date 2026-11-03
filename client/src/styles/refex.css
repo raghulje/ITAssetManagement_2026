@@ -8076,3 +8076,30 @@ button.space-nav-card {
   .bdi-player input[type="range"] { width: 100%; flex: 1 1 100%; }
 }
 
+.asset-scan-card {
+  max-width: 560px;
+  background: #fff;
+  border: 1px solid #e2e9f2;
+  border-radius: 16px;
+  padding: 20px 20px 24px;
+}
+.asset-scan-reader {
+  width: 100%;
+  min-height: 280px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0f172a;
+}
+.asset-scan-reader video {
+  width: 100% !important;
+  border-radius: 12px;
+}
+.asset-scan-manual {
+  margin-top: 16px;
+}
+.asset-scan-manual label {
+  display: block;
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+

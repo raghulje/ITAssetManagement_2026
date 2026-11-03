@@ -24,6 +24,7 @@ import { requireItAssetManager } from '../services/permissions.js'
 import { generateMissingAssetQr, deviceBrandSerial, publicAssetPageUrl } from '../services/assetQr.js'
 import { applyLatestAssetUpdates, compareLatestAssetUpload } from '../services/latestAssetData.js'
 import { makeUploader } from '../services/uploads.js'
+import { ensureP2pAssetColumns } from '../services/p2pColumns.js'
 import {
   captureDiskPath,
   deregisterAssetCaptures,
@@ -74,6 +75,13 @@ async function listIds(req: { query: Record<string, unknown>; user?: { permissio
   const locationId = req.query.location_id ? Number(req.query.location_id) : null
   const sort = String(req.query.sort || 'id').toLowerCase()
   const order = String(req.query.order || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC'
+  let p2pReady = false
+  try {
+    await ensureP2pAssetColumns()
+    p2pReady = true
+  } catch {
+    p2pReady = await tableHasColumn('assets', 'registered_by')
+  }
 
   let sql = `
     SELECT a.id FROM assets a
@@ -174,16 +182,25 @@ async function listIds(req: { query: Record<string, unknown>; user?: { permissio
     sql += ` AND (
       a.asset_tag LIKE ? OR a.old_asset_tag LIKE ? OR a.name LIKE ? OR a.serial LIKE ? OR CAST(a.id AS CHAR) = ?
       OR m.name LIKE ? OR c.name LIKE ? OR loc.name LIKE ?
+      ${p2pReady ? 'OR a.order_number LIKE ? OR a.po_number LIKE ? OR a.grn_number LIKE ? OR a.invoice_number LIKE ?' : ''}
       ${hasPlace ? 'OR a.location_text LIKE ?' : ''}
     )`
     const like = `%${search}%`
     params.push(like, like, like, like, search, like, like, like)
+    if (p2pReady) params.push(like, like, like, like)
     if (hasPlace) params.push(like)
   }
 
   if (req.query.order_number) {
-    sql += ' AND a.order_number = ?'
+    sql += p2pReady ? ' AND (a.order_number = ? OR a.po_number = ?)' : ' AND a.order_number = ?'
     params.push(req.query.order_number)
+    if (p2pReady) params.push(req.query.order_number)
+  }
+
+  const registeredBy = req.query.registered_by ? Number(req.query.registered_by) : null
+  if (registeredBy && p2pReady) {
+    sql += ' AND a.registered_by = ?'
+    params.push(registeredBy)
   }
 
   // Period filter: explicit date range (ITSM Weekly / Monthly / FY picker)
@@ -356,9 +373,38 @@ router.get('/facets', async (req, res) => {
       value ASC
   `, params)
 
+  let registrars: Array<{ id: number; name: string; email: string | null; username: string | null }> = []
+  try {
+    await ensureP2pAssetColumns()
+    const registrarRows = await all<{ id: number; name: string; email: string | null; username: string | null }>(`
+      SELECT DISTINCT u.id,
+        TRIM(CONCAT(u.first_name, ' ', u.last_name)) AS name,
+        u.email, u.username
+      FROM assets a
+      JOIN users u ON u.id = a.registered_by
+      LEFT JOIN status_labels s ON s.id = a.status_id
+      LEFT JOIN companies c ON c.id = a.company_id
+      LEFT JOIN locations loc ON loc.id = COALESCE(a.location_id, a.rtd_location_id)
+      LEFT JOIN models m ON m.id = a.model_id
+      WHERE ${where} AND a.registered_by IS NOT NULL
+      ORDER BY name ASC
+    `, params)
+    registrars = registrarRows
+      .filter((r) => r.id)
+      .map((r) => ({
+        id: Number(r.id),
+        name: String(r.name || '').trim() || `User #${r.id}`,
+        email: r.email || null,
+        username: r.username || null,
+      }))
+  } catch {
+    registrars = []
+  }
+
   return okItem(res, {
     statuses: statusRows.map((r) => String(r.value)).filter(Boolean),
     assignees: assigneeRows.map((r) => String(r.value)).filter(Boolean),
+    registrars,
   })
 })
 
@@ -801,6 +847,13 @@ router.post('/', async (req, res) => {
   if (!b.company_id && !b.legal_entity_id) {
     return fail(res, 'company_id (or legal_entity_id) is required to generate asset tag')
   }
+  const purchaseCost = Number(b.purchase_cost)
+  if (b.purchase_cost == null || b.purchase_cost === '' || !Number.isFinite(purchaseCost) || purchaseCost <= 0) {
+    return fail(res, 'Purchase cost is required')
+  }
+  if (!String(b.order_number || '').trim()) {
+    return fail(res, 'Purchase order number is required')
+  }
 
   // Prefer explicit category; else take from model
   let categoryId = b.category_id ? Number(b.category_id) : null
@@ -947,6 +1000,15 @@ async function updateAsset(req: import('express').Request, res: import('express'
   const scoped = await requireAssetDomain(req, res, id)
   if (!scoped) return
   const b = req.body || {}
+  if (b.purchase_cost !== undefined) {
+    const purchaseCost = Number(b.purchase_cost)
+    if (b.purchase_cost == null || b.purchase_cost === '' || !Number.isFinite(purchaseCost) || purchaseCost <= 0) {
+      return fail(res, 'Purchase cost is required')
+    }
+  }
+  if (b.order_number !== undefined && !String(b.order_number || '').trim()) {
+    return fail(res, 'Purchase order number is required')
+  }
   if (b.domain_id !== undefined || b.domain !== undefined || b.domain_code !== undefined) {
     try {
       const domain = await resolveWriteDomainId(req.user?.permissions, b)

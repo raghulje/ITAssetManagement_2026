@@ -4,10 +4,18 @@ import { classifyAssetAge } from '../utils/period.js'
 import { publicAssetPageUrl } from './assetQr.js'
 import { allowedDomainCodes, domainJoinSql, domainPayload, domainRowCode, domainSelectFields, inventoryDomainColumnsReady, tableHasColumn } from './domainAuth.js'
 import { getUserGroupNames } from './permissions.js'
+import { ensureP2pAssetColumns } from './p2pColumns.js'
 
 export async function transformAsset(id: number) {
   const domainReady = await inventoryDomainColumnsReady()
   const hasAssetMfg = await tableHasColumn('assets', 'manufacturer_id')
+  let p2pReady = false
+  try {
+    await ensureP2pAssetColumns()
+    p2pReady = true
+  } catch {
+    p2pReady = false
+  }
   const a = await get<Record<string, unknown>>(`
     SELECT a.*,
       m.name as model_name, m.model_number,
@@ -22,6 +30,8 @@ export async function transformAsset(id: number) {
       rtd.name as rtd_location_name,
       sup.name as supplier_name,
       ${domainSelectFields(domainReady)},
+      ${p2pReady ? `TRIM(CONCAT(reg.first_name, ' ', reg.last_name)) AS registered_by_name,
+      reg.email AS registered_by_email, reg.username AS registered_by_username,` : ''}
       CASE
         WHEN a.assigned_type = 'user' THEN (SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to)
         WHEN a.assigned_type = 'employee' THEN (
@@ -49,6 +59,7 @@ export async function transformAsset(id: number) {
     LEFT JOIN locations loc ON loc.id = a.location_id
     LEFT JOIN locations rtd ON rtd.id = a.rtd_location_id
     LEFT JOIN suppliers sup ON sup.id = a.supplier_id
+    ${p2pReady ? 'LEFT JOIN users reg ON reg.id = a.registered_by' : ''}
     ${domainJoinSql('a', domainReady)}
     WHERE a.id = ? AND a.deleted_at IS NULL
   `, [id])
@@ -117,7 +128,20 @@ export async function transformAsset(id: number) {
     agent_hostname: a.agent_hostname || null,
     purchase_date: a.purchase_date ? { date: a.purchase_date, formatted: a.purchase_date } : null,
     purchase_cost: a.purchase_cost,
-    order_number: a.order_number,
+    order_number: a.po_number || a.order_number,
+    po_number: a.po_number || a.order_number || null,
+    grn_number: a.grn_number || null,
+    invoice_number: a.invoice_number || null,
+    invoice_date: a.invoice_date || null,
+    registered_at: a.registered_at || null,
+    registered_by: a.registered_by
+      ? {
+        id: Number(a.registered_by),
+        name: a.registered_by_name || null,
+        email: a.registered_by_email || null,
+        username: a.registered_by_username || null,
+      }
+      : null,
     map_latitude: a.map_latitude != null ? Number(a.map_latitude) : null,
     map_longitude: a.map_longitude != null ? Number(a.map_longitude) : null,
     map_address: a.map_address || null,

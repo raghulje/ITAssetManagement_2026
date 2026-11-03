@@ -1112,17 +1112,22 @@ mastersRouter.use('/models', (() => {
   r.get('/selectlist', async (req, res) => {
     const q = String(req.query.search || '').trim()
     const categoryId = req.query.category_id ?? req.query.categoryId
-    let sql = `SELECT id, name as text, category_id FROM models WHERE deleted_at IS NULL`
+    let sql = `
+      SELECT m.id, m.name as text, m.category_id, mf.name as manufacturer_name
+      FROM models m
+      LEFT JOIN manufacturers mf ON mf.id = m.manufacturer_id
+      WHERE m.deleted_at IS NULL
+    `
     const params: unknown[] = []
     if (categoryId != null && String(categoryId) !== '') {
-      sql += ' AND category_id = ?'
+      sql += ' AND m.category_id = ?'
       params.push(Number(categoryId))
     }
     if (q) {
-      sql += ' AND (name LIKE ? OR model_number LIKE ?)'
+      sql += ' AND (m.name LIKE ? OR m.model_number LIKE ?)'
       params.push(`%${q}%`, `%${q}%`)
     }
-    sql += ' ORDER BY name ASC LIMIT 500'
+    sql += ' ORDER BY m.name ASC LIMIT 500'
     const results = await all(sql, params)
     return res.json({ results, pagination: { more: false } })
   })

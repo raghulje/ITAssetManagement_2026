@@ -46,10 +46,20 @@ function flattenAsset(a: Row): Row {
     location: location?.name,
     company: company?.name,
     available_actions: a.available_actions,
+    registered_by: registrarLabel(a.registered_by),
   }
 }
 
-const LIST_COLUMNS = ['asset_tag', 'old_asset_tag', 'serial', 'model', 'status', 'assigned_to', 'location', 'company', 'actions']
+function registrarLabel(value: unknown) {
+  if (!value || typeof value !== 'object') return ''
+  const user = value as { id?: number; name?: string | null; email?: string | null; username?: string | null }
+  const name = String(user.name || '').trim()
+  const email = String(user.email || '').trim()
+  const id = user.id != null ? `User #${user.id}` : ''
+  return [name || user.username || '', email, id].filter(Boolean).join(' · ')
+}
+
+const LIST_COLUMNS = ['asset_tag', 'old_asset_tag', 'serial', 'model', 'status', 'assigned_to', 'registered_by', 'location', 'company', 'actions']
 
 export default function AssetsList() {
   const [params] = useSearchParams()
@@ -74,6 +84,8 @@ export default function AssetsList() {
   const [statusFilter, setStatusFilter] = useState('')
   /** Displayed Assigned To column value, e.g. Unassigned / person name */
   const [assigneeFilter, setAssigneeFilter] = useState('')
+  const [registeredBy, setRegisteredBy] = useState('')
+  const [registrars, setRegistrars] = useState<Array<{ id: number; name: string; email?: string | null }>>([])
   const [statusOptions, setStatusOptions] = useState<string[]>([])
   const [assigneeOptions, setAssigneeOptions] = useState<string[]>([])
   const [page, setPage] = useState(0)
@@ -98,8 +110,9 @@ export default function AssetsList() {
     }
     if (statusFilter) p.status_value = statusFilter
     if (assigneeFilter) p.assigned_name = assigneeFilter
+    if (registeredBy) p.registered_by = registeredBy
     return p
-  }, [statusType, search, companyId, locationId, period.range.from, period.range.to, activeDomain, sort, order, statusFilter, assigneeFilter])
+  }, [statusType, search, companyId, locationId, period.range.from, period.range.to, activeDomain, sort, order, statusFilter, assigneeFilter, registeredBy])
 
   // Apply filter keys from insight deep-links without clearing local filters on status tabs
   useEffect(() => {
@@ -204,6 +217,11 @@ export default function AssetsList() {
       label: 'Assigned To',
       render: (r) => (r.assigned_to ? String(r.assigned_to) : <span className="cell-muted">—</span>),
     },
+    {
+      key: 'registered_by',
+      label: 'Registered by',
+      render: (r) => cell(r.registered_by),
+    },
     { key: 'location', label: 'Location', sortable: true, render: (r) => cell(r.location) },
     { key: 'company', label: 'Company', sortable: true, render: (r) => cell(r.company) },
     {
@@ -258,6 +276,7 @@ export default function AssetsList() {
         if (cancelled) return
         setStatusOptions(f.statuses || [])
         setAssigneeOptions(f.assignees || [])
+        setRegistrars(f.registrars || [])
       })
       .catch(() => {
         if (!cancelled) {
@@ -552,6 +571,9 @@ export default function AssetsList() {
               >
                 <i className="fas fa-link" /> Export QR Url
               </button>
+              <Link to="/scan" className="btn btn-theme btn-sm">
+                <i className="fas fa-camera" /> Scan
+              </Link>
               <Link to="/hardware/latest-data" className="btn btn-default btn-sm">
                 <i className="fas fa-file-excel" /> Compare latest data
               </Link>
@@ -603,6 +625,21 @@ export default function AssetsList() {
               ]}
             />
 
+            <AppSelect
+              className="filter-app-select"
+              value={registeredBy}
+              onChange={setRegisteredBy}
+              searchable
+              placeholder="Registered by"
+              options={[
+                { value: '', label: 'All registrars' },
+                ...registrars.map((user) => ({
+                  value: String(user.id),
+                  label: [user.name, user.email, `User #${user.id}`].filter(Boolean).join(' · '),
+                })),
+              ]}
+            />
+
             <AssetPeriodPicker
               className="filter-period-picker"
               mode={period.mode}
@@ -611,7 +648,7 @@ export default function AssetsList() {
               onChange={setPeriod}
             />
 
-            {(companyId || locationId || search || statusFilter || assigneeFilter || period.range.from) && (
+            {(companyId || locationId || search || statusFilter || assigneeFilter || registeredBy || period.range.from) && (
               <button
                 type="button"
                 className="btn btn-default btn-sm asset-toolbar-clear"
@@ -622,6 +659,7 @@ export default function AssetsList() {
                   setSearchInput('')
                   setStatusFilter('')
                   setAssigneeFilter('')
+                  setRegisteredBy('')
                   setPeriod(getEmptyPeriodState())
                 }}
               >

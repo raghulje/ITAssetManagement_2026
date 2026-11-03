@@ -72,6 +72,10 @@ export type AssetCaptureRow = {
   locality_header: string | null
   created_at: string | null
   deleted_at?: string | null
+  captured_by?: number | null
+  captured_by_name?: string | null
+  captured_by_email?: string | null
+  captured_by_username?: string | null
 }
 
 export type CaptureKind = 'photo' | 'serial' | 'license' | 'video'
@@ -99,6 +103,14 @@ export function presentCapture(row: AssetCaptureRow, fileUrl: string) {
     locality_header: row.locality_header,
     created_at: row.created_at,
     deleted_at: row.deleted_at || null,
+    captured_by: row.captured_by
+      ? {
+        id: Number(row.captured_by),
+        name: row.captured_by_name || null,
+        email: row.captured_by_email || null,
+        username: row.captured_by_username || null,
+      }
+      : null,
     url: fileUrl,
   }
 }
@@ -115,11 +127,15 @@ export async function listAssetCaptures(assetId: number, opts?: { archived?: boo
   await ensureAssetCapturesTable()
   const archived = Boolean(opts?.archived)
   return all<AssetCaptureRow>(`
-    SELECT id, asset_id, capture_kind, original_name, mime_type, file_size,
-      captured_at, latitude, longitude, accuracy_m, address, locality_header, created_at, deleted_at
-    FROM asset_captures
-    WHERE asset_id = ? AND ${archived ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL'}
-    ORDER BY ${archived ? 'deleted_at DESC, id DESC' : 'id DESC'}
+    SELECT c.id, c.asset_id, c.capture_kind, c.original_name, c.mime_type, c.file_size,
+      c.captured_at, c.latitude, c.longitude, c.accuracy_m, c.address, c.locality_header,
+      c.created_at, c.deleted_at, c.captured_by,
+      TRIM(CONCAT(u.first_name, ' ', u.last_name)) AS captured_by_name,
+      u.email AS captured_by_email, u.username AS captured_by_username
+    FROM asset_captures c
+    LEFT JOIN users u ON u.id = c.captured_by
+    WHERE c.asset_id = ? AND ${archived ? 'c.deleted_at IS NOT NULL' : 'c.deleted_at IS NULL'}
+    ORDER BY ${archived ? 'c.deleted_at DESC, c.id DESC' : 'c.id DESC'}
   `, [assetId])
 }
 

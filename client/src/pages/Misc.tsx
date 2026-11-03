@@ -798,6 +798,37 @@ export function SettingsGeneral() {
         >
           {schemaMigrateBusy ? 'Applying…' : 'migrate_comparision_feature'}
         </button>
+        <button
+          type="button"
+          className="btn btn-theme"
+          style={{ marginLeft: 8 }}
+          disabled={schemaMigrateBusy || !canEdit}
+          onClick={() => {
+            if (!window.confirm(
+              'Run migrate nov3 on this server?\n\nThis adds purchase GRN, invoice, and PO fields, the person who registered each asset, and backfills that person from existing captures. Safe to click again if it is already applied.',
+            )) return
+            setSchemaMigrateBusy(true)
+            setError('')
+            setOkMsg('')
+            api<{ messages?: string[] }>('/settings/migrate-nov3', { method: 'POST' })
+              .then((res) => {
+                const msg = Array.isArray(res.messages) ? res.messages.join(' ') : 'migrate nov3 applied'
+                setOkMsg(msg)
+                toast.success(msg)
+                return api<{ pending: string[]; applied: string[] }>('/settings/migrations')
+              })
+              .then((s) => {
+                if (s) setMigStatus({ pending: s.pending || [], applied: s.applied || [] })
+              })
+              .catch((err: Error) => {
+                setError(err.message)
+                toast.error(err.message)
+              })
+              .finally(() => setSchemaMigrateBusy(false))
+          }}
+        >
+          {schemaMigrateBusy ? 'Applying…' : 'migrate nov3'}
+        </button>
         <p className="help-block" style={{ marginTop: 12, marginBottom: 0 }}>
           Agent id and notify email: <a href="/settings/battery">Settings → Battery Degradation</a>.
         </p>
