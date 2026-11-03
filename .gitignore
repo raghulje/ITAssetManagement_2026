@@ -59,3 +59,10 @@ Invoice-*.pdf
 Receipt-*.pdf
 Sentinels_*.csv
 sample-user.csv
+
+# Other product copies kept locally, not part of this asset app
+Mobility_Asset_Management/
+TMS-EMS-VMS/
+P2P/
+P2P-main/
+P2P-main.zip
