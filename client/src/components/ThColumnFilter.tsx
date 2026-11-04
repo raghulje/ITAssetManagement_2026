@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence } from 'framer-motion'
 import { MotionMenu } from './motion/menu'
 
-export type ColumnFilterOption = string | { value: string; label: string }
+export type ColumnFilterOption = string | { value: string; label: string; badge?: number }
 
 type Props = {
   label: string
@@ -122,7 +122,12 @@ export function ThColumnFilter({
                       setOpen(false)
                     }}
                   >
-                    <span>{opt.label}</span>
+                    <span className="th-col-filter-option-main">
+                      <span>{opt.label}</span>
+                      {opt.badge != null ? (
+                        <span className="count-badge" title={`${opt.badge.toLocaleString('en-IN')} assets`}>{opt.badge.toLocaleString('en-IN')}</span>
+                      ) : null}
+                    </span>
                     {selected ? <i className="fas fa-check" aria-hidden /> : null}
                   </button>
                 )

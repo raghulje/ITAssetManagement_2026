@@ -388,13 +388,14 @@ router.get('/facets', async (req, res) => {
     assigneeRows = []
   }
 
-  let registrars: Array<{ id: number; name: string; email: string | null; username: string | null }> = []
+  let registrars: Array<{ id: number; name: string; email: string | null; username: string | null; count: number }> = []
   try {
     await ensureP2pAssetColumns()
-    const registrarRows = await all<{ id: number; name: string; email: string | null; username: string | null }>(`
-      SELECT DISTINCT u.id,
+    const registrarRows = await all<{ id: number; name: string; email: string | null; username: string | null; asset_count: number }>(`
+      SELECT u.id,
         TRIM(CONCAT(u.first_name, ' ', u.last_name)) AS name,
-        u.email, u.username
+        u.email, u.username,
+        COUNT(*) AS asset_count
       FROM assets a
       JOIN users u ON u.id = a.registered_by
       LEFT JOIN status_labels s ON s.id = a.status_id
@@ -402,6 +403,7 @@ router.get('/facets', async (req, res) => {
       LEFT JOIN locations loc ON loc.id = COALESCE(a.location_id, a.rtd_location_id)
       LEFT JOIN models m ON m.id = a.model_id
       WHERE ${where} AND a.registered_by IS NOT NULL
+      GROUP BY u.id, u.first_name, u.last_name, u.email, u.username
       ORDER BY name ASC
     `, params)
     registrars = registrarRows
@@ -411,6 +413,7 @@ router.get('/facets', async (req, res) => {
         name: String(r.name || '').trim() || `User #${r.id}`,
         email: r.email || null,
         username: r.username || null,
+        count: Number(r.asset_count) || 0,
       }))
   } catch {
     registrars = []

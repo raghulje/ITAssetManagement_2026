@@ -102,7 +102,7 @@ export const hardwareApi = {
     return api<{
       statuses: string[]
       assignees: string[]
-      registrars?: Array<{ id: number; name: string; email?: string | null; username?: string | null }>
+      registrars?: Array<{ id: number; name: string; email?: string | null; username?: string | null; count?: number }>
     }>(`/hardware/facets?${q}`)
   },
   get: (id: number | string) => api<Record<string, unknown>>(`/hardware/${id}`),

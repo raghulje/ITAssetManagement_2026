@@ -91,7 +91,7 @@ export default function AssetsList() {
   /** Displayed Assigned To column value, e.g. Unassigned / person name */
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [registeredBy, setRegisteredBy] = useState('')
-  const [registrars, setRegistrars] = useState<Array<{ id: number; name: string; email?: string | null }>>([])
+  const [registrars, setRegistrars] = useState<Array<{ id: number; name: string; email?: string | null; count?: number }>>([])
   const [statusOptions, setStatusOptions] = useState<string[]>([])
   const [assigneeOptions, setAssigneeOptions] = useState<string[]>([])
   const [page, setPage] = useState(0)
@@ -226,7 +226,19 @@ export default function AssetsList() {
     {
       key: 'registered_by',
       label: 'Registered by',
-      render: (r) => cell(r.registered_by),
+      render: (r) => {
+        const name = String(r.registered_by || '').trim()
+        if (!name) return cell(r.registered_by)
+        const count = registrars.find((user) => registrarName(user) === name)?.count
+        return (
+          <span className="registrar-cell">
+            <span>{name}</span>
+            {count != null ? (
+              <span className="count-badge" title={`${count.toLocaleString('en-IN')} assets`}>{count.toLocaleString('en-IN')}</span>
+            ) : null}
+          </span>
+        )
+      },
     },
     { key: 'location', label: 'Location', sortable: true, render: (r) => cell(r.location) },
     { key: 'company', label: 'Company', sortable: true, render: (r) => cell(r.company) },
@@ -255,7 +267,7 @@ export default function AssetsList() {
         </div>
       ),
     },
-  ], [])
+  ], [registrars])
 
   const visibleColumns = allColumns.filter((c) => LIST_COLUMNS.includes(c.key))
   const exportableColumns = allColumns.filter((c) => c.exportable !== false && c.key !== 'actions')
@@ -643,6 +655,7 @@ export default function AssetsList() {
                 ...registrars.map((user) => ({
                   value: String(user.id),
                   label: registrarName(user),
+                  badge: user.count,
                 })),
               ]}
             />
@@ -741,6 +754,7 @@ export default function AssetsList() {
                         options={registrars.map((user) => ({
                           value: String(user.id),
                           label: registrarName(user),
+                          badge: user.count,
                         }))}
                         onChange={setRegisteredBy}
                         allLabel="All"

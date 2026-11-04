@@ -1226,10 +1226,45 @@ input[type="date"].form-control::-webkit-calendar-picker-indicator {
 .app-select-value {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 550;
+}
+.app-select-value-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 550;
+}
+.count-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e6f6f8;
+  color: #0f6b7a;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  overflow: visible;
+  text-overflow: clip;
+}
+.registrar-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+.registrar-cell > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .app-select-value.is-placeholder { color: #94a3b8; font-weight: 500; }
 .app-select-chevron {
@@ -1281,6 +1316,31 @@ input[type="date"].form-control::-webkit-calendar-picker-indicator {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.app-select-option-main,
+.th-col-filter-option-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.app-select-menu--portal .app-select-option .app-select-option-text,
+.th-col-filter-option-main > span:first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-select-menu--portal .app-select-option .count-badge,
+.app-select-value .count-badge,
+.th-col-filter-option .count-badge {
+  flex: none;
+  min-width: 18px;
+  overflow: visible;
+  text-overflow: clip;
 }
 .app-select-search {
   display: flex;
@@ -1864,6 +1924,12 @@ label + .file-field,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.th-col-filter-option span.count-badge,
+.app-select-option span.count-badge {
+  flex: none;
+  overflow: visible;
+  text-overflow: clip;
 }
 .th-col-filter-option:hover,
 .th-col-filter-option.is-selected {

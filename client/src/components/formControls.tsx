@@ -14,7 +14,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence } from 'framer-motion'
 import { MotionMenu } from './motion/menu'
 
-export type AppSelectOption = { value: string; label: string }
+export type AppSelectOption = { value: string; label: string; badge?: number }
 
 export function useFloatingStyle(
   open: boolean,
@@ -315,7 +315,12 @@ export function AppSelect({
       >
         {leading ? <span className="app-select-leading" aria-hidden>{leading}</span> : null}
         <span className={`app-select-value${!selected || selected.value === '' ? ' is-placeholder' : ''}`}>
-          {selected && selected.value !== '' ? selected.label : (selected?.label || placeholder)}
+          <span className="app-select-value-text">
+            {selected && selected.value !== '' ? selected.label : (selected?.label || placeholder)}
+          </span>
+          {selected && selected.value !== '' && selected.badge != null ? (
+            <span className="count-badge" title={`${selected.badge.toLocaleString('en-IN')} assets`}>{selected.badge.toLocaleString('en-IN')}</span>
+          ) : null}
         </span>
         <span className="app-select-chevron" aria-hidden>
           <i className={`fas fa-chevron-${open ? 'up' : 'down'}`} />
@@ -365,7 +370,12 @@ export function AppSelect({
                     onMouseEnter={() => setHighlight(i)}
                     onClick={() => pick(opt.value)}
                   >
-                    <span>{opt.label}</span>
+                    <span className="app-select-option-main">
+                      <span className="app-select-option-text">{opt.label}</span>
+                      {opt.badge != null ? (
+                        <span className="count-badge" title={`${opt.badge.toLocaleString('en-IN')} assets`}>{opt.badge.toLocaleString('en-IN')}</span>
+                      ) : null}
+                    </span>
                     {opt.value === value ? <i className="fas fa-check" aria-hidden /> : null}
                   </button>
                 </li>
