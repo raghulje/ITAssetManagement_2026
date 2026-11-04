@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from 'framer-motion'
 import { JellyPill, useJellyGroup } from '../components/motion/jelly'
 import { MotionMenu } from '../components/motion/menu'
 import AOS from 'aos'
@@ -333,13 +333,11 @@ function AppNavLink({
   to,
   end,
   forced = false,
-  jelly,
   children,
 }: {
   to: string
   end?: boolean
   forced?: boolean
-  jelly: string
   children: ReactNode
 }) {
   return (
@@ -348,19 +346,30 @@ function AppNavLink({
       end={end}
       className={({ isActive }) => ((forced || isActive) ? 'active jelly-option' : 'jelly-option')}
     >
-      {({ isActive }) => (
-        <>
-          {(forced || isActive) ? <JellyPill group={jelly} radius={10} className="jelly-fill-theme" /> : null}
-          {children}
-        </>
-      )}
+      {children}
     </NavLink>
   )
 }
 
+function activeAppNavLink(nav: HTMLElement) {
+  const marked = [...nav.querySelectorAll<HTMLElement>('a.active')]
+  return nav.querySelector<HTMLElement>('a[aria-current="page"]')
+    || marked[marked.length - 1]
+    || null
+}
+
+/** Survives the nav remounting on each page, so the pill can travel from the previous tab. */
+const navPillMemory = { x: 0, w: 0, ready: false }
+
 export default function AppLayout({ children, title, subtitle, hideHeader, scene, backTo, backLabel, onBack }: Props) {
   const navRef = useRef<HTMLElement>(null)
-  const navJelly = useJellyGroup('app-nav')
+  const navPillReady = useRef(navPillMemory.ready)
+  const navPillTarget = useRef<HTMLElement | null>(null)
+  const reduceMotion = useReducedMotion()
+  const navPillX = useMotionValue(navPillMemory.x)
+  const navPillW = useMotionValue(navPillMemory.w)
+  const navPillScaleX = useMotionValue(1)
+  const navPillScaleY = useMotionValue(1)
   const domainJelly = useJellyGroup('domain')
   const [userOpen, setUserOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -395,18 +404,52 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
   useLayoutEffect(() => {
     const nav = navRef.current
     if (!nav) return
-    const marked = [...nav.querySelectorAll<HTMLElement>('a.active')]
-    const active = nav.querySelector<HTMLElement>('a[aria-current="page"]')
-      || marked[marked.length - 1]
-      || null
-    if (!active) return
-    const nextLeft = active.offsetLeft
-    const nextWidth = active.offsetWidth
-    const viewLeft = nav.scrollLeft
-    const viewRight = viewLeft + nav.clientWidth
-    if (nextLeft < viewLeft + 8) nav.scrollLeft = Math.max(0, nextLeft - 12)
-    else if (nextLeft + nextWidth > viewRight - 8) nav.scrollLeft = nextLeft + nextWidth - nav.clientWidth + 12
-  }, [location.pathname, location.search, section, showLicenses])
+    const place = (instant: boolean) => {
+      const active = activeAppNavLink(nav)
+      if (!active) return
+      const nextLeft = active.offsetLeft
+      const nextWidth = active.offsetWidth
+      const viewLeft = nav.scrollLeft
+      const viewRight = viewLeft + nav.clientWidth
+      if (nextLeft < viewLeft + 8) nav.scrollLeft = Math.max(0, nextLeft - 12)
+      else if (nextLeft + nextWidth > viewRight - 8) nav.scrollLeft = nextLeft + nextWidth - nav.clientWidth + 12
+      const sameLink = navPillTarget.current === active
+      navPillTarget.current = active
+      const snap = instant || !navPillReady.current || reduceMotion || sameLink
+      if (snap) {
+        navPillX.set(nextLeft)
+        navPillW.set(nextWidth)
+        navPillScaleX.set(1)
+        navPillScaleY.set(1)
+        navPillReady.current = true
+        navPillMemory.x = nextLeft
+        navPillMemory.w = nextWidth
+        navPillMemory.ready = true
+        return
+      }
+      const layout = { type: 'spring' as const, stiffness: 177, damping: 15, mass: 0.9 }
+      const squash = { type: 'spring' as const, stiffness: 121, damping: 7.5, mass: 0.6 }
+      animate(navPillX, nextLeft, layout)
+      animate(navPillW, nextWidth, layout)
+      navPillScaleX.set(1.08)
+      navPillScaleY.set(0.84)
+      animate(navPillScaleX, 1, squash)
+      animate(navPillScaleY, 1, squash)
+    }
+    place(false)
+    const onResize = () => place(true)
+    window.addEventListener('resize', onResize)
+    const stopX = navPillX.on('change', (x) => { navPillMemory.x = x })
+    const stopW = navPillW.on('change', (w) => { navPillMemory.w = w })
+    return () => {
+      window.removeEventListener('resize', onResize)
+      stopX()
+      stopW()
+      navPillMemory.x = navPillX.get()
+      navPillMemory.w = navPillW.get()
+      navPillMemory.ready = true
+    }
+  }, [location.pathname, location.search, section, showLicenses, reduceMotion, navPillX, navPillW, navPillScaleX, navPillScaleY])
 
   useEffect(() => {
     if (softwareLicensesInDomain(activeDomain)) return
@@ -528,21 +571,26 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
       <div className="content-wrapper" style={{ ['--page-scene' as string]: `url("${activeScene}")` }}>
         <div className="page-scene-wash" aria-hidden />
         <nav className="app-nav" aria-label="Sections" ref={navRef}>
-          <AppNavLink to="/" end jelly={navJelly}>Dashboard</AppNavLink>
-          {can('assets.view') ? <AppNavLink to="/hardware" jelly={navJelly} forced={assetSectionLink}>Assets</AppNavLink> : null}
-          {can('assets.view') ? <AppNavLink to="/scan" jelly={navJelly}>Scan</AppNavLink> : null}
-          {can('assets.view') ? <AppNavLink to="/labels" jelly={navJelly}>QR / Barcode</AppNavLink> : null}
-          {showLicenses ? <AppNavLink to="/licenses" jelly={navJelly}>Licenses</AppNavLink> : null}
-          {can('accessories.view') ? <AppNavLink to="/accessories" jelly={navJelly}>Accessories</AppNavLink> : null}
-          {can('consumables.view') ? <AppNavLink to="/consumables" jelly={navJelly}>Consumables</AppNavLink> : null}
-          {can('components.view') ? <AppNavLink to="/components" jelly={navJelly}>Components</AppNavLink> : null}
-          {can('battery_issues.view') ? <AppNavLink to="/battery-issues" jelly={navJelly}>Battery</AppNavLink> : null}
-          {can('people.view') ? <AppNavLink to="/employees" jelly={navJelly} forced={section === 'people'}>People</AppNavLink> : null}
-          {can('settings.view') ? <AppNavLink to="/spaces" jelly={navJelly} forced={section === 'spaces'}>Spaces</AppNavLink> : null}
-          {can('settings.view') ? <AppNavLink to="/companies" jelly={navJelly} forced={section === 'masters'}>Masters</AppNavLink> : null}
-          {can('settings.edit') ? <AppNavLink to="/import" jelly={navJelly}>Import</AppNavLink> : null}
-          {isAdmin ? <AppNavLink to="/settings" jelly={navJelly} forced={section === 'settings'}>Settings</AppNavLink> : null}
-          {isAdmin ? <AppNavLink to="/reports" jelly={navJelly} forced={section === 'reports'}>Reports</AppNavLink> : null}
+          <motion.span
+            aria-hidden
+            className="app-nav-pill is-live"
+            style={{ x: navPillX, width: navPillW, scaleX: navPillScaleX, scaleY: navPillScaleY }}
+          />
+          <AppNavLink to="/" end>Dashboard</AppNavLink>
+          {can('assets.view') ? <AppNavLink to="/hardware" forced={assetSectionLink}>Assets</AppNavLink> : null}
+          {can('assets.view') ? <AppNavLink to="/scan">Scan</AppNavLink> : null}
+          {can('assets.view') ? <AppNavLink to="/labels">QR / Barcode</AppNavLink> : null}
+          {showLicenses ? <AppNavLink to="/licenses">Licenses</AppNavLink> : null}
+          {can('accessories.view') ? <AppNavLink to="/accessories">Accessories</AppNavLink> : null}
+          {can('consumables.view') ? <AppNavLink to="/consumables">Consumables</AppNavLink> : null}
+          {can('components.view') ? <AppNavLink to="/components">Components</AppNavLink> : null}
+          {can('battery_issues.view') ? <AppNavLink to="/battery-issues">Battery</AppNavLink> : null}
+          {can('people.view') ? <AppNavLink to="/employees" forced={section === 'people'}>People</AppNavLink> : null}
+          {can('settings.view') ? <AppNavLink to="/spaces" forced={section === 'spaces'}>Spaces</AppNavLink> : null}
+          {can('settings.view') ? <AppNavLink to="/companies" forced={section === 'masters'}>Masters</AppNavLink> : null}
+          {can('settings.edit') ? <AppNavLink to="/import">Import</AppNavLink> : null}
+          {isAdmin ? <AppNavLink to="/settings" forced={section === 'settings'}>Settings</AppNavLink> : null}
+          {isAdmin ? <AppNavLink to="/reports" forced={section === 'reports'}>Reports</AppNavLink> : null}
         </nav>
         {!hideHeader ? (
           headerVariant === 'form' ? (

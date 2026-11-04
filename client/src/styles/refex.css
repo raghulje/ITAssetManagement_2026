@@ -579,11 +579,13 @@ img { max-width: 100%; }
   width: 0;
   border-radius: 10px;
   background: var(--main-theme-color);
-  box-shadow: 0 10px 18px -12px rgba(15, 118, 110, 0.9);
+  box-shadow: none;
   pointer-events: none;
   z-index: 0;
   opacity: 0;
+  transform-origin: center center;
 }
+.app-nav-pill.is-live { opacity: 1; }
 .app-nav a {
   position: relative;
   z-index: 1;
