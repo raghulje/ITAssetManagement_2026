@@ -332,6 +332,9 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
   const displayName = user ? `${user.first_name} ${user.last_name}`.trim() : 'Admin User'
   const designation = String(user?.hrms_designation || '').trim()
   const section = resolveSection(location.pathname, location.search)
+  const assetSectionLink = section === 'assets'
+    && !location.pathname.startsWith('/scan')
+    && !location.pathname.startsWith('/labels')
   const showSectionTabs = Boolean(
     section
     && shouldShowSectionTabs(location.pathname)
@@ -355,7 +358,10 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
     const pill = nav.querySelector<HTMLElement>('.app-nav-pill')
     if (!pill) return
     const place = (animate: boolean) => {
-      const active = nav.querySelector<HTMLElement>('a.active')
+      const marked = [...nav.querySelectorAll<HTMLElement>('a.active')]
+      const active = nav.querySelector<HTMLElement>('a[aria-current="page"]')
+        || marked[marked.length - 1]
+        || null
       if (!active) {
         pill.style.opacity = '0'
         return
@@ -508,7 +514,7 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
         <nav className="app-nav" aria-label="Sections" ref={navRef}>
           <span className="app-nav-pill" aria-hidden="true" />
           <NavLink to="/" end>Dashboard</NavLink>
-          {can('assets.view') ? <NavLink to="/hardware" className={section === 'assets' ? 'active' : undefined}>Assets</NavLink> : null}
+          {can('assets.view') ? <NavLink to="/hardware" className={assetSectionLink ? 'active' : undefined}>Assets</NavLink> : null}
           {can('assets.view') ? <NavLink to="/scan">Scan</NavLink> : null}
           {can('assets.view') ? <NavLink to="/labels">QR / Barcode</NavLink> : null}
           {showLicenses ? <NavLink to="/licenses">Licenses</NavLink> : null}

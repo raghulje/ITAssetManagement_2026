@@ -54,7 +54,6 @@ type PublicAsset = {
   last_audit_date?: string | null
   next_audit_date?: string | null
   label_printed_at?: string | null
-  label_print_count?: number
   last_agent_sync_at?: string | null
   agent_hostname?: string | null
   public_url?: string
@@ -527,7 +526,6 @@ export default function PublicAsset() {
           <DetailField label="Last Checkout" value={asset.last_checkout} />
           <DetailField label="Last Checkin" value={asset.last_checkin} />
           <DetailField label="Label Printed" value={asset.label_printed_at} />
-          <DetailField label="Print Count" value={asset.label_print_count} />
           <DetailField label="Agent Hostname" value={asset.agent_hostname} />
           <DetailField label="Last Agent Sync" value={asset.last_agent_sync_at} />
         </div>
