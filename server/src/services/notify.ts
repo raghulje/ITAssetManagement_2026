@@ -190,6 +190,11 @@ export async function resolveAssigneeEmail(assignedType: string | null | undefin
     const e = String(row?.email || '').trim()
     return e.includes('@') ? e : null
   }
+  if (assignedType === 'consultant') {
+    const row = await get<{ email?: string | null }>(`SELECT email FROM consultants WHERE id = ? AND deleted_at IS NULL`, [assignedTo])
+    const e = String(row?.email || '').trim()
+    return e.includes('@') ? e : null
+  }
   return null
 }
 

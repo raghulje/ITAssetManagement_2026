@@ -33,27 +33,55 @@ router.get('/sample/:type', (req, res) => {
   const fields = IMPORT_FIELDS[type]
   if (!fields) return fail(res, 'Unknown type')
   const sampleFields = fields.filter((f) => f.sample !== false)
-  const header = sampleFields.map((f) => f.label).join(',')
-  const sample = sampleFields.map((f) => {
-    if (f.key === 'asset_tag' || f.key === 'entity_asset_tag') return 'MEMF-LAPTOP-2026-27-0001'
-    if (type === 'asset' && f.key === 'name') return 'MacBook Pro 14'
-    if (f.key === 'company') return 'Refex'
-    if (f.key === 'device_brand_serial') return 'MacBook Pro 14 - C02SERIAL01'
-    if (f.key === 'old_asset_tag') return 'OLD-100'
-    if (f.key === 'serial') return 'C02SERIAL01'
-    if (f.key === 'legal_entity') return 'MEMF'
-    if (f.key === 'manufacturer') return 'Apple'
-    if (f.key === 'model') return 'Laptop Model'
-    if (f.key === 'qty' || f.key === 'seats') return '10'
-    if (f.key === 'username') return 'user.name'
-    if (f.key === 'first_name') return 'First'
-    if (f.key === 'last_name') return 'Last'
-    if (f.key === 'name') return 'Sample Item'
-    if (f.key === 'category') return 'Laptop'
-    if (f.key === 'category_type') return 'asset'
-    if (f.key === 'status') return 'In Stock'
-    return ''
-  }).join(',')
+  const examples: Record<string, string> = {
+    asset_tag: 'MEMF-LAPTOP-2026-27-0001',
+    entity_asset_tag: 'MEMF-LAPTOP-2026-27-0001',
+    name: type === 'asset' ? 'MacBook Pro 14' : 'Sample Item',
+    company: 'Refex',
+    device_brand_serial: 'MacBook Pro 14 - C02SERIAL01',
+    old_asset_tag: 'OLD-100',
+    serial: 'C02SERIAL01',
+    legal_entity: 'MEMF',
+    manufacturer: 'Apple',
+    model: 'Laptop Model',
+    department: 'Information Technology',
+    location: 'Chennai HQ',
+    category: 'Laptop',
+    category_type: 'asset',
+    status: 'In Stock',
+    assigned_to: 'EMP001',
+    supplier: 'Apple Authorised',
+    purchase_date: '2026-04-01',
+    purchase_cost: '60800',
+    order_number: 'PO-2026-00123',
+    warranty_months: '12',
+    asset_eol_date: '2029-04-01',
+    notes: 'Imported asset',
+    processor: 'Apple M3',
+    ram: '16 GB',
+    storage: '512 GB',
+    os: 'macOS',
+    mac_address: '00-11-22-33-44-55',
+    ip_address: '10.0.0.21',
+    color: 'Silver',
+    material: 'Aluminium',
+    condition: 'New',
+    map_address: 'Chennai',
+    map_latitude: '13.0827',
+    map_longitude: '80.2707',
+    grn_number: 'GRN-1001',
+    invoice_number: 'INV-1001',
+    invoice_date: '2026-04-02',
+    domain: 'it',
+    qty: '10',
+    seats: '10',
+    username: 'user.name',
+    first_name: 'First',
+    last_name: 'Last',
+  }
+  const csvCell = (value: string) => /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+  const header = sampleFields.map((f) => csvCell(f.label)).join(',')
+  const sample = sampleFields.map((f) => csvCell(examples[f.key] || '')).join(',')
   res.setHeader('Content-Type', 'text/csv')
   res.setHeader('Content-Disposition', `attachment; filename="sample-${type}.csv"`)
   return res.send(`${header}\n${sample}\n`)

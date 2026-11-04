@@ -4816,6 +4816,20 @@ table.table tr.is-selected td { background: rgba(18, 181, 168, 0.08); }
   padding: 8px 0;
   border-bottom: 1px dashed #e8eef5;
 }
+.public-asset-field-wide {
+  grid-column: 1 / -1;
+}
+.public-asset-assign-kinds {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 6px 0 8px;
+}
+.public-asset-assign-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
 .public-asset-field-label {
   font-size: 11.5px;
   font-weight: 700;
@@ -8101,5 +8115,106 @@ button.space-nav-card {
   display: block;
   font-weight: 650;
   margin-bottom: 6px;
+}
+
+/* Jelly active pill — color stays the control's existing fill */
+.jelly-option {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+  transition: color 300ms ease, border-color 300ms ease, background-color 300ms ease, box-shadow 300ms ease;
+}
+.jelly-option.active,
+.jelly-option.is-active { z-index: 1; }
+.jelly-pill {
+  position: absolute;
+  z-index: -10;
+  pointer-events: none;
+  display: block;
+}
+.jelly-pill.is-inset { inset: 0; }
+.jelly-pill.is-cover { inset: -1px; }
+.jelly-pill.is-line {
+  top: auto;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+}
+.jelly-fill-theme { background: var(--main-theme-color); }
+.jelly-fill-soft { background: #e6f6f8; }
+.jelly-fill-white { background: #fff; box-shadow: 0 1px 2px rgba(15, 107, 122, 0.08); }
+.jelly-fill-line { background: var(--vad-teal, #0f6b7a); }
+
+.domain-toggle { overflow: visible; }
+.domain-toggle button { border-radius: 10px; }
+.domain-toggle button.jelly-option.is-active,
+.domain-toggle button.jelly-option.is-active:hover {
+  background: transparent;
+  color: #fff;
+}
+.section-tabs-group,
+.section-tabs a,
+.app-nav a,
+.detail-tabs,
+.bdi-convo-tabs,
+.latest-filters,
+.asset-period-kinds,
+.asset-period-grains,
+.pagination { overflow: visible; }
+.bdi-convo-tabs button { border-radius: 999px; }
+.section-tabs a.jelly-option.active,
+.section-tabs a.jelly-option.active:hover,
+.app-nav a.jelly-option.active,
+.app-nav a.jelly-option.active:hover,
+.detail-tab.jelly-option.is-active,
+.detail-tab.jelly-option.is-active:hover,
+.nav-tabs button.jelly-option.active,
+.nav-tabs button.jelly-option.active:hover,
+.bdi-convo-tabs button.jelly-option.is-active,
+.pagination button.jelly-option.active,
+.pagination button.jelly-option.active:hover {
+  background: transparent;
+  color: #fff !important;
+}
+.latest-filters button.jelly-option.is-active,
+.asset-period-kind.jelly-option.is-active,
+.asset-period-kind.jelly-option.is-active:hover {
+  background: transparent;
+}
+.asset-period-grain.jelly-option.is-active { background: transparent; }
+.vad-tabs button.jelly-option.is-active { border-bottom-color: transparent; }
+.app-nav a.jelly-option,
+.section-tabs a.jelly-option,
+.detail-tab.jelly-option,
+.nav-tabs button.jelly-option,
+.domain-toggle button.jelly-option,
+.bdi-convo-tabs button.jelly-option,
+.latest-filters button.jelly-option,
+.asset-period-kind.jelly-option,
+.asset-period-grain.jelly-option,
+.pagination button.jelly-option,
+.vad-tabs button.jelly-option {
+  transition: color 300ms ease, border-color 300ms ease, background-color 300ms ease, box-shadow 300ms ease;
+}
+
+.dropdown-menu--motion,
+.app-select-menu--motion,
+.date-picker--motion,
+.asset-period-panel--motion,
+.th-col-filter-menu--motion {
+  animation: none;
+}
+.dropdown-menu--motion { display: block; }
+.dash-filter-sheet-scrim--fixed {
+  position: fixed;
+  z-index: 2500;
+}
+.dash-filter-sheet-panel--fixed {
+  position: fixed;
+  z-index: 2501;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 

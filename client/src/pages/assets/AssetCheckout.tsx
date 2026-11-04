@@ -2,7 +2,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import AppLayout from '../../layout/AppLayout'
 import { AppSelect, Box, EmployeeSelect, Field } from '../../components/ui'
-import { hardwareApi, mastersApi, usersApi, type SelectOption } from '../../api/client'
+import { consultantsApi, hardwareApi, mastersApi, usersApi, type SelectOption } from '../../api/client'
 import { useToast } from '../../components/Toast'
 
 function useAssetReturnPath(assetId: string | number) {
@@ -27,6 +27,7 @@ export function AssetCheckout() {
   const [targetId, setTargetId] = useState('')
   const [note, setNote] = useState('')
   const [userOpts, setUserOpts] = useState<SelectOption[]>([])
+  const [consultantOpts, setConsultantOpts] = useState<SelectOption[]>([])
   const [locationOpts, setLocationOpts] = useState<SelectOption[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -50,6 +51,9 @@ export function AssetCheckout() {
     mastersApi.locations()
       .then((r) => setLocationOpts(r.results || []))
       .catch(() => setLocationOpts([]))
+    consultantsApi.selectlist()
+      .then((r) => setConsultantOpts(r.results || []))
+      .catch(() => setConsultantOpts([]))
   }, [])
 
   if (!asset) {
@@ -115,6 +119,7 @@ export function AssetCheckout() {
                   const body: Record<string, unknown> = { checkout_to_type: targetType }
                   if (targetType === 'employee') body.assigned_employee = Number(targetId)
                   if (targetType === 'user') body.assigned_user = Number(targetId)
+                  if (targetType === 'consultant') body.assigned_to = Number(targetId)
                   if (targetType === 'location') body.assigned_location = Number(targetId)
                   if (targetType === 'asset') body.assigned_asset = Number(targetId)
                   if (note.trim()) body.note = note.trim()
@@ -136,7 +141,12 @@ export function AssetCheckout() {
               </div>
               <Field label="Assign to" required>
                 <div style={{ display: 'flex', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
-                  {(['employee', 'user', 'location'] as const).map((t) => (
+                  {([
+                    ['employee', 'Employee'],
+                    ['user', 'App user'],
+                    ['consultant', 'Consultant'],
+                    ['location', 'Location'],
+                  ] as const).map(([t, label]) => (
                     <label key={t} className="radio">
                       <input
                         type="radio"
@@ -147,7 +157,7 @@ export function AssetCheckout() {
                           setTargetId('')
                         }}
                       />{' '}
-                      {t === 'employee' ? 'Employee' : t.charAt(0).toUpperCase() + t.slice(1)}
+                      {label}
                     </label>
                   ))}
                 </div>
@@ -163,14 +173,26 @@ export function AssetCheckout() {
                     onChange={setTargetId}
                     required
                     searchable
-                    placeholder={targetType === 'user' ? 'Search user…' : 'Search office, floor or space…'}
-                    searchPlaceholder={targetType === 'user' ? 'Type a user name…' : 'Type office, floor or cabin…'}
+                    placeholder={
+                      targetType === 'user' ? 'Search user…'
+                        : targetType === 'consultant' ? 'Search consultant…'
+                          : 'Search office, floor or space…'
+                    }
+                    searchPlaceholder={
+                      targetType === 'user' ? 'Type a user name…'
+                        : targetType === 'consultant' ? 'Type a name or CON-0001…'
+                          : 'Type office, floor or cabin…'
+                    }
                     onSearch={targetType === 'location' ? (q) => {
                       mastersApi.locations(q)
                         .then((r) => setLocationOpts(r.results || []))
                         .catch(() => undefined)
+                    } : targetType === 'consultant' ? (q) => {
+                      consultantsApi.selectlist(q)
+                        .then((r) => setConsultantOpts(r.results || []))
+                        .catch(() => undefined)
                     } : undefined}
-                    options={(targetType === 'user' ? userOpts : locationOpts)
+                    options={(targetType === 'user' ? userOpts : targetType === 'consultant' ? consultantOpts : locationOpts)
                       .map((o) => ({ value: String(o.id), label: o.text }))}
                   />
                 )}

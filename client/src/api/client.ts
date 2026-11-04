@@ -295,6 +295,23 @@ export const usersApi = {
   assets: (id: number | string) => api<ApiList<Record<string, unknown>>>(`/users/${id}/assets`),
 }
 
+export const consultantsApi = {
+  list: (params: Record<string, string | number | undefined> = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') q.set(k, String(v)) })
+    return api<ApiList<Record<string, unknown>>>(`/consultants?${q}`)
+  },
+  get: (id: number | string) => api<Record<string, unknown>>(`/consultants/${id}`),
+  create: (body: unknown) =>
+    api<{ status: string; messages: string[]; payload: Record<string, unknown> }>('/consultants', { method: 'POST', json: body }),
+  update: (id: number | string, body: unknown) =>
+    api<{ status: string; messages: string[]; payload: Record<string, unknown> }>(`/consultants/${id}`, { method: 'PUT', json: body }),
+  remove: (id: number | string) =>
+    api<{ status: string; messages: string[] }>(`/consultants/${id}`, { method: 'DELETE' }),
+  selectlist: (search?: string) =>
+    api<{ results: SelectOption[] }>(`/consultants/selectlist${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+}
+
 export const groupsApi = {
   catalog: () => api<{ modules: string[]; module_actions: Record<string, string[]>; keys: Array<{ key: string; module: string; action: string; label: string }> }>('/groups/catalog'),
   list: () => api<ApiList<Record<string, unknown>>>('/groups'),

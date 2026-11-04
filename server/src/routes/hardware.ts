@@ -167,6 +167,9 @@ async function listIds(req: { query: Record<string, unknown>; user?: { permissio
       OR (a.assigned_type = 'user' AND (
         SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to
       ) = ?)
+      OR (a.assigned_type = 'consultant' AND (
+        SELECT CONCAT(first_name, ' ', last_name, ' (', consultant_code, ')') FROM consultants WHERE id = a.assigned_to
+      ) = ?)
       OR (a.assigned_type = 'location' AND (
         SELECT name FROM locations WHERE id = a.assigned_to
       ) = ?)
@@ -174,7 +177,7 @@ async function listIds(req: { query: Record<string, unknown>; user?: { permissio
         SELECT asset_tag FROM assets WHERE id = a.assigned_to
       ) = ?)
     )`
-    params.push(assignedName, assignedName, assignedName, assignedName)
+    params.push(assignedName, assignedName, assignedName, assignedName, assignedName)
   }
 
   if (search) {
@@ -351,6 +354,9 @@ router.get('/facets', async (req, res) => {
           )
           WHEN a.assigned_type = 'user' THEN (
             SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to
+          )
+          WHEN a.assigned_type = 'consultant' THEN (
+            SELECT CONCAT(first_name, ' ', last_name, ' (', consultant_code, ')') FROM consultants WHERE id = a.assigned_to
           )
           WHEN a.assigned_type = 'location' THEN (
             SELECT name FROM locations WHERE id = a.assigned_to
@@ -1123,6 +1129,10 @@ router.post('/:id/checkout', async (req, res) => {
     const check = await requireActiveEmployee(assignedTo)
     if (!check.ok) return fail(res, check.message, check.status)
   }
+  if (checkoutToType === 'consultant') {
+    const row = await get<{ id: number }>(`SELECT id FROM consultants WHERE id = ? AND deleted_at IS NULL`, [assignedTo])
+    if (!row) return fail(res, 'Consultant not found', 404)
+  }
 
   const statusId = b.status_id || asset.status_id
   const ts = now()
@@ -1170,7 +1180,9 @@ router.post('/:id/checkout', async (req, res) => {
     ? (await get<{ n: string }>(`SELECT CONCAT(first_name,' ',last_name,' (',employee_code,')') as n FROM employees WHERE id = ?`, [assignedTo]))?.n
     : checkoutToType === 'user'
       ? (await get<{ n: string }>(`SELECT CONCAT(first_name,' ',last_name) as n FROM users WHERE id = ?`, [assignedTo]))?.n
-      : String(assignedTo)
+      : checkoutToType === 'consultant'
+        ? (await get<{ n: string }>(`SELECT CONCAT(first_name,' ',last_name,' (',consultant_code,')') as n FROM consultants WHERE id = ?`, [assignedTo]))?.n
+        : String(assignedTo)
   notifyWorkflow({
     category: 'custody',
     event: 'asset.assigned',

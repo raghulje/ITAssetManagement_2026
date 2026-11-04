@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { MotionMenu } from './motion/menu'
 import { Building2, ListFilter, MapPin, X } from 'lucide-react'
 import { AppSelect } from './ui'
 import AssetPeriodPicker, { getEmptyPeriodState, type PeriodState } from './AssetPeriodPicker'
@@ -82,7 +84,7 @@ export function DashFilterSheet({
     }
   }, [open, onClose])
 
-  if (!open || typeof document === 'undefined') return null
+  if (typeof document === 'undefined') return null
 
   const companyOptions = [
     { value: '', label: 'All companies' },
@@ -94,9 +96,22 @@ export function DashFilterSheet({
   ]
 
   return createPortal(
-    <div className="dash-filter-sheet" role="dialog" aria-modal="true" aria-label="Dashboard filters">
-      <button type="button" className="dash-filter-sheet-scrim" aria-label="Close filters" onClick={onClose} />
-      <div className="dash-filter-sheet-panel">
+    <AnimatePresence>
+      {open ? (
+        <motion.button
+          key="dash-scrim"
+          type="button"
+          className="dash-filter-sheet-scrim dash-filter-sheet-scrim--fixed"
+          aria-label="Close filters"
+          onClick={onClose}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.16 }}
+        />
+      ) : null}
+      {open ? (
+      <MotionMenu key="dash-panel" origin="bottom" role="dialog" aria-label="Dashboard filters" className="dash-filter-sheet-panel dash-filter-sheet-panel--fixed">
         <div className="dash-filter-sheet-head">
           <div>
             <p className="dash-filter-sheet-title">Dashboard filters</p>
@@ -166,8 +181,9 @@ export function DashFilterSheet({
             Apply
           </button>
         </div>
-      </div>
-    </div>,
+      </MotionMenu>
+      ) : null}
+    </AnimatePresence>,
     document.body,
   )
 }

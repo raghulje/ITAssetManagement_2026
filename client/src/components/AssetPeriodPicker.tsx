@@ -1,5 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- period picker + range helpers */
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { JellyPill, useJellyGroup } from './motion/jelly'
+import { MotionMenu } from './motion/menu'
 import { CalendarRange, ChevronDown, ChevronUp, Check } from 'lucide-react'
 import { DateField, FloatingPortal, useFloatingStyle } from './formControls'
 
@@ -456,10 +458,12 @@ export default function AssetPeriodPicker({
   const [customTo, setCustomTo] = useState(range.to)
   const fromId = useId()
   const toId = useId()
+  const kindJelly = useJellyGroup('period-kind')
+  const grainJelly = useJellyGroup('period-grain')
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const { style: panelStyle } = useFloatingStyle(open, triggerRef, panelRef, {
+  const { style: panelStyle, placement: panelPlacement } = useFloatingStyle(open, triggerRef, panelRef, {
     minWidth: 360,
     maxWidth: 360,
     matchTriggerWidth: false,
@@ -580,11 +584,13 @@ export default function AssetPeriodPicker({
       </button>
 
       <FloatingPortal open={open}>
-        <div
+        <MotionMenu
+          key="period"
           ref={panelRef}
-          className="asset-period-panel asset-period-panel--portal"
+          className="asset-period-panel asset-period-panel--portal asset-period-panel--motion"
           role="dialog"
           aria-label="Choose period"
+          origin={panelPlacement === 'up' ? 'bottom' : 'top'}
           style={{ ...panelStyle, zIndex: 9999, maxHeight: 'none' }}
         >
           <p className="asset-period-panel-kicker">Choose period type</p>
@@ -595,9 +601,10 @@ export default function AssetPeriodPicker({
                 <button
                   key={item.id}
                   type="button"
-                  className={`asset-period-kind${active ? ' is-active' : ''}`}
+                  className={`asset-period-kind jelly-option${active ? ' is-active' : ''}`}
                   onClick={() => pickKind(item.id)}
                 >
+                  {active ? <JellyPill group={kindJelly} radius={999} className="jelly-fill-soft" /> : null}
                   {item.label}
                 </button>
               )
@@ -608,9 +615,10 @@ export default function AssetPeriodPicker({
               <button
                 key={item.id}
                 type="button"
-                className={`asset-period-grain${grain === item.id ? ' is-active' : ''}`}
+                className={`asset-period-grain jelly-option${grain === item.id ? ' is-active' : ''}`}
                 onClick={() => pickGrain(item.id)}
               >
+                {grain === item.id ? <JellyPill group={grainJelly} radius={999} className="jelly-fill-white" /> : null}
                 {item.label}
               </button>
             ))}
@@ -674,7 +682,7 @@ export default function AssetPeriodPicker({
               })}
             </div>
           )}
-        </div>
+        </MotionMenu>
       </FloatingPortal>
     </div>
   )

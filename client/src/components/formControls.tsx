@@ -11,6 +11,8 @@ import {
   type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { AnimatePresence } from 'framer-motion'
+import { MotionMenu } from './motion/menu'
 
 export type AppSelectOption = { value: string; label: string }
 
@@ -142,8 +144,11 @@ export function FloatingPortal({
   open: boolean
   children: ReactNode
 }) {
-  if (!open || typeof document === 'undefined') return null
-  return createPortal(children, document.body)
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <AnimatePresence>{open ? children : null}</AnimatePresence>,
+    document.body,
+  )
 }
 
 type AppSelectProps = {
@@ -194,7 +199,7 @@ export function AppSelect({
   const [highlight, setHighlight] = useState(0)
   const remote = Boolean(onSearch)
   const enableSearch = remote || (searchable ?? options.length > 8)
-  const { style: menuStyle } = useFloatingStyle(open, triggerRef, menuRef, {
+  const { style: menuStyle, placement } = useFloatingStyle(open, triggerRef, menuRef, {
     minWidth: 220,
     maxWidth: 480,
     matchTriggerWidth: true,
@@ -318,11 +323,13 @@ export function AppSelect({
       </button>
 
       <FloatingPortal open={open}>
-        <div
-          className="app-select-menu app-select-menu--portal"
+        <MotionMenu
+          key="app-select"
+          className="app-select-menu app-select-menu--portal app-select-menu--motion"
           role="listbox"
           id={listId}
           ref={menuRef}
+          origin={placement === 'up' ? 'bottom' : 'top'}
           style={menuStyle}
         >
           {enableSearch ? (
@@ -365,7 +372,7 @@ export function AppSelect({
               ))
             )}
           </ul>
-        </div>
+        </MotionMenu>
       </FloatingPortal>
     </div>
   )
@@ -507,11 +514,13 @@ export function DateField({
       </button>
 
       <FloatingPortal open={open}>
-        <div
-          className={`date-picker date-picker--portal placement-${placement}`}
+        <MotionMenu
+          key="date-picker"
+          className={`date-picker date-picker--portal date-picker--motion placement-${placement}`}
           role="dialog"
           aria-label="Choose date"
           ref={menuRef}
+          origin={placement === 'up' ? 'bottom' : 'top'}
           style={menuStyle}
         >
           <div className="date-picker-header">
@@ -589,7 +598,7 @@ export function DateField({
               </button>
             ) : null}
           </div>
-        </div>
+        </MotionMenu>
       </FloatingPortal>
     </div>
   )

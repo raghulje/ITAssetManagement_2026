@@ -37,6 +37,9 @@ export async function transformAsset(id: number) {
         WHEN a.assigned_type = 'employee' THEN (
           SELECT CONCAT(first_name, ' ', last_name, ' (', employee_code, ')') FROM employees WHERE id = a.assigned_to
         )
+        WHEN a.assigned_type = 'consultant' THEN (
+          SELECT CONCAT(first_name, ' ', last_name, ' (', consultant_code, ')') FROM consultants WHERE id = a.assigned_to
+        )
         WHEN a.assigned_type = 'location' THEN (SELECT name FROM locations WHERE id = a.assigned_to)
         WHEN a.assigned_type = 'asset' THEN (SELECT CONCAT(asset_tag, ' ', COALESCE(name,'')) FROM assets WHERE id = a.assigned_to)
         WHEN a.assigned_to IS NOT NULL THEN COALESCE(

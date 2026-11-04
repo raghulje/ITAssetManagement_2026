@@ -1,5 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { AnimatePresence } from 'framer-motion'
+import { MotionMenu } from './motion/menu'
 
 type Props = {
   label: string
@@ -84,12 +86,16 @@ export function ThColumnFilter({
         </button>
       ) : null}
 
-      {open && typeof document !== 'undefined'
+      {typeof document !== 'undefined'
         ? createPortal(
-            <div
+            <AnimatePresence>
+              {open ? (
+            <MotionMenu
+              key="column-filter"
               ref={menuRef}
               id={menuId}
-              className="th-col-filter-menu"
+              origin="top"
+              className="th-col-filter-menu th-col-filter-menu--motion"
               role="listbox"
               style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 5700 }}
             >
@@ -113,7 +119,9 @@ export function ThColumnFilter({
                   </button>
                 )
               })}
-            </div>,
+            </MotionMenu>
+              ) : null}
+            </AnimatePresence>,
             document.body,
           )
         : null}

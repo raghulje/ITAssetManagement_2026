@@ -1,5 +1,8 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { AnimatePresence } from 'framer-motion'
+import { JellyPill, useJellyGroup } from '../components/motion/jelly'
+import { MotionMenu } from '../components/motion/menu'
 import AOS from 'aos'
 import { siteName } from '../data/mockData'
 import { useAuth } from '../api/AuthContext'
@@ -148,6 +151,7 @@ const SECTION_TABS: Record<SectionKey, SectionTab[]> = {
     { to: '/users?status=deleted', label: 'Deleted Users', isActive: (p, s) => p === '/users' && new URLSearchParams(s).get('status') === 'deleted' },
     { to: '/users?activated=1', label: 'Login Enabled', isActive: (p, s) => p === '/users' && new URLSearchParams(s).get('activated') === '1' },
     { to: '/users?activated=0', label: 'Login Disabled', isActive: (p, s) => p === '/users' && new URLSearchParams(s).get('activated') === '0' },
+    { to: '/consultants', label: 'Consultants', isActive: (p) => p.startsWith('/consultants') },
   ],
   spaces: [
     { to: '/spaces', label: 'Offices & floors', isActive: (p) => p.startsWith('/spaces') },
@@ -190,7 +194,7 @@ function resolveSection(pathname: string, search = ''): SectionKey | null {
   const from = new URLSearchParams(search).get('from')
   if (from === 'employee' && pathname.startsWith('/hardware')) return 'people'
   if (pathname.startsWith('/hardware') || pathname.startsWith('/maintenances') || pathname.startsWith('/scan') || pathname.startsWith('/labels')) return 'assets'
-  if (pathname.startsWith('/employees') || pathname.startsWith('/users')) return 'people'
+  if (pathname.startsWith('/employees') || pathname.startsWith('/users') || pathname.startsWith('/consultants')) return 'people'
   if (pathname.startsWith('/spaces')) return 'spaces'
   if (
     pathname.startsWith('/companies')
@@ -232,6 +236,7 @@ function shouldShowSectionTabs(pathname: string): boolean {
     /^\/employees\/?$/,
     /^\/employees\/import\/?$/,
     /^\/users\/?$/,
+    /^\/consultants\/?$/,
     /^\/spaces\/?$/,
     /^\/companies\/?$/,
     /^\/departments\/?$/,
@@ -256,6 +261,9 @@ function shouldShowSectionTabs(pathname: string): boolean {
 function SectionTabs({ section }: { section: SectionKey }) {
   const location = useLocation()
   const { activeDomain } = useAuth()
+  const statusJelly = useJellyGroup('section-status')
+  const toolJelly = useJellyGroup('section-tools')
+  const plainJelly = useJellyGroup('section-plain')
   const tabs = SECTION_TABS[section].filter((t) => (
     t.to !== '/reports/licenses' || softwareLicensesInDomain(activeDomain)
   ))
@@ -266,15 +274,16 @@ function SectionTabs({ section }: { section: SectionKey }) {
   const statusTabs = tabs.filter((t) => t.group === 'status')
   const toolTabs = tabs.filter((t) => t.group === 'tools')
   const plainTabs = tabs.filter((t) => !t.group)
-  const renderTab = (tab: SectionTab) => {
+  const renderTab = (tab: SectionTab, jelly: string) => {
     const active = tab.isActive(location.pathname, search)
     return (
       <Link
         key={tab.to + tab.label}
         to={tab.to}
-        className={active ? 'active' : undefined}
+        className={active ? 'active jelly-option' : 'jelly-option'}
         aria-current={active ? 'page' : undefined}
       >
+        {active ? <JellyPill group={jelly} radius={10} className="jelly-fill-theme" /> : null}
         {tab.label}
       </Link>
     )
@@ -285,12 +294,12 @@ function SectionTabs({ section }: { section: SectionKey }) {
       <div className="section-tabs-track">
         {statusTabs.length > 0 ? (
           <>
-            <div className="section-tabs-group">{statusTabs.map(renderTab)}</div>
+            <div className="section-tabs-group">{statusTabs.map((tab) => renderTab(tab, statusJelly))}</div>
             {toolTabs.length > 0 ? <span className="section-tabs-divider" aria-hidden /> : null}
-            <div className="section-tabs-group">{toolTabs.map(renderTab)}</div>
+            <div className="section-tabs-group">{toolTabs.map((tab) => renderTab(tab, toolJelly))}</div>
           </>
         ) : (
-          plainTabs.map(renderTab)
+          plainTabs.map((tab) => renderTab(tab, plainJelly))
         )}
       </div>
     </nav>
@@ -320,8 +329,39 @@ function RefexOneShell() {
   )
 }
 
+function AppNavLink({
+  to,
+  end,
+  forced = false,
+  jelly,
+  children,
+}: {
+  to: string
+  end?: boolean
+  forced?: boolean
+  jelly: string
+  children: ReactNode
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) => ((forced || isActive) ? 'active jelly-option' : 'jelly-option')}
+    >
+      {({ isActive }) => (
+        <>
+          {(forced || isActive) ? <JellyPill group={jelly} radius={10} className="jelly-fill-theme" /> : null}
+          {children}
+        </>
+      )}
+    </NavLink>
+  )
+}
+
 export default function AppLayout({ children, title, subtitle, hideHeader, scene, backTo, backLabel, onBack }: Props) {
   const navRef = useRef<HTMLElement>(null)
+  const navJelly = useJellyGroup('app-nav')
+  const domainJelly = useJellyGroup('domain')
   const [userOpen, setUserOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [tag, setTag] = useState('')
@@ -355,53 +395,17 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
   useLayoutEffect(() => {
     const nav = navRef.current
     if (!nav) return
-    const pill = nav.querySelector<HTMLElement>('.app-nav-pill')
-    if (!pill) return
-    const place = (animate: boolean) => {
-      const marked = [...nav.querySelectorAll<HTMLElement>('a.active')]
-      const active = nav.querySelector<HTMLElement>('a[aria-current="page"]')
-        || marked[marked.length - 1]
-        || null
-      if (!active) {
-        pill.style.opacity = '0'
-        return
-      }
-      const nextLeft = active.offsetLeft
-      const nextWidth = active.offsetWidth
-      const seen = pill.dataset.left != null
-      const prevLeft = Number(pill.dataset.left ?? nextLeft)
-      const prevWidth = Number(pill.dataset.width ?? nextWidth)
-      pill.style.opacity = '1'
-      if (!animate || !seen) {
-        pill.style.transition = 'none'
-        pill.style.transform = `translate3d(${nextLeft}px,0,0)`
-        pill.style.width = `${nextWidth}px`
-        pill.style.borderRadius = '10px'
-      } else {
-        const left = Math.min(prevLeft, nextLeft)
-        const right = Math.max(prevLeft + prevWidth, nextLeft + nextWidth)
-        const forward = nextLeft >= prevLeft
-        pill.style.transition = 'none'
-        pill.style.transform = `translate3d(${left}px,0,0)`
-        pill.style.width = `${Math.max(right - left, nextWidth)}px`
-        pill.style.borderRadius = forward ? '12px 22px 22px 12px' : '22px 12px 12px 22px'
-        pill.getBoundingClientRect()
-        pill.style.transition = 'transform 720ms cubic-bezier(.18,1.55,.32,1), width 720ms cubic-bezier(.18,1.55,.32,1), border-radius 720ms cubic-bezier(.2,1.2,.32,1)'
-        pill.style.transform = `translate3d(${nextLeft}px,0,0)`
-        pill.style.width = `${nextWidth}px`
-        pill.style.borderRadius = '10px'
-      }
-      pill.dataset.left = String(nextLeft)
-      pill.dataset.width = String(nextWidth)
-      const viewLeft = nav.scrollLeft
-      const viewRight = viewLeft + nav.clientWidth
-      if (nextLeft < viewLeft + 8) nav.scrollLeft = Math.max(0, nextLeft - 12)
-      else if (nextLeft + nextWidth > viewRight - 8) nav.scrollLeft = nextLeft + nextWidth - nav.clientWidth + 12
-    }
-    place(true)
-    const onResize = () => place(false)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    const marked = [...nav.querySelectorAll<HTMLElement>('a.active')]
+    const active = nav.querySelector<HTMLElement>('a[aria-current="page"]')
+      || marked[marked.length - 1]
+      || null
+    if (!active) return
+    const nextLeft = active.offsetLeft
+    const nextWidth = active.offsetWidth
+    const viewLeft = nav.scrollLeft
+    const viewRight = viewLeft + nav.clientWidth
+    if (nextLeft < viewLeft + 8) nav.scrollLeft = Math.max(0, nextLeft - 12)
+    else if (nextLeft + nextWidth > viewRight - 8) nav.scrollLeft = nextLeft + nextWidth - nav.clientWidth + 12
   }, [location.pathname, location.search, section, showLicenses])
 
   useEffect(() => {
@@ -438,19 +442,21 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
             <div className="domain-toggle" role="group" aria-label="IT or Admin assets">
               <button
                 type="button"
-                className={activeDomain === 'it' ? 'is-active' : ''}
+                className={activeDomain === 'it' ? 'is-active jelly-option' : 'jelly-option'}
                 onClick={() => setActiveDomain('it')}
                 aria-label="IT assets"
               >
+                {activeDomain === 'it' ? <JellyPill group={domainJelly} radius={10} className="jelly-fill-theme" /> : null}
                 IT
               </button>
               <button
                 type="button"
-                className={activeDomain === 'admin' ? 'is-active' : ''}
+                className={activeDomain === 'admin' ? 'is-active jelly-option' : 'jelly-option'}
                 onClick={() => setActiveDomain('admin')}
                 aria-label="Admin assets"
                 title="Admin"
               >
+                {activeDomain === 'admin' ? <JellyPill group={domainJelly} radius={10} className="jelly-fill-theme" /> : null}
                 <span className="domain-toggle-full">Admin</span>
                 <span className="domain-toggle-short" aria-hidden>Adm</span>
               </button>
@@ -468,21 +474,27 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
               {can('battery_issues.view') ? <li><NavLink to="/battery-issues" title="Battery Degradation"><i className="fas fa-battery-half" /></NavLink></li> : null}
               {can('people.view') ? <li><NavLink to="/employees" title="Employees"><i className="fas fa-id-badge" /></NavLink></li> : null}
               {can('people.view') ? <li><NavLink to="/users" title="App Users"><i className="fas fa-users" /></NavLink></li> : null}
+              {can('people.view') ? <li><NavLink to="/consultants" title="Consultants"><i className="fas fa-briefcase" /></NavLink></li> : null}
               {(can('assets.create') || can('licenses.create') || can('people.create')) ? (
                 <li className={`dropdown ${createOpen ? 'open' : ''}`}>
                   <button type="button" className="nav-icon-btn" onClick={() => setCreateOpen((o) => !o)}>
                     <i className="fas fa-plus" />
                   </button>
-                  <div className="dropdown-menu">
-                    {can('assets.create') ? <NavLink to="/hardware/create" onClick={() => setCreateOpen(false)}>Asset</NavLink> : null}
-                    {showLicenses && can('licenses.create') ? <NavLink to="/licenses/create" onClick={() => setCreateOpen(false)}>License</NavLink> : null}
-                    {can('accessories.create') ? <NavLink to="/accessories/create" onClick={() => setCreateOpen(false)}>Accessory</NavLink> : null}
-                    {can('consumables.create') ? <NavLink to="/consumables/create" onClick={() => setCreateOpen(false)}>Consumable</NavLink> : null}
-                    {can('components.create') ? <NavLink to="/components/create" onClick={() => setCreateOpen(false)}>Component</NavLink> : null}
-                    {can('people.create') ? <NavLink to="/employees/create" onClick={() => setCreateOpen(false)}>Employee</NavLink> : null}
-                    {can('people.create') ? <NavLink to="/users/create" onClick={() => setCreateOpen(false)}>App User</NavLink> : null}
-                    {can('battery_issues.create') ? <NavLink to="/battery-issues/create" onClick={() => setCreateOpen(false)}>Battery issue</NavLink> : null}
-                  </div>
+                  <AnimatePresence>
+                    {createOpen ? (
+                      <MotionMenu key="create-menu" origin="top" className="dropdown-menu dropdown-menu--motion">
+                        {can('assets.create') ? <NavLink to="/hardware/create" onClick={() => setCreateOpen(false)}>Asset</NavLink> : null}
+                        {showLicenses && can('licenses.create') ? <NavLink to="/licenses/create" onClick={() => setCreateOpen(false)}>License</NavLink> : null}
+                        {can('accessories.create') ? <NavLink to="/accessories/create" onClick={() => setCreateOpen(false)}>Accessory</NavLink> : null}
+                        {can('consumables.create') ? <NavLink to="/consumables/create" onClick={() => setCreateOpen(false)}>Consumable</NavLink> : null}
+                        {can('components.create') ? <NavLink to="/components/create" onClick={() => setCreateOpen(false)}>Component</NavLink> : null}
+                        {can('people.create') ? <NavLink to="/employees/create" onClick={() => setCreateOpen(false)}>Employee</NavLink> : null}
+                        {can('people.create') ? <NavLink to="/users/create" onClick={() => setCreateOpen(false)}>App User</NavLink> : null}
+                        {can('people.create') ? <NavLink to="/consultants/create" onClick={() => setCreateOpen(false)}>Consultant</NavLink> : null}
+                        {can('battery_issues.create') ? <NavLink to="/battery-issues/create" onClick={() => setCreateOpen(false)}>Battery issue</NavLink> : null}
+                      </MotionMenu>
+                    ) : null}
+                  </AnimatePresence>
                 </li>
               ) : null}
               {isAdmin ? <li><NavLink to="/admin" title="Admin"><i className="fas fa-cog" /></NavLink></li> : null}
@@ -494,15 +506,19 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
                     {designation ? <span className="nav-user-role">Logged in as {designation}</span> : null}
                   </span>
                 </button>
-                <div className="dropdown-menu">
-                  {designation ? (
-                    <div className="nav-user-menu-role">Logged in as {designation}</div>
+                <AnimatePresence>
+                  {userOpen ? (
+                    <MotionMenu key="user-menu" origin="top" className="dropdown-menu dropdown-menu--motion">
+                      {designation ? (
+                        <div className="nav-user-menu-role">Logged in as {designation}</div>
+                      ) : null}
+                      <NavLink to="/account/profile" onClick={() => setUserOpen(false)}>Edit Profile</NavLink>
+                      <NavLink to="/account/password" onClick={() => setUserOpen(false)}>Change Password</NavLink>
+                      <div className="divider" />
+                      <button type="button" onClick={logout}>Logout</button>
+                    </MotionMenu>
                   ) : null}
-                  <NavLink to="/account/profile" onClick={() => setUserOpen(false)}>Edit Profile</NavLink>
-                  <NavLink to="/account/password" onClick={() => setUserOpen(false)}>Change Password</NavLink>
-                  <div className="divider" />
-                  <button type="button" onClick={logout}>Logout</button>
-                </div>
+                </AnimatePresence>
               </li>
             </ul>
           </div>
@@ -512,22 +528,21 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
       <div className="content-wrapper" style={{ ['--page-scene' as string]: `url("${activeScene}")` }}>
         <div className="page-scene-wash" aria-hidden />
         <nav className="app-nav" aria-label="Sections" ref={navRef}>
-          <span className="app-nav-pill" aria-hidden="true" />
-          <NavLink to="/" end>Dashboard</NavLink>
-          {can('assets.view') ? <NavLink to="/hardware" className={assetSectionLink ? 'active' : undefined}>Assets</NavLink> : null}
-          {can('assets.view') ? <NavLink to="/scan">Scan</NavLink> : null}
-          {can('assets.view') ? <NavLink to="/labels">QR / Barcode</NavLink> : null}
-          {showLicenses ? <NavLink to="/licenses">Licenses</NavLink> : null}
-          {can('accessories.view') ? <NavLink to="/accessories">Accessories</NavLink> : null}
-          {can('consumables.view') ? <NavLink to="/consumables">Consumables</NavLink> : null}
-          {can('components.view') ? <NavLink to="/components">Components</NavLink> : null}
-          {can('battery_issues.view') ? <NavLink to="/battery-issues">Battery</NavLink> : null}
-          {can('people.view') ? <NavLink to="/employees" className={section === 'people' ? 'active' : undefined}>People</NavLink> : null}
-          {can('settings.view') ? <NavLink to="/spaces" className={section === 'spaces' ? 'active' : undefined}>Spaces</NavLink> : null}
-          {can('settings.view') ? <NavLink to="/companies" className={section === 'masters' ? 'active' : undefined}>Masters</NavLink> : null}
-          {can('settings.edit') ? <NavLink to="/import">Import</NavLink> : null}
-          {isAdmin ? <NavLink to="/settings" className={section === 'settings' ? 'active' : undefined}>Settings</NavLink> : null}
-          {isAdmin ? <NavLink to="/reports" className={section === 'reports' ? 'active' : undefined}>Reports</NavLink> : null}
+          <AppNavLink to="/" end jelly={navJelly}>Dashboard</AppNavLink>
+          {can('assets.view') ? <AppNavLink to="/hardware" jelly={navJelly} forced={assetSectionLink}>Assets</AppNavLink> : null}
+          {can('assets.view') ? <AppNavLink to="/scan" jelly={navJelly}>Scan</AppNavLink> : null}
+          {can('assets.view') ? <AppNavLink to="/labels" jelly={navJelly}>QR / Barcode</AppNavLink> : null}
+          {showLicenses ? <AppNavLink to="/licenses" jelly={navJelly}>Licenses</AppNavLink> : null}
+          {can('accessories.view') ? <AppNavLink to="/accessories" jelly={navJelly}>Accessories</AppNavLink> : null}
+          {can('consumables.view') ? <AppNavLink to="/consumables" jelly={navJelly}>Consumables</AppNavLink> : null}
+          {can('components.view') ? <AppNavLink to="/components" jelly={navJelly}>Components</AppNavLink> : null}
+          {can('battery_issues.view') ? <AppNavLink to="/battery-issues" jelly={navJelly}>Battery</AppNavLink> : null}
+          {can('people.view') ? <AppNavLink to="/employees" jelly={navJelly} forced={section === 'people'}>People</AppNavLink> : null}
+          {can('settings.view') ? <AppNavLink to="/spaces" jelly={navJelly} forced={section === 'spaces'}>Spaces</AppNavLink> : null}
+          {can('settings.view') ? <AppNavLink to="/companies" jelly={navJelly} forced={section === 'masters'}>Masters</AppNavLink> : null}
+          {can('settings.edit') ? <AppNavLink to="/import" jelly={navJelly}>Import</AppNavLink> : null}
+          {isAdmin ? <AppNavLink to="/settings" jelly={navJelly} forced={section === 'settings'}>Settings</AppNavLink> : null}
+          {isAdmin ? <AppNavLink to="/reports" jelly={navJelly} forced={section === 'reports'}>Reports</AppNavLink> : null}
         </nav>
         {!hideHeader ? (
           headerVariant === 'form' ? (

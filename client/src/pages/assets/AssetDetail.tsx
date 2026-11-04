@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { JellyPill, useJellyGroup } from '../../components/motion/jelly'
 import AppLayout from '../../layout/AppLayout'
 import AssetAttachments from '../../components/AssetAttachments'
 import { api, hardwareApi } from '../../api/client'
@@ -67,6 +68,7 @@ export default function AssetDetail() {
   const { isItAssetManager } = useAuth()
   const [asset, setAsset] = useState<Record<string, unknown> | null>(null)
   const [tab, setTab] = useState<TabId>(() => (params.get('tab') === 'captures' ? 'captures' : 'overview'))
+  const tabJelly = useJellyGroup('asset-record')
   const [history, setHistory] = useState<Record<string, unknown>[]>([])
   const [maintenances, setMaintenances] = useState<Record<string, unknown>[]>([])
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null)
@@ -270,9 +272,10 @@ export default function AssetDetail() {
               type="button"
               role="tab"
               aria-selected={tab === t.id}
-              className={tab === t.id ? 'is-active' : ''}
+              className={tab === t.id ? 'is-active jelly-option' : 'jelly-option'}
               onClick={() => setTab(t.id)}
             >
+              {tab === t.id ? <JellyPill group={tabJelly} radius={999} inset="line" className="jelly-fill-line" /> : null}
               {t.label}
               {t.count != null ? <span>({t.count})</span> : null}
             </button>

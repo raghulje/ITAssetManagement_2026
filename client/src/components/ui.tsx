@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { AnimatePresence } from 'framer-motion'
+import { JellyPill, useJellyGroup } from './motion/jelly'
+import { MotionMenu } from './motion/menu'
 import { Link, useNavigate } from 'react-router-dom'
 import { downloadCsv } from '../utils/csv'
 import { useToast } from './Toast'
@@ -258,6 +261,7 @@ export function DataTable({
   highlightRows?: boolean
 }) {
   const toast = useToast()
+  const pageJelly = useJellyGroup('page')
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -380,20 +384,27 @@ export function DataTable({
           <button type="button" className="btn btn-default btn-sm" onClick={() => setColumnsOpen((o) => !o)}>
             <i className="fas fa-columns" /> Columns
           </button>
-          {columnsOpen ? (
-            <div className="dropdown-menu columns-menu" style={{ display: 'block', right: 0, left: 'auto', minWidth: 220 }}>
-              {columns.map((c) => (
-                <label key={c.key} className="columns-menu-item">
-                  <input
-                    type="checkbox"
-                    checked={visibleKeys.includes(c.key)}
-                    onChange={() => toggleColumn(c.key)}
-                  />
-                  <span>{c.label}</span>
-                </label>
-              ))}
-            </div>
-          ) : null}
+          <AnimatePresence>
+            {columnsOpen ? (
+              <MotionMenu
+                key="columns"
+                origin="top"
+                className="dropdown-menu dropdown-menu--motion columns-menu"
+                style={{ right: 0, left: 'auto', minWidth: 220 }}
+              >
+                {columns.map((c) => (
+                  <label key={c.key} className="columns-menu-item">
+                    <input
+                      type="checkbox"
+                      checked={visibleKeys.includes(c.key)}
+                      onChange={() => toggleColumn(c.key)}
+                    />
+                    <span>{c.label}</span>
+                  </label>
+                ))}
+              </MotionMenu>
+            ) : null}
+          </AnimatePresence>
         </div>
         <button type="button" className="btn btn-default btn-sm" onClick={() => doExport(false)} title="Export all rows on this page">
           <i className="fas fa-download" /> Export
@@ -561,9 +572,10 @@ export function DataTable({
                       <button
                         key={i}
                         type="button"
-                        className={i === safePage ? 'active' : undefined}
+                        className={i === safePage ? 'active jelly-option' : 'jelly-option'}
                         onClick={() => onPageChange(i)}
                       >
+                        {i === safePage ? <JellyPill group={pageJelly} radius={12} className="jelly-fill-theme" quick /> : null}
                         {i + 1}
                       </button>
                     )

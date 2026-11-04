@@ -1,5 +1,8 @@
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
+import { JellyPill, useJellyGroup } from '../../components/motion/jelly'
+import { MotionMenu } from '../../components/motion/menu'
 import AppLayout from '../../layout/AppLayout'
 import { Box, DataTable, Field, PageForm } from '../../components/ui'
 import { useToast } from '../../components/Toast'
@@ -487,7 +490,9 @@ export function BatteryIssuesList() {
                     <i className="fas fa-phone-volume" /> {startingQueue ? 'Starting…' : 'Call pending'}
                     {' '}<i className="fas fa-caret-down" />
                   </button>
-                  <div className="dropdown-menu">
+                  <AnimatePresence>
+                    {callMenuOpen ? (
+                  <MotionMenu key="call-pending" origin="top" className="dropdown-menu dropdown-menu--motion">
                     {CALL_PENDING_OPTIONS.map((opt) => (
                       <button
                         key={String(opt.limit)}
@@ -501,7 +506,9 @@ export function BatteryIssuesList() {
                         </span>
                       </button>
                     ))}
-                  </div>
+                  </MotionMenu>
+                    ) : null}
+                  </AnimatePresence>
                 </div>
                 <div className={`dropdown ${incompleteMenuOpen ? 'open' : ''}`} ref={incompleteMenuRef}>
                   <button
@@ -516,7 +523,9 @@ export function BatteryIssuesList() {
                     <i className="fas fa-phone-volume" /> {startingQueue ? 'Starting…' : 'Call not properly answered'}
                     {' '}<i className="fas fa-caret-down" />
                   </button>
-                  <div className="dropdown-menu">
+                  <AnimatePresence>
+                    {incompleteMenuOpen ? (
+                  <MotionMenu key="call-incomplete" origin="top" className="dropdown-menu dropdown-menu--motion">
                     {CALL_INCOMPLETE_OPTIONS.map((opt) => (
                       <button
                         key={String(opt.limit)}
@@ -530,7 +539,9 @@ export function BatteryIssuesList() {
                         </span>
                       </button>
                     ))}
-                  </div>
+                  </MotionMenu>
+                    ) : null}
+                  </AnimatePresence>
                 </div>
                 {queue?.paused ? (
                   <button
@@ -808,24 +819,27 @@ function ConversationLangTabs({
   view: 'original' | 'english'
   onChange: (view: 'original' | 'english') => void
 }) {
+  const jelly = useJellyGroup('transcript')
   return (
     <div className="bdi-convo-tabs" role="tablist" aria-label="Transcript language">
       <button
         type="button"
         role="tab"
-        className={view === 'original' ? 'is-active' : ''}
+        className={view === 'original' ? 'is-active jelly-option' : 'jelly-option'}
         aria-selected={view === 'original'}
         onClick={() => onChange('original')}
       >
+        {view === 'original' ? <JellyPill group={jelly} radius={999} className="jelly-fill-theme" /> : null}
         Original
       </button>
       <button
         type="button"
         role="tab"
-        className={view === 'english' ? 'is-active' : ''}
+        className={view === 'english' ? 'is-active jelly-option' : 'jelly-option'}
         aria-selected={view === 'english'}
         onClick={() => onChange('english')}
       >
+        {view === 'english' ? <JellyPill group={jelly} radius={999} className="jelly-fill-theme" /> : null}
         See in English
       </button>
     </div>

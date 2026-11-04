@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
+import { JellyPill, useJellyGroup } from '../../components/motion/jelly'
 import { Link } from 'react-router-dom'
 import AppLayout from '../../layout/AppLayout'
 import { hardwareApi } from '../../api/client'
@@ -67,6 +68,7 @@ function recount(rows: CompareRow[], summary: CompareResult['summary']): Compare
 }
 
 export default function LatestAssetCompare() {
+  const filterJelly = useJellyGroup('latest-filters')
   const [file, setFile] = useState<File | null>(null)
   const [result, setResult] = useState<CompareResult | null>(null)
   const [filter, setFilter] = useState<Status | 'all'>('update')
@@ -288,9 +290,10 @@ export default function LatestAssetCompare() {
                     <button
                       key={item.id}
                       type="button"
-                      className={filter === item.id ? 'is-active' : ''}
+                      className={filter === item.id ? 'is-active jelly-option' : 'jelly-option'}
                       onClick={() => setFilter(item.id)}
                     >
+                      {filter === item.id ? <JellyPill group={filterJelly} radius={999} className="jelly-fill-soft" /> : null}
                       {item.label} <span>{count}</span>
                     </button>
                   )

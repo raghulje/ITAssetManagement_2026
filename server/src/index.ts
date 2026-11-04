@@ -16,6 +16,12 @@ const publicApp = (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || '')
 
 await seed()
 try {
+  const { ensureConsultants } = await import('./services/consultants.js')
+  await ensureConsultants()
+} catch (e) {
+  console.warn('ensureConsultants failed:', e instanceof Error ? e.message : e)
+}
+try {
   const { ensureDefaultRoles } = await import('./services/permissions.js')
   await ensureDefaultRoles()
   console.log('Roles & permissions ready')

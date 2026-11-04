@@ -20,23 +20,42 @@ export const IMPORT_FIELDS: Record<string, { key: string; label: string; require
   asset: [
     { key: 'name', label: 'Asset Name', aliases: ['assetname', 'name'] },
     { key: 'company', label: 'Company', aliases: ['companyname'] },
-    { key: 'device_brand_serial', label: 'Device Brand and Serial Number Details', aliases: ['devicebrandandserialnumberdetails', 'brandserial'] },
-    { key: 'old_asset_tag', label: 'Old asset tag', aliases: ['oldassettag'] },
-    { key: 'serial', label: 'Serial', aliases: ['serialnumber', 'serial_number'] },
     { key: 'legal_entity', label: 'legal entity', aliases: ['legalentity', 'entity', 'entitycode'] },
-    { key: 'entity_asset_tag', label: 'Entity Asset Tag', aliases: ['entityassettag'] },
+    { key: 'department', label: 'Department', aliases: ['dept'] },
+    { key: 'location', label: 'Location', aliases: ['defaultlocation', 'office'] },
+    { key: 'category', label: 'Asset Type', aliases: ['asset_type', 'type', 'category'] },
     { key: 'manufacturer', label: 'Manufacturer', aliases: ['make', 'brand'] },
-    { key: 'asset_tag', label: 'Asset Tag', sample: false, aliases: ['tag', 'assettag'] },
-    { key: 'category', label: 'Asset Type', sample: false, aliases: ['asset_type', 'type', 'category'] },
-    { key: 'model', label: 'Model', sample: false },
-    { key: 'status', label: 'Status', sample: false },
-    { key: 'location', label: 'Location', sample: false },
-    { key: 'supplier', label: 'Supplier', sample: false, aliases: ['vendor'] },
-    { key: 'purchase_date', label: 'Purchase Date', sample: false, aliases: ['purchasedate'] },
-    { key: 'purchase_cost', label: 'Purchase Cost', sample: false, aliases: ['cost', 'purchasecost'] },
-    { key: 'order_number', label: 'Purchase Order Number', sample: false, aliases: ['po', 'ponumber', 'ordernumber', 'purchaseordernumber'] },
-    { key: 'notes', label: 'Notes', sample: false },
-    { key: 'assigned_to', label: 'Assign to Username', sample: false, aliases: ['assigned', 'username', 'assignee'] },
+    { key: 'model', label: 'Model', aliases: ['modelname'] },
+    { key: 'device_brand_serial', label: 'Device Brand and Serial Number Details', aliases: ['devicebrandandserialnumberdetails', 'brandserial'] },
+    { key: 'serial', label: 'Serial', aliases: ['serialnumber', 'serial_number'] },
+    { key: 'old_asset_tag', label: 'Old asset tag', aliases: ['oldassettag'] },
+    { key: 'entity_asset_tag', label: 'Entity Asset Tag', aliases: ['entityassettag'] },
+    { key: 'asset_tag', label: 'Asset Tag', aliases: ['tag', 'assettag'] },
+    { key: 'status', label: 'Status', aliases: ['statuslabel'] },
+    { key: 'assigned_to', label: 'Assign to Employee', aliases: ['assigned', 'username', 'assignee', 'employee', 'employeecode'] },
+    { key: 'supplier', label: 'Supplier', aliases: ['vendor', 'suppliername'] },
+    { key: 'purchase_date', label: 'Purchase Date', aliases: ['purchasedate'] },
+    { key: 'purchase_cost', label: 'Purchase Cost (INR)', aliases: ['cost', 'purchasecost', 'purchasecostinr'] },
+    { key: 'order_number', label: 'Purchase Order Number', aliases: ['po', 'ponumber', 'ordernumber', 'purchaseordernumber'] },
+    { key: 'warranty_months', label: 'Warranty (months)', aliases: ['warranty', 'warrantymonths'] },
+    { key: 'asset_eol_date', label: 'EOL Date', aliases: ['eol', 'eoldate', 'endoflife'] },
+    { key: 'notes', label: 'Notes' },
+    { key: 'processor', label: 'Processor', aliases: ['cpu'] },
+    { key: 'ram', label: 'RAM' },
+    { key: 'storage', label: 'Storage' },
+    { key: 'os', label: 'Operating System', aliases: ['operatingsystem'] },
+    { key: 'mac_address', label: 'MAC Address', aliases: ['mac', 'macaddress'] },
+    { key: 'ip_address', label: 'IP Address', aliases: ['ip', 'ipaddress'] },
+    { key: 'color', label: 'Color' },
+    { key: 'material', label: 'Material' },
+    { key: 'condition', label: 'Condition' },
+    { key: 'map_address', label: 'Map address', aliases: ['address', 'maplocation'] },
+    { key: 'map_latitude', label: 'Latitude', aliases: ['lat', 'latitude'] },
+    { key: 'map_longitude', label: 'Longitude', aliases: ['lng', 'lon', 'longitude'] },
+    { key: 'grn_number', label: 'GRN Number', aliases: ['grn'] },
+    { key: 'invoice_number', label: 'Invoice Number', aliases: ['invoice', 'invoiceno'] },
+    { key: 'invoice_date', label: 'Invoice Date', aliases: ['invoicedate'] },
+    { key: 'domain', label: 'Domain', aliases: ['assetdomain'] },
   ],
   user: [
     { key: 'first_name', label: 'First Name', required: true, aliases: ['firstname', 'first'] },
@@ -304,6 +323,87 @@ export function autoMap(headers: string[], type: string) {
   return map
 }
 
+const ASSET_ATTR_KEYS = ['processor', 'ram', 'storage', 'os', 'mac_address', 'ip_address', 'color', 'material', 'condition'] as const
+
+async function assignImportedAsset(assetId: number, who: string, ts: string) {
+  if (!who) return
+  const user = await get<{ id: number }>(`SELECT id FROM users WHERE username = ? AND deleted_at IS NULL LIMIT 1`, [who])
+  if (user) {
+    await run(
+      `UPDATE assets SET assigned_to=?, assigned_type='user', last_checkout=?, checkout_counter=checkout_counter+1 WHERE id=?`,
+      [user.id, ts, assetId],
+    )
+    return
+  }
+  const emp = await get<{ id: number }>(
+    `SELECT id FROM employees WHERE deleted_at IS NULL AND (employee_code = ? OR email = ?) LIMIT 1`,
+    [who, who],
+  )
+  if (!emp) return
+  await run(
+    `UPDATE assets SET assigned_to=?, assigned_type='employee', last_checkout=?, checkout_counter=checkout_counter+1 WHERE id=?`,
+    [emp.id, ts, assetId],
+  )
+}
+
+/** Writes the asset columns that are not part of the base insert. Empty cells are left unchanged. */
+async function applyImportedAssetDetails(
+  assetId: number,
+  row: Record<string, string>,
+  map: Record<string, string>,
+  departmentId: number | null,
+  domainId: number | null,
+) {
+  const sets: string[] = []
+  const params: unknown[] = []
+  const put = async (column: string, value: unknown) => {
+    if (value == null || value === '') return
+    if (!(await tableHasColumn('assets', column))) return
+    sets.push(`${column} = ?`)
+    params.push(value)
+  }
+
+  await put('department_id', departmentId)
+  await put('domain_id', domainId)
+  const warranty = cell(row, map, 'warranty_months')
+  if (warranty && Number.isFinite(Number(warranty))) await put('warranty_months', Number(warranty))
+  await put('asset_eol_date', cell(row, map, 'asset_eol_date'))
+  await put('map_address', cell(row, map, 'map_address'))
+  const lat = cell(row, map, 'map_latitude')
+  const lng = cell(row, map, 'map_longitude')
+  if (lat && Number.isFinite(Number(lat))) await put('map_latitude', Number(lat))
+  if (lng && Number.isFinite(Number(lng))) await put('map_longitude', Number(lng))
+  await put('grn_number', cell(row, map, 'grn_number'))
+  await put('invoice_number', cell(row, map, 'invoice_number'))
+  await put('invoice_date', cell(row, map, 'invoice_date'))
+  await put('po_number', cell(row, map, 'order_number'))
+
+  const incoming: Record<string, string> = {}
+  for (const key of ASSET_ATTR_KEYS) {
+    const value = cell(row, map, key)
+    if (value) incoming[key] = value
+  }
+  if (Object.keys(incoming).length && await tableHasColumn('assets', 'domain_attrs')) {
+    const current = await get<{ domain_attrs: unknown }>(`SELECT domain_attrs FROM assets WHERE id = ?`, [assetId])
+    let prev: Record<string, string> = {}
+    const raw = current?.domain_attrs
+    if (raw) {
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) prev = parsed as Record<string, string>
+      } catch {
+        prev = {}
+      }
+    }
+    sets.push('domain_attrs = ?')
+    params.push(JSON.stringify({ ...prev, ...incoming }))
+  }
+
+  if (!sets.length) return
+  params.push(assetId)
+  await run(`UPDATE assets SET ${sets.join(', ')} WHERE id = ?`, params)
+}
+
 export async function processImport(opts: {
   importId: number
   type: string
@@ -372,7 +472,16 @@ export async function processImport(opts: {
         const statusId = await resolveStatus(cell(row, map, 'status'))
         const companyId = await findOrCreateByName('companies', cell(row, map, 'company'))
         const legalEntityId = await resolveLegalEntity(cell(row, map, 'legal_entity'))
+        const departmentId = await findOrCreateByName('departments', cell(row, map, 'department'), { company_id: companyId })
         const locationId = await findOrCreateByName('locations', cell(row, map, 'location'), { company_id: companyId })
+        let rowDomainId = importDomainId
+        let domainFromRow = false
+        const domainCell = cell(row, map, 'domain')
+        if (domainCell && domainReady) {
+          rowDomainId = (await resolveImportDomainId(opts.permissions, domainCell)).id
+          domainFromRow = true
+        }
+        const importedDomainId = domainFromRow ? rowDomainId : null
         const supplierId = await findOrCreateByName('suppliers', cell(row, map, 'supplier'))
         const matchTag = explicitTag || oldTag
         const existing = matchTag
@@ -410,6 +519,8 @@ export async function processImport(opts: {
             ...(hasAssetMfr ? [manufacturerId] : []),
             existing.id,
           ])
+          await applyImportedAssetDetails(existing.id, row, map, departmentId, importedDomainId)
+          await assignImportedAsset(existing.id, cell(row, map, 'assigned_to'), ts)
           await ensureAssetQr(existing.id).catch(() => undefined)
           updated++
         } else if (existing) {
@@ -443,7 +554,7 @@ export async function processImport(opts: {
           `,
             domainReady
               ? [
-                importDomainId, newTag, oldTag || null, assetName || modelName, serial || null, modelId, statusId, companyId, legalEntityId, locationId, locationId,
+                rowDomainId, newTag, oldTag || null, assetName || modelName, serial || null, modelId, statusId, companyId, legalEntityId, locationId, locationId,
                 supplierId, cell(row, map, 'purchase_date'), cost, cell(row, map, 'order_number'), cell(row, map, 'notes') || null, ts, ts,
               ]
               : [
@@ -455,16 +566,10 @@ export async function processImport(opts: {
           if (hasAssetMfr && manufacturerId) {
             await run(`UPDATE assets SET manufacturer_id = ? WHERE id = ?`, [manufacturerId, newId])
           }
+          await applyImportedAssetDetails(newId, row, map, departmentId, importedDomainId)
+          await assignImportedAsset(newId, cell(row, map, 'assigned_to'), ts)
           await ensureAssetQr(newId).catch(() => undefined)
           created++
-          const username = cell(row, map, 'assigned_to')
-          if (username) {
-            const user = await get<{ id: number }>(`SELECT id FROM users WHERE username = ? AND deleted_at IS NULL`, [username])
-            if (user) {
-              await run(`UPDATE assets SET assigned_to=?, assigned_type='user', last_checkout=?, checkout_counter=checkout_counter+1 WHERE id=?`,
-                [user.id, ts, newId])
-            }
-          }
         }
       } else if (opts.type === 'user') {
         const username = cell(row, map, 'username')

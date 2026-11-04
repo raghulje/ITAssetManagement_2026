@@ -14,6 +14,7 @@ import licensesRouter from './routes/licenses.js'
 import { accessoriesRouter, consumablesRouter, componentsRouter, kitsRouter } from './routes/inventory.js'
 import { usersRouter, mastersRouter } from './routes/users.js'
 import { employeesRouter } from './routes/employees.js'
+import { consultantsRouter } from './routes/consultants.js'
 import {
   reportsRouter, maintenancesRouter, dashboardRouter,
   settingsRouter, accountRouter, requestsRouter,
@@ -130,6 +131,7 @@ export function createApp() {
   api.use('/kits', moduleGate('assets'), kitsRouter)
   api.use('/users', moduleGate('people'), usersRouter)
   api.use('/employees', moduleGate('people'), employeesRouter)
+  api.use('/consultants', moduleGate('people'), consultantsRouter)
   // Masters: GET selectlists open to authenticated users; mutating masters needs settings.edit.
   // Path-scoped so POST /labels, /hardware, etc. are not blocked by settings.edit.
   api.use([

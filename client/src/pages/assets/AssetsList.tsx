@@ -1,5 +1,6 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
+import { JellyPill, useJellyGroup } from '../../components/motion/jelly'
 import AppLayout from '../../layout/AppLayout'
 import { AppSelect, Box, StatusBadge } from '../../components/ui'
 import { ThColumnFilter } from '../../components/ThColumnFilter'
@@ -64,6 +65,7 @@ const LIST_COLUMNS = ['asset_tag', 'old_asset_tag', 'serial', 'model', 'status',
 export default function AssetsList() {
   const [params] = useSearchParams()
   const { activeDomain } = useAuth()
+  const pageJelly = useJellyGroup('assets-page')
   const statusType = params.get('status_type')
   const q = params.get('q') || ''
 
@@ -837,9 +839,10 @@ export default function AssetsList() {
                   <button
                     key={i}
                     type="button"
-                    className={i === page ? 'active' : undefined}
+                    className={i === page ? 'active jelly-option' : 'jelly-option'}
                     onClick={() => setPage(i)}
                   >
+                    {i === page ? <JellyPill group={pageJelly} radius={12} className="jelly-fill-theme" quick /> : null}
                     {i + 1}
                   </button>
                 )

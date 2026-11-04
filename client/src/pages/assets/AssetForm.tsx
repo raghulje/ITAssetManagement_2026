@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { JellyPill, useJellyGroup } from '../../components/motion/jelly'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import AppLayout from '../../layout/AppLayout'
 import { DateField, EmployeeSelect, Field, FileInput, PageForm } from '../../components/ui'
@@ -122,6 +123,7 @@ export default function AssetForm() {
     ? (fromEmployeeId ? `/employees/${fromEmployeeId}` : `/hardware/${id}${returnQs}`)
     : '/hardware'
   const [tab, setTab] = useState<'details' | 'attachments'>('details')
+  const tabJelly = useJellyGroup('asset-form')
   const [form, setForm] = useState<FormState>({
     ...empty,
     domain: activeDomain || defaultDomainCode(domainScope),
@@ -584,18 +586,20 @@ export default function AssetForm() {
           type="button"
           role="tab"
           aria-selected={tab === 'details'}
-          className={tab === 'details' ? 'active' : ''}
+          className={tab === 'details' ? 'active jelly-option' : 'jelly-option'}
           onClick={() => setTab('details')}
         >
+          {tab === 'details' ? <JellyPill group={tabJelly} radius={10} className="jelly-fill-theme" /> : null}
           Details
         </button>
         <button
           type="button"
           role="tab"
           aria-selected={tab === 'attachments'}
-          className={tab === 'attachments' ? 'active' : ''}
+          className={tab === 'attachments' ? 'active jelly-option' : 'jelly-option'}
           onClick={() => setTab('attachments')}
         >
+          {tab === 'attachments' ? <JellyPill group={tabJelly} radius={10} className="jelly-fill-theme" /> : null}
           Attachments
           {!isEdit && pendingFiles.length > 0 ? ` (${pendingFiles.length})` : ''}
         </button>

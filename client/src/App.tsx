@@ -23,6 +23,7 @@ import {
   KitsList, KitDetail, KitForm, KitCheckout,
 } from './pages/inventory/QtyModules'
 import { UsersList, UserDetail, UserForm } from './pages/users/Users'
+import { ConsultantForm, ConsultantsList } from './pages/people/Consultants'
 import {
   EmployeesList, EmployeeDetail, EmployeeForm, EmployeeImport,
 } from './pages/employees/Employees'
@@ -163,6 +164,9 @@ export default function App() {
                 <Route path="/users/:id" element={<UserDetail />} />
                 <Route path="/users/:id/edit" element={<UserForm />} />
                 <Route path="/users/:id/clone" element={<UserForm />} />
+                <Route path="/consultants" element={<ConsultantsList />} />
+                <Route path="/consultants/create" element={<ConsultantForm />} />
+                <Route path="/consultants/:id/edit" element={<ConsultantForm />} />
                 <Route path="/employees" element={<EmployeesList />} />
                 <Route path="/employees/import" element={<EmployeeImport />} />
                 <Route path="/employees/create" element={<EmployeeForm />} />

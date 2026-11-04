@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
+import { JellyPill, useJellyGroup } from './motion/jelly'
 
 export type DetailField = {
   label: string
@@ -57,6 +58,7 @@ export function DetailLayout({
   backTo?: string
   backLabel?: string
 }) {
+  const tabJelly = useJellyGroup('detail-tabs')
   return (
     <div className="detail-layout">
       <div className="detail-summary">
@@ -93,10 +95,11 @@ export function DetailLayout({
               key={t.id}
               type="button"
               role="tab"
-              className={`detail-tab${activeTab === t.id ? ' is-active' : ''}`}
+              className={`detail-tab jelly-option${activeTab === t.id ? ' is-active' : ''}`}
               aria-selected={activeTab === t.id}
               onClick={() => onTabChange?.(t.id)}
             >
+              {activeTab === t.id ? <JellyPill group={tabJelly} radius={10} className="jelly-fill-theme" /> : null}
               {t.label}
             </button>
           ))}

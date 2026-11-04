@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { getStorageBase } from '../../api/baseUrl'
-import { api, ApiError, labelCodesApi, mastersApi, type SelectOption } from '../../api/client'
+import { api, ApiError, consultantsApi, labelCodesApi, mastersApi, type SelectOption } from '../../api/client'
+import { employeesApi } from '../../api/employees'
 import { AppSelect, Field } from '../../components/ui'
 import { DomainSelect } from '../../components/DomainSelect'
 import { useAuth } from '../../api/AuthContext'
@@ -48,7 +49,7 @@ type PublicAsset = {
   warranty_months?: number | null
   asset_eol_date?: string | null
   notes?: string | null
-  assigned_to?: { name?: string; type?: string } | null
+  assigned_to?: { id?: number; name?: string; type?: string } | null
   last_checkout?: string | null
   last_checkin?: string | null
   last_audit_date?: string | null
@@ -62,6 +63,118 @@ type PublicAsset = {
   token?: string
   code?: string
   kind?: string
+}
+
+type AssigneeKind = 'employee' | 'user' | 'consultant'
+
+function ScanAssignee({
+  token,
+  assigned,
+  onSaved,
+}: {
+  token: string
+  assigned: { id?: number; name?: string; type?: string } | null | undefined
+  onSaved: () => void
+}) {
+  const toast = useToast()
+  const currentKind: AssigneeKind = assigned?.type === 'user' || assigned?.type === 'consultant'
+    ? assigned.type
+    : 'employee'
+  const [kind, setKind] = useState<AssigneeKind>(currentKind)
+  const [value, setValue] = useState(assigned?.type === currentKind && assigned.id != null ? String(assigned.id) : '')
+  const [query, setQuery] = useState('')
+  const [options, setOptions] = useState<{ value: string; label: string }[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const next: AssigneeKind = assigned?.type === 'user' || assigned?.type === 'consultant' ? assigned.type : 'employee'
+    setKind(next)
+    setValue(assigned?.type === next && assigned.id != null ? String(assigned.id) : '')
+  }, [assigned?.id, assigned?.type])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = kind === 'employee'
+      ? employeesApi.selectlist(query || undefined).then((r) => r.results || [])
+      : kind === 'user'
+        ? api<{ results: { id: number; text: string }[] }>(`/users/selectlist${query ? `?search=${encodeURIComponent(query)}` : ''}`).then((r) => r.results || [])
+        : consultantsApi.selectlist(query || undefined).then((r) => r.results || [])
+    load.then((rows) => {
+      if (cancelled) return
+      const mapped = rows.map((o) => ({ value: String(o.id), label: o.text }))
+      const current = assigned?.type === kind && assigned.id != null
+        ? [{ value: String(assigned.id), label: assigned.name || String(assigned.id) }]
+        : []
+      const rest = mapped.filter((o) => o.value !== current[0]?.value)
+      setOptions([...current, ...rest])
+    }).catch(() => {
+      if (!cancelled) setOptions([])
+    })
+    return () => { cancelled = true }
+  }, [kind, query, assigned?.id, assigned?.type, assigned?.name])
+
+  const save = (clear = false) => {
+    setBusy(true)
+    setError('')
+    api(`/public/assets/${encodeURIComponent(token)}/assign`, {
+      method: 'POST',
+      json: clear ? { assigned_to: null } : { assigned_type: kind, assigned_to: Number(value) },
+    }).then(() => {
+      toast.success(clear ? 'Assignment cleared' : 'Asset assigned')
+      onSaved()
+    }).catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(false))
+  }
+
+  const otherAssignment = assigned?.name && assigned.type && !['employee', 'user', 'consultant'].includes(assigned.type)
+    ? assigned.name
+    : null
+
+  return (
+    <div className="public-asset-assign">
+      {otherAssignment ? <p className="public-asset-field-value">Currently {otherAssignment}</p> : null}
+      <div className="public-asset-assign-kinds">
+        {([
+          ['employee', 'Employee'],
+          ['user', 'App user'],
+          ['consultant', 'Consultant'],
+        ] as const).map(([k, label]) => (
+          <label key={k} className="radio">
+            <input
+              type="radio"
+              name="assignee-kind"
+              checked={kind === k}
+              onChange={() => {
+                setKind(k)
+                setValue(assigned?.type === k && assigned.id != null ? String(assigned.id) : '')
+                setQuery('')
+              }}
+            />{' '}
+            {label}
+          </label>
+        ))}
+      </div>
+      <AppSelect
+        value={value}
+        onChange={setValue}
+        searchable
+        options={options}
+        onSearch={setQuery}
+        placeholder={kind === 'employee' ? 'Search employee…' : kind === 'user' ? 'Search app user…' : 'Search consultant…'}
+        searchPlaceholder="Type a name or ID…"
+      />
+      {error ? <p className="text-danger">{error}</p> : null}
+      <div className="public-asset-assign-actions">
+        <button type="button" className="btn btn-theme btn-sm" disabled={busy || !value} onClick={() => save(false)}>
+          {busy ? 'Saving…' : 'Assign'}
+        </button>
+        {assigned?.id ? (
+          <button type="button" className="btn btn-default btn-sm" disabled={busy} onClick={() => save(true)}>Clear</button>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 function DetailField({ label, value }: { label: string; value: unknown }) {
@@ -496,7 +609,10 @@ export default function PublicAsset() {
           <DetailField label="Model" value={[asset.model, asset.model_number].filter(Boolean).join(' · ')} />
           <DetailField label="Manufacturer" value={asset.manufacturer} />
           <DetailField label="Status" value={asset.status} />
-          <DetailField label="Assigned To" value={asset.assigned_to?.name || 'Unassigned'} />
+          <div className="public-asset-field public-asset-field-wide">
+            <span className="public-asset-field-label">Assigned To</span>
+            <ScanAssignee token={token || ''} assigned={asset.assigned_to} onSaved={load} />
+          </div>
           <DetailField label="Company" value={asset.company} />
           <DetailField label="Department" value={asset.department} />
           <DetailField label="Location" value={asset.location} />

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import path from 'node:path'
-import { get } from '../db/index.js'
+import { get, run, now } from '../db/index.js'
 import { authRequired } from '../middleware/auth.js'
 import { fail, okItem, okList, okMessage } from '../utils/response.js'
 import { ensureAssetQr, publicAssetPageUrl } from '../services/assetQr.js'
@@ -51,6 +51,9 @@ router.get('/assets/:token', authRequired, requireItAssetManager, async (req, re
         WHEN a.assigned_type = 'employee' THEN (
           SELECT CONCAT(first_name, ' ', last_name, ' (', employee_code, ')') FROM employees WHERE id = a.assigned_to
         )
+        WHEN a.assigned_type = 'consultant' THEN (
+          SELECT CONCAT(first_name, ' ', last_name, ' (', consultant_code, ')') FROM consultants WHERE id = a.assigned_to
+        )
         WHEN a.assigned_type = 'location' THEN (SELECT name FROM locations WHERE id = a.assigned_to)
         WHEN a.assigned_type = 'asset' THEN (SELECT asset_tag FROM assets WHERE id = a.assigned_to)
         ELSE NULL
@@ -89,6 +92,9 @@ router.get('/assets/:token', authRequired, requireItAssetManager, async (req, re
           WHEN a.assigned_type = 'user' THEN (SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to)
           WHEN a.assigned_type = 'employee' THEN (
             SELECT CONCAT(first_name, ' ', last_name, ' (', employee_code, ')') FROM employees WHERE id = a.assigned_to
+          )
+          WHEN a.assigned_type = 'consultant' THEN (
+            SELECT CONCAT(first_name, ' ', last_name, ' (', consultant_code, ')') FROM consultants WHERE id = a.assigned_to
           )
           WHEN a.assigned_type = 'location' THEN (SELECT name FROM locations WHERE id = a.assigned_to)
           WHEN a.assigned_type = 'asset' THEN (SELECT asset_tag FROM assets WHERE id = a.assigned_to)
@@ -137,6 +143,9 @@ router.get('/assets/:token', authRequired, requireItAssetManager, async (req, re
             WHEN a.assigned_type = 'user' THEN (SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to)
             WHEN a.assigned_type = 'employee' THEN (
               SELECT CONCAT(first_name, ' ', last_name, ' (', employee_code, ')') FROM employees WHERE id = a.assigned_to
+            )
+            WHEN a.assigned_type = 'consultant' THEN (
+              SELECT CONCAT(first_name, ' ', last_name, ' (', consultant_code, ')') FROM consultants WHERE id = a.assigned_to
             )
             WHEN a.assigned_type = 'location' THEN (SELECT name FROM locations WHERE id = a.assigned_to)
             WHEN a.assigned_type = 'asset' THEN (SELECT asset_tag FROM assets WHERE id = a.assigned_to)
@@ -223,6 +232,52 @@ router.get('/assets/:token', authRequired, requireItAssetManager, async (req, re
     qr_token: qrToken,
     qr_image_url: imagePath,
   })
+})
+
+router.post('/assets/:token/assign', authRequired, requireItAssetManager, async (req, res) => {
+  const token = String(req.params.token || '').trim()
+  const asset = await findAssetByQrToken(token)
+  if (!asset) return fail(res, 'Asset not found', 404)
+  const type = String(req.body?.assigned_type || '').trim()
+  const raw = req.body?.assigned_to
+  const assignedTo = raw == null || raw === '' ? null : Number(raw)
+  const ts = now()
+  if (!assignedTo) {
+    await run(
+      `UPDATE assets SET assigned_to = NULL, assigned_type = NULL, last_checkin = ?, updated_at = ? WHERE id = ?`,
+      [ts, ts, asset.id],
+    )
+    return okMessage(res, 'Assignment cleared')
+  }
+  if (!['employee', 'user', 'consultant'].includes(type)) {
+    return fail(res, 'Choose an employee, app user, or consultant')
+  }
+  if (type === 'employee') {
+    const row = await get<{ id: number }>(`SELECT id FROM employees WHERE id = ? AND deleted_at IS NULL`, [assignedTo])
+    if (!row) return fail(res, 'Employee not found', 404)
+  } else if (type === 'user') {
+    const row = await get<{ id: number }>(`SELECT id FROM users WHERE id = ? AND deleted_at IS NULL`, [assignedTo])
+    if (!row) return fail(res, 'App user not found', 404)
+  } else {
+    const row = await get<{ id: number }>(`SELECT id FROM consultants WHERE id = ? AND deleted_at IS NULL`, [assignedTo])
+    if (!row) return fail(res, 'Consultant not found', 404)
+  }
+  await run(`
+    UPDATE assets SET
+      assigned_to = ?, assigned_type = ?, last_checkout = ?,
+      checkout_counter = checkout_counter + 1, updated_at = ?
+    WHERE id = ?
+  `, [assignedTo, type, ts, ts, asset.id])
+  await logAction({
+    userId: req.user?.id,
+    actionType: 'checkout',
+    itemType: 'asset',
+    itemId: asset.id,
+    targetType: type,
+    targetId: assignedTo,
+    note: 'Assigned from QR scan',
+  })
+  return okMessage(res, 'Asset assigned')
 })
 
 router.get('/assets/:token/captures', authRequired, requireItAssetManager, async (req, res) => {
