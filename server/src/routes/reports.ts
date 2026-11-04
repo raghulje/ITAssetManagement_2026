@@ -1270,6 +1270,82 @@ settingsRouter.post('/reset-qr', async (req, res) => {
   }
 })
 
+/** Full database backup. mode=data is rows only; mode=schema also creates the database and tables. */
+settingsRouter.post('/pull-backup', async (req, res) => {
+  const mode = String(req.body?.mode || req.query.mode || '')
+  if (mode !== 'data' && mode !== 'schema') {
+    return fail(res, 'Choose a data backup or a backup with the database schema', 400)
+  }
+  const filename = mode === 'schema' ? 'backup.sql' : 'backup-data.sql'
+  let started = false
+  let clientGone = false
+  res.on('close', () => {
+    if (!res.writableFinished) clientGone = true
+  })
+  const cancelled = () => clientGone
+  try {
+    req.setTimeout(0)
+    res.setTimeout(0)
+    const { writeDatabaseBackup } = await import('../services/dbBackup.js')
+    const result = await writeDatabaseBackup(resSink(), mode as 'data' | 'schema', cancelled)
+    await logAction({
+      userId: req.user?.id,
+      actionType: 'pull_backup',
+      itemType: 'settings',
+      itemId: 1,
+      note: mode === 'schema'
+        ? `Pulled schema and data backup — ${result.tables} tables, ${result.rows} rows`
+        : `Pulled data backup — ${result.tables} tables, ${result.rows} rows`,
+      meta: { mode, ...result },
+    }).catch(() => undefined)
+    return res.end()
+  } catch (e) {
+    if (started || res.headersSent) {
+      res.destroy()
+      return
+    }
+    const message = e instanceof Error ? e.message : 'Backup failed'
+    return fail(res, message, 500)
+  }
+
+  function resSink() {
+    return {
+      write(chunk: string) {
+        if (cancelled()) return Promise.reject(new Error('Backup cancelled'))
+        if (!started) {
+          started = true
+          res.status(200)
+          res.setHeader('Content-Type', 'application/sql; charset=utf-8')
+          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+          res.setHeader('Cache-Control', 'no-store')
+          res.setHeader('X-Content-Type-Options', 'nosniff')
+        }
+        if (res.write(chunk)) return Promise.resolve()
+        return new Promise<void>((resolve, reject) => {
+          const onDrain = () => {
+            res.off('error', onError)
+            res.off('close', onClose)
+            resolve()
+          }
+          const onError = (err: Error) => {
+            res.off('drain', onDrain)
+            res.off('close', onClose)
+            reject(err)
+          }
+          const onClose = () => {
+            res.off('drain', onDrain)
+            res.off('error', onError)
+            reject(new Error('Backup cancelled'))
+          }
+          res.once('drain', onDrain)
+          res.once('error', onError)
+          res.once('close', onClose)
+        })
+      },
+    }
+  }
+})
+
 export const accountRouter = Router()
 
 accountRouter.get('/assets', async (req, res) => {

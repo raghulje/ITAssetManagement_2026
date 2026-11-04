@@ -374,6 +374,80 @@ export function AccountApi() {
   )
 }
 
+function PullBackupBox() {
+  const toast = useToast()
+  const { can } = useAuth()
+  const canEdit = can('settings.edit')
+  const [busy, setBusy] = useState<'' | 'data' | 'schema'>('')
+
+  const pull = (mode: 'data' | 'schema') => {
+    const withSchema = mode === 'schema'
+    const filename = withSchema ? 'backup.sql' : 'backup-data.sql'
+    const confirmText = withSchema
+      ? 'Pull the backup with the database schema?\n\nbackup.sql creates the database and every table, then loads every row.'
+      : 'Pull the data backup?\n\nbackup-data.sql has every row. It does not create the database or tables.'
+    if (!window.confirm(confirmText)) return
+    setBusy(mode)
+    const token = localStorage.getItem('refex_token')
+    fetch(`${getApiBase()}/settings/pull-backup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ mode }),
+    })
+      .then(async (res) => {
+        const type = res.headers.get('content-type') || ''
+        if (!res.ok || type.includes('json')) {
+          const data = await res.json().catch(() => ({})) as { messages?: string[]; message?: string }
+          const messages = Array.isArray(data.messages) ? data.messages : [data.message || 'Backup failed']
+          throw new Error(messages.filter(Boolean).join(', ') || 'Backup failed')
+        }
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        URL.revokeObjectURL(url)
+        toast.success(withSchema ? 'Schema backup downloaded' : 'Data backup downloaded')
+      })
+      .catch((err: Error) => toast.error(err.message))
+      .finally(() => setBusy(''))
+  }
+
+  return (
+    <div id="pull-backup">
+      <Box title="Pull the backup" type="primary">
+        <p className="help-block" style={{ marginTop: 0 }}>
+          Downloads every table in this database. Data only is the rows, saved as <code>backup-data.sql</code>.
+          With schema also creates the database and tables, saved as <code>backup.sql</code>.
+        </p>
+        <button
+          type="button"
+          className="btn btn-theme"
+          disabled={busy !== '' || !canEdit}
+          onClick={() => pull('data')}
+        >
+          {busy === 'data' ? 'Preparing…' : 'Pull the backup (data only)'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-theme"
+          style={{ marginLeft: 8 }}
+          disabled={busy !== '' || !canEdit}
+          onClick={() => pull('schema')}
+        >
+          {busy === 'schema' ? 'Preparing…' : 'Pull the backup (with schema)'}
+        </button>
+      </Box>
+    </div>
+  )
+}
+
 export function AdminHub() {
   const links = [
     { to: '/settings', label: 'General Settings', icon: 'fas fa-cog' },
@@ -389,6 +463,7 @@ export function AdminHub() {
   ]
   return (
     <AppLayout title="Admin" backTo="/">
+      <PullBackupBox />
       <div className="row">
         {links.map((l) => (
           <div key={l.to} className="col-md-4" style={{ marginBottom: 15 }}>
@@ -833,6 +908,8 @@ export function SettingsGeneral() {
           Agent id and notify email: <a href="/settings/battery">Settings → Battery Degradation</a>.
         </p>
       </Box>
+
+      <PullBackupBox />
 
       <Box title="Original asset sheets" type="primary">
         <p className="help-block" style={{ marginTop: 0 }}>
