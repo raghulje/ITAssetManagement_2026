@@ -51,13 +51,17 @@ function flattenAsset(a: Row): Row {
   }
 }
 
+function registrarName(user: { id?: number; name?: string | null; username?: string | null }) {
+  const name = String(user.name || '').trim()
+  if (name) return name
+  const username = String(user.username || '').trim()
+  if (username) return username
+  return user.id != null ? `User #${user.id}` : ''
+}
+
 function registrarLabel(value: unknown) {
   if (!value || typeof value !== 'object') return ''
-  const user = value as { id?: number; name?: string | null; email?: string | null; username?: string | null }
-  const name = String(user.name || '').trim()
-  const email = String(user.email || '').trim()
-  const id = user.id != null ? `User #${user.id}` : ''
-  return [name || user.username || '', email, id].filter(Boolean).join(' · ')
+  return registrarName(value as { id?: number; name?: string | null; username?: string | null })
 }
 
 const LIST_COLUMNS = ['asset_tag', 'old_asset_tag', 'serial', 'model', 'status', 'assigned_to', 'registered_by', 'location', 'company', 'actions']
@@ -284,6 +288,7 @@ export default function AssetsList() {
         if (!cancelled) {
           setStatusOptions([])
           setAssigneeOptions([])
+          setRegistrars([])
         }
       })
     return () => { cancelled = true }
@@ -637,7 +642,7 @@ export default function AssetsList() {
                 { value: '', label: 'All registrars' },
                 ...registrars.map((user) => ({
                   value: String(user.id),
-                  label: [user.name, user.email, `User #${user.id}`].filter(Boolean).join(' · '),
+                  label: registrarName(user),
                 })),
               ]}
             />
@@ -727,6 +732,17 @@ export default function AssetsList() {
                         value={assigneeFilter}
                         options={assigneeOptions}
                         onChange={setAssigneeFilter}
+                        allLabel="All"
+                      />
+                    ) : c.key === 'registered_by' ? (
+                      <ThColumnFilter
+                        label="Registered by"
+                        value={registeredBy}
+                        options={registrars.map((user) => ({
+                          value: String(user.id),
+                          label: registrarName(user),
+                        }))}
+                        onChange={setRegisteredBy}
                         allLabel="All"
                       />
                     ) : c.sortable ? (

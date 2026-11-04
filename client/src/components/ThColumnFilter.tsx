@@ -3,15 +3,21 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence } from 'framer-motion'
 import { MotionMenu } from './motion/menu'
 
+export type ColumnFilterOption = string | { value: string; label: string }
+
 type Props = {
   label: string
   value: string
-  options: string[]
+  options: ColumnFilterOption[]
   onChange: (value: string) => void
   /** Optional sort control shown beside the filter chevron */
   sortDir?: 'asc' | 'desc' | null
   onSort?: () => void
   allLabel?: string
+}
+
+function filterChoice(opt: ColumnFilterOption) {
+  return typeof opt === 'string' ? { value: opt, label: opt } : opt
 }
 
 /** Compact table-header filter: looks like other column titles, menu from column values. */
@@ -60,7 +66,10 @@ export function ThColumnFilter({
     return () => document.removeEventListener('mousedown', onDoc)
   }, [open])
 
-  const items = [allLabel, ...options.filter((o) => o && o !== allLabel)]
+  const items = [
+    { value: '', label: allLabel },
+    ...options.map(filterChoice).filter((o) => o.label && o.label !== allLabel && o.value !== ''),
+  ]
 
   return (
     <div className={`th-col-filter${active ? ' is-filtered' : ''}`}>
@@ -100,21 +109,20 @@ export function ThColumnFilter({
               style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 5700 }}
             >
               {items.map((opt) => {
-                const val = opt === allLabel ? '' : opt
-                const selected = value === val
+                const selected = value === opt.value
                 return (
                   <button
-                    key={opt}
+                    key={`${opt.value}:${opt.label}`}
                     type="button"
                     role="option"
                     aria-selected={selected}
                     className={`th-col-filter-option${selected ? ' is-selected' : ''}`}
                     onClick={() => {
-                      onChange(val)
+                      onChange(opt.value)
                       setOpen(false)
                     }}
                   >
-                    <span>{opt}</span>
+                    <span>{opt.label}</span>
                     {selected ? <i className="fas fa-check" aria-hidden /> : null}
                   </button>
                 )

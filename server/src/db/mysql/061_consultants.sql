@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS `consultants` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_consultants_code` (`consultant_code`),
   KEY `idx_consultants_name` (`first_name`, `last_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 ALTER TABLE `assets`
   MODIFY COLUMN `assigned_type` ENUM('user','location','asset','employee','consultant') NULL;

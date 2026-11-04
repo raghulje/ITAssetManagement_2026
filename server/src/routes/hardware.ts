@@ -344,40 +344,49 @@ router.get('/facets', async (req, res) => {
     ORDER BY value ASC
   `, params)
 
-  const assigneeRows = await all<{ value: string }>(`
-    SELECT DISTINCT TRIM(assignee) AS value FROM (
-      SELECT
-        CASE
-          WHEN a.assigned_to IS NULL THEN 'Unassigned'
-          WHEN a.assigned_type = 'employee' THEN (
-            SELECT CONCAT(first_name, ' ', last_name, ' (', employee_code, ')') FROM employees WHERE id = a.assigned_to
-          )
-          WHEN a.assigned_type = 'user' THEN (
-            SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to
-          )
-          WHEN a.assigned_type = 'consultant' THEN (
-            SELECT CONCAT(first_name, ' ', last_name, ' (', consultant_code, ')') FROM consultants WHERE id = a.assigned_to
-          )
-          WHEN a.assigned_type = 'location' THEN (
-            SELECT name FROM locations WHERE id = a.assigned_to
-          )
-          WHEN a.assigned_type = 'asset' THEN (
-            SELECT asset_tag FROM assets WHERE id = a.assigned_to
-          )
-          ELSE CONCAT('Assignee #', a.assigned_to)
-        END AS assignee
-      FROM assets a
-      LEFT JOIN status_labels s ON s.id = a.status_id
-      LEFT JOIN companies c ON c.id = a.company_id
-      LEFT JOIN locations loc ON loc.id = COALESCE(a.location_id, a.rtd_location_id)
-      LEFT JOIN models m ON m.id = a.model_id
-      WHERE ${where}
-    ) t
-    WHERE assignee IS NOT NULL AND TRIM(assignee) <> ''
-    ORDER BY
-      CASE WHEN value = 'Unassigned' THEN 0 ELSE 1 END,
-      value ASC
-  `, params)
+  // Consultant names use a different collation than the rest of the inventory.
+  // Without an explicit collation the CASE result becomes utf8mb4_bin and the
+  // comparison below throws, which used to abort this request before registrars loaded.
+  let assigneeRows: Array<{ value: string }> = []
+  try {
+    assigneeRows = await all<{ value: string }>(`
+      SELECT DISTINCT TRIM(assignee) AS value FROM (
+        SELECT (
+          CASE
+            WHEN a.assigned_to IS NULL THEN 'Unassigned'
+            WHEN a.assigned_type = 'employee' THEN (
+              SELECT CONCAT(first_name, ' ', last_name, ' (', employee_code, ')') FROM employees WHERE id = a.assigned_to
+            )
+            WHEN a.assigned_type = 'user' THEN (
+              SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE id = a.assigned_to
+            )
+            WHEN a.assigned_type = 'consultant' THEN (
+              SELECT CONCAT(first_name, ' ', last_name, ' (', consultant_code, ')') FROM consultants WHERE id = a.assigned_to
+            )
+            WHEN a.assigned_type = 'location' THEN (
+              SELECT name FROM locations WHERE id = a.assigned_to
+            )
+            WHEN a.assigned_type = 'asset' THEN (
+              SELECT asset_tag FROM assets WHERE id = a.assigned_to
+            )
+            ELSE CONCAT('Assignee #', a.assigned_to)
+          END
+        ) COLLATE utf8mb4_unicode_ci AS assignee
+        FROM assets a
+        LEFT JOIN status_labels s ON s.id = a.status_id
+        LEFT JOIN companies c ON c.id = a.company_id
+        LEFT JOIN locations loc ON loc.id = COALESCE(a.location_id, a.rtd_location_id)
+        LEFT JOIN models m ON m.id = a.model_id
+        WHERE ${where}
+      ) t
+      WHERE assignee IS NOT NULL AND TRIM(assignee) <> ''
+      ORDER BY
+        CASE WHEN value = 'Unassigned' THEN 0 ELSE 1 END,
+        value ASC
+    `, params)
+  } catch {
+    assigneeRows = []
+  }
 
   let registrars: Array<{ id: number; name: string; email: string | null; username: string | null }> = []
   try {

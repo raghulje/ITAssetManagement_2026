@@ -20,8 +20,16 @@ export function ensureConsultants(): Promise<void> {
         PRIMARY KEY (id),
         UNIQUE KEY uk_consultants_code (consultant_code),
         KEY idx_consultants_name (first_name, last_name)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
     `).then(async () => {
+      const nameCol = await get<{ collation: string }>(`
+        SELECT COLLATION_NAME AS collation
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultants' AND COLUMN_NAME = 'first_name'
+      `)
+      if (nameCol?.collation && nameCol.collation !== 'utf8mb4_unicode_ci') {
+        await run('ALTER TABLE consultants CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
+      }
       const col = await get<{ column_type: string }>(`
         SELECT COLUMN_TYPE AS column_type
         FROM information_schema.COLUMNS
