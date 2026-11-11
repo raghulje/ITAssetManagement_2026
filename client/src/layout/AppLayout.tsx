@@ -508,7 +508,9 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
           <div className="navbar-custom-menu">
             <ul className="navbar-nav">
               {can('assets.view') ? <li><NavLink to="/hardware" title="Assets"><i className="fas fa-barcode" /></NavLink></li> : null}
+              {/* Scan module hidden — restore when the scanner is configured.
               {can('assets.view') ? <li><NavLink to="/scan" title="Scan asset"><i className="fas fa-camera" /></NavLink></li> : null}
+              */}
               {can('assets.view') ? <li><NavLink to="/labels" title="QR / Barcode"><i className="fas fa-qrcode" /></NavLink></li> : null}
               {showLicenses ? <li><NavLink to="/licenses" title="Licenses"><i className="fas fa-save" /></NavLink></li> : null}
               {can('accessories.view') ? <li><NavLink to="/accessories" title="Accessories"><i className="fas fa-keyboard" /></NavLink></li> : null}
@@ -578,7 +580,9 @@ export default function AppLayout({ children, title, subtitle, hideHeader, scene
           />
           <AppNavLink to="/" end>Dashboard</AppNavLink>
           {can('assets.view') ? <AppNavLink to="/hardware" forced={assetSectionLink}>Assets</AppNavLink> : null}
+          {/* Scan module hidden — restore when the scanner is configured.
           {can('assets.view') ? <AppNavLink to="/scan">Scan</AppNavLink> : null}
+          */}
           {can('assets.view') ? <AppNavLink to="/labels">QR / Barcode</AppNavLink> : null}
           {showLicenses ? <AppNavLink to="/licenses">Licenses</AppNavLink> : null}
           {can('accessories.view') ? <AppNavLink to="/accessories">Accessories</AppNavLink> : null}

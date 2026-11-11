@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getStorageBase } from '../../api/baseUrl'
 import { api, ApiError, consultantsApi, labelCodesApi, mastersApi, type SelectOption } from '../../api/client'
 import { employeesApi } from '../../api/employees'
@@ -9,7 +9,8 @@ import { useAuth } from '../../api/AuthContext'
 import { defaultDomainCode, type DomainCode } from '../../lib/domainScope'
 import { useToast } from '../../components/Toast'
 import { beginRefexOneSso } from '../../utils/loginNext'
-import { assetScanSessionActive, markAssetScanSession } from '../../lib/assetScan'
+// Scan module hidden — restore with the /scan route.
+// import { assetScanSessionActive, markAssetScanSession } from '../../lib/assetScan'
 import QrAssetCapturePanel, {
   firstPackStatus,
   isAppleManufacturer,
@@ -434,7 +435,7 @@ function GateCard({ title, children }: { title: string; children: ReactNode }) {
 
 export default function PublicAsset() {
   const { token } = useParams()
-  const [searchParams] = useSearchParams()
+  // const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user, can, loading: authLoading, isItAssetManager } = useAuth()
   const [asset, setAsset] = useState<PublicAsset | null>(null)
@@ -444,15 +445,15 @@ export default function PublicAsset() {
   const [forbidden, setForbidden] = useState(false)
   const [redirecting, setRedirecting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const fromScanner = searchParams.get('scan') === '1' || assetScanSessionActive()
-
-  useEffect(() => {
-    if (searchParams.get('scan') === '1') markAssetScanSession()
-  }, [searchParams])
+  // Scan module hidden — restore so a scan can offer Next and reopen the scanner.
+  // const fromScanner = searchParams.get('scan') === '1' || assetScanSessionActive()
+  // useEffect(() => {
+  //   if (searchParams.get('scan') === '1') markAssetScanSession()
+  // }, [searchParams])
 
   const finishAndGoHome = () => {
     setSubmitted(true)
-    if (fromScanner) return
+    // if (fromScanner) return
     window.setTimeout(() => navigate('/', { replace: true }), 1500)
   }
 
@@ -508,6 +509,7 @@ export default function PublicAsset() {
     return (
       <GateCard title="Successfully submitted">
         <p>Successfully submitted</p>
+        {/* Scan module hidden — restore when the scanner is configured.
         {fromScanner ? (
           <div className="form-actions">
             <button type="button" className="btn btn-theme" onClick={() => navigate('/scan')}>
@@ -517,6 +519,8 @@ export default function PublicAsset() {
         ) : (
           <p className="text-muted">Returning to the home page…</p>
         )}
+        */}
+        <p className="text-muted">Returning to the home page…</p>
       </GateCard>
     )
   }

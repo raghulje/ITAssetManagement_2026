@@ -590,9 +590,11 @@ export default function AssetsList() {
               >
                 <i className="fas fa-link" /> Export QR Url
               </button>
+              {/* Scan module hidden — restore when the scanner is configured.
               <Link to="/scan" className="btn btn-theme btn-sm">
                 <i className="fas fa-camera" /> Scan
               </Link>
+              */}
               <Link to="/hardware/latest-data" className="btn btn-default btn-sm">
                 <i className="fas fa-file-excel" /> Compare latest data
               </Link>

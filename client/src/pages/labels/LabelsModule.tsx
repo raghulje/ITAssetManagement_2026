@@ -153,7 +153,9 @@ export default function LabelsModule() {
                 onKeyDown={(e) => { if (e.key === 'Enter') openLookup() }}
               />
               <button type="button" className="btn btn-default" onClick={openLookup}>Open</button>
+              {/* Scan module hidden — restore when the scanner is configured.
               <Link to="/scan" className="btn btn-theme">Scan with camera</Link>
+              */}
             </div>
           </Box>
         </div>
