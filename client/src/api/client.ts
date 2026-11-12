@@ -106,6 +106,21 @@ export const hardwareApi = {
     }>(`/hardware/facets?${q}`)
   },
   get: (id: number | string) => api<Record<string, unknown>>(`/hardware/${id}`),
+  serialCheck: (serial: string, excludeId?: number) => {
+    const q = new URLSearchParams({ serial })
+    if (excludeId) q.set('exclude_id', String(excludeId))
+    return api<{
+      taken: boolean
+      serial: string
+      asset?: { id: number; asset_tag: string; name?: string | null }
+    }>(`/hardware/serial-check?${q}`)
+  },
+  serialDuplicates: () =>
+    api<{
+      groups: Array<{ serial: string; count: number; assets: Record<string, unknown>[] }>
+      duplicate_serials: number
+      duplicate_assets: number
+    }>('/hardware/serial-duplicates'),
   generateMissingQr: () => {
     const q = new URLSearchParams()
     const domain = storedInventoryDomain()

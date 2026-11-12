@@ -8286,3 +8286,59 @@ button.space-nav-card {
   bottom: 0;
 }
 
+.serial-dup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.serial-dup-groups { display: flex; flex-direction: column; gap: 18px; }
+.serial-dup-group {
+  border: 1px solid #d7e3e6;
+  border-radius: 12px;
+  background: #f7fbfb;
+  padding: 12px;
+}
+.serial-dup-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-weight: 650;
+}
+.serial-dup-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  align-items: stretch;
+  padding-bottom: 4px;
+}
+.serial-dup-card {
+  flex: 1 0 280px;
+  min-width: 280px;
+  max-width: 420px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+}
+.serial-dup-card.is-selected { border-color: #0f6b7a; box-shadow: 0 0 0 1px #0f6b7a; }
+.serial-dup-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.serial-dup-fields {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 6px 10px;
+  font-size: 13px;
+}
+.serial-dup-fields dt { color: #64748b; margin: 0; }
+.serial-dup-fields dd { margin: 0; word-break: break-word; }
+.serial-dup-fields .is-diff dd { background: #fff7ed; border-radius: 4px; padding: 0 4px; }
+.serial-clash { color: #9f1239; }
+

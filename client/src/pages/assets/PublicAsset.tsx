@@ -388,9 +388,11 @@ function LabelRegisterForm({
         <input
           className="form-control"
           value={serial}
-          onChange={(e) => setSerial(e.target.value)}
+          onChange={(e) => setSerial(e.target.value.toUpperCase())}
           required
           placeholder="As printed on the asset"
+          style={{ textTransform: 'uppercase' }}
+          autoCapitalize="characters"
         />
       </Field>
       <Field label="Name">

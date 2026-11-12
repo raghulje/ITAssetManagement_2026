@@ -72,6 +72,7 @@ export default function AssetsList() {
   const pageJelly = useJellyGroup('assets-page')
   const statusType = params.get('status_type')
   const q = params.get('q') || ''
+  const serialMissing = params.get('serial_missing') === '1'
 
   const [search, setSearch] = useState(q)
   const [searchInput, setSearchInput] = useState(q)
@@ -117,8 +118,9 @@ export default function AssetsList() {
     if (statusFilter) p.status_value = statusFilter
     if (assigneeFilter) p.assigned_name = assigneeFilter
     if (registeredBy) p.registered_by = registeredBy
+    if (serialMissing) p.serial_missing = '1'
     return p
-  }, [statusType, search, companyId, locationId, period.range.from, period.range.to, activeDomain, sort, order, statusFilter, assigneeFilter, registeredBy])
+  }, [statusType, search, companyId, locationId, period.range.from, period.range.to, activeDomain, sort, order, statusFilter, assigneeFilter, registeredBy, serialMissing])
 
   // Apply filter keys from insight deep-links without clearing local filters on status tabs
   useEffect(() => {
@@ -551,7 +553,7 @@ export default function AssetsList() {
   }
 
   return (
-    <AppLayout title={titleMap[statusType || ''] || 'Assets'} subtitle={`${total} items`}>
+    <AppLayout title={serialMissing ? 'Missing serial' : (titleMap[statusType || ''] || 'Assets')} subtitle={`${total} items`}>
       {error && <div className="callout callout-danger"><p>{error}</p></div>}
       {bulkMsg ? <p className="help-block">{bulkMsg}</p> : null}
       <ModuleInsights
@@ -564,6 +566,27 @@ export default function AssetsList() {
           // { label: 'Pending', value: dash.pending ?? 0, tone: 'slate', to: `/hardware?status_type=Pending${filterQuery}` },
           // { label: 'Audit due', value: dash.audit_due ?? 0, tone: 'rose', to: `/hardware/audit/due${filterQuery ? `?${filterQuery.slice(1)}` : ''}` }, // Audit feature — restore when needed
           { label: 'EOL due', value: dash.eol_due ?? 0, tone: 'rose', to: `/hardware/eol/due${filterQuery ? `?${filterQuery.slice(1)}` : ''}` },
+          ...(activeDomain === 'it' ? [
+            {
+              label: 'Missing serial',
+              value: dash.missing_serial ?? 0,
+              tone: 'rose' as const,
+              icon: 'fas fa-barcode',
+              active: serialMissing,
+              hint: serialMissing ? 'Showing this filter' : 'Empty serial numbers',
+              to: serialMissing
+                ? `/hardware${filterQuery ? `?${filterQuery.slice(1)}` : ''}`
+                : `/hardware?serial_missing=1${filterQuery}`,
+            },
+            {
+              label: 'Duplicates',
+              value: dash.duplicate_serials ?? 0,
+              tone: 'amber' as const,
+              icon: 'fas fa-clone',
+              hint: `${(dash.duplicate_assets ?? 0).toLocaleString('en-IN')} assets`,
+              to: '/hardware/serial-duplicates',
+            },
+          ] : []),
         ]}
       />
       <Box type="primary">

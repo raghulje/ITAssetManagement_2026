@@ -14,6 +14,7 @@ import {
 import { logAction } from '../services/actionLog.js'
 import { transformAsset } from '../services/transformers.js'
 import { inventoryDomainColumnsReady, resolveWriteDomainId, tableHasColumn } from '../services/domainAuth.js'
+import { findItSerialClash } from '../services/assetSerial.js'
 import { publicAssetPageUrl } from '../services/assetQr.js'
 import { stampRegisteredBy } from '../services/assetRegistrar.js'
 
@@ -77,7 +78,7 @@ router.post('/:token/register', async (req, res) => {
   if (!b.company_id && !b.legal_entity_id) {
     return fail(res, 'company_id (or legal_entity_id) is required')
   }
-  const serial = String(b.serial || '').trim()
+  const serial = String(b.serial || '').trim().toUpperCase()
   if (!serial) return fail(res, 'Serial number is required')
 
   const taken = await get<{ id: number }>(
@@ -92,6 +93,18 @@ router.post('/:token/register', async (req, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Invalid domain'
     return fail(res, msg, /Forbidden/.test(msg) ? 403 : 400)
+  }
+
+  if (domain.code === 'it') {
+    const clash = await findItSerialClash(req.user?.permissions, serial)
+    if (clash) {
+      return fail(
+        res,
+        `Serial ${serial} is already on asset ${clash.asset_tag}. Use a different serial.`,
+        409,
+        { id: clash.id, asset_tag: clash.asset_tag, name: clash.name },
+      )
+    }
   }
 
   const ts = now()

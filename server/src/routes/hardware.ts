@@ -16,9 +16,11 @@ import {
   inventoryDomainClause,
   inventoryDomainColumnsReady,
   loadItemDomain,
+  domainCodeForId,
   resolveWriteDomainId,
   tableHasColumn,
 } from '../services/domainAuth.js'
+import { findItSerialClash, listItSerialDuplicates, normalizeSerial } from '../services/assetSerial.js'
 import { requireActiveEmployee } from '../services/employeeStatus.js'
 import { requireItAssetManager } from '../services/permissions.js'
 import { generateMissingAssetQr, deviceBrandSerial, publicAssetPageUrl } from '../services/assetQr.js'
@@ -204,6 +206,11 @@ async function listIds(req: { query: Record<string, unknown>; user?: { permissio
   if (registeredBy && p2pReady) {
     sql += ' AND a.registered_by = ?'
     params.push(registeredBy)
+  }
+
+  const serialMissing = String(req.query.serial_missing || '').toLowerCase()
+  if (serialMissing === '1' || serialMissing === 'true' || serialMissing === 'yes') {
+    sql += ` AND (a.serial IS NULL OR TRIM(a.serial) = '')`
   }
 
   // Period filter: explicit date range (ITSM Weekly / Monthly / FY picker)
@@ -736,6 +743,23 @@ router.post('/latest-data/apply', async (req, res) => {
   }
 })
 
+router.get('/serial-check', async (req, res) => {
+  const serial = normalizeSerial(req.query.serial)
+  const excludeId = req.query.exclude_id ? Number(req.query.exclude_id) : undefined
+  if (!serial) return okItem(res, { taken: false, serial: '' })
+  const clash = await findItSerialClash(req.user?.permissions, serial, excludeId)
+  if (!clash) return okItem(res, { taken: false, serial })
+  return okItem(res, {
+    taken: true,
+    serial,
+    asset: { id: clash.id, asset_tag: clash.asset_tag, name: clash.name },
+  })
+})
+
+router.get('/serial-duplicates', async (req, res) => {
+  return okItem(res, await listItSerialDuplicates(req.user?.permissions))
+})
+
 router.get('/:id', async (req, res) => {
   const scoped = await requireAssetDomain(req, res, Number(req.params.id))
   if (!scoped) return
@@ -917,6 +941,21 @@ router.post('/', async (req, res) => {
   const receivedCondition = b.received_condition != null && String(b.received_condition).trim()
     ? String(b.received_condition).trim()
     : null
+  const serial = b.serial != null && String(b.serial).trim()
+    ? String(b.serial).trim().toUpperCase()
+    : null
+
+  if (domain.code === 'it' && serial) {
+    const clash = await findItSerialClash(req.user?.permissions, serial)
+    if (clash) {
+      return fail(
+        res,
+        `Serial ${serial} is already on asset ${clash.asset_tag}. Use a different serial.`,
+        409,
+        { id: clash.id, asset_tag: clash.asset_tag, name: clash.name },
+      )
+    }
+  }
 
   const hasAttrs = await tableHasColumn('assets', 'domain_attrs')
   const attrsJson = hasAttrs ? (parseDomainAttrs(b.domain_attrs) ? JSON.stringify(parseDomainAttrs(b.domain_attrs)) : null) : undefined
@@ -952,7 +991,7 @@ router.post('/', async (req, res) => {
     domainReady
       ? (hasAttrs
         ? [
-          domain.id, assetTag, oldTag, b.name || null, b.serial || null, b.model_id, b.status_id,
+          domain.id, assetTag, oldTag, b.name || null, serial, b.model_id, b.status_id,
           b.company_id || null, b.legal_entity_id || null, b.department_id || null, b.supplier_id || null, b.location_id || b.rtd_location_id || null,
           b.rtd_location_id || null,
           Number.isFinite(mapLat as number) ? mapLat : null,
@@ -964,7 +1003,7 @@ router.post('/', async (req, res) => {
           b.requestable ? 1 : 0, b.byod ? 1 : 0, b.next_audit_date || null, ts, ts,
         ]
         : [
-          domain.id, assetTag, oldTag, b.name || null, b.serial || null, b.model_id, b.status_id,
+          domain.id, assetTag, oldTag, b.name || null, serial, b.model_id, b.status_id,
           b.company_id || null, b.legal_entity_id || null, b.department_id || null, b.supplier_id || null, b.location_id || b.rtd_location_id || null,
           b.rtd_location_id || null,
           Number.isFinite(mapLat as number) ? mapLat : null,
@@ -976,7 +1015,7 @@ router.post('/', async (req, res) => {
           b.requestable ? 1 : 0, b.byod ? 1 : 0, b.next_audit_date || null, ts, ts,
         ])
       : [
-        assetTag, oldTag, b.name || null, b.serial || null, b.model_id, b.status_id,
+        assetTag, oldTag, b.name || null, serial, b.model_id, b.status_id,
         b.company_id || null, b.legal_entity_id || null, b.department_id || null, b.supplier_id || null, b.location_id || b.rtd_location_id || null,
         b.rtd_location_id || null,
         Number.isFinite(mapLat as number) ? mapLat : null,
@@ -1000,7 +1039,7 @@ router.post('/', async (req, res) => {
     fields: [
       { label: 'Asset tag', value: assetTag },
       { label: 'Old asset tag', value: oldTag || '—' },
-      { label: 'Serial', value: String(b.serial || '—') },
+      { label: 'Serial', value: String(serial || '—') },
       { label: 'Created by', value: actorLabel(req.user) },
     ],
     ctaPath: `/hardware/${id}`,
@@ -1034,6 +1073,24 @@ async function updateAsset(req: import('express').Request, res: import('express'
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Invalid domain'
       return fail(res, msg, /Forbidden/.test(msg) ? 403 : 400)
+    }
+  }
+  if (b.serial !== undefined) {
+    const writeDomainId = b.domain_id !== undefined ? Number(b.domain_id) : scoped.domain_id
+    const writeCode = await domainCodeForId(writeDomainId == null ? null : Number(writeDomainId))
+    const nextSerial = normalizeSerial(b.serial)
+    const current = await get<{ serial: string | null }>(`SELECT serial FROM assets WHERE id = ?`, [id])
+    const sameSerial = normalizeSerial(current?.serial) === nextSerial
+    if (writeCode === 'it' && nextSerial && !sameSerial) {
+      const clash = await findItSerialClash(req.user?.permissions, nextSerial, id)
+      if (clash) {
+        return fail(
+          res,
+          `Serial ${nextSerial} is already on asset ${clash.asset_tag}. Use a different serial.`,
+          409,
+          { id: clash.id, asset_tag: clash.asset_tag, name: clash.name },
+        )
+      }
     }
   }
   // asset_tag is system-generated and never editable after create
@@ -1071,6 +1128,10 @@ async function updateAsset(req: import('express').Request, res: import('express'
       if (f === 'manufacturer_id') {
         const n = Number(v)
         v = v == null || v === '' || !Number.isFinite(n) || n <= 0 ? null : n
+      }
+      if (f === 'serial') {
+        const s = v == null ? '' : String(v).trim()
+        v = s ? s.toUpperCase() : null
       }
       if (f === 'location_text') {
         const s = v == null ? '' : String(v).trim()

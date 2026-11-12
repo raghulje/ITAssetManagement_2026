@@ -7,6 +7,7 @@ import AssetsList from './pages/assets/AssetsList'
 import AssetDetail from './pages/assets/AssetDetail'
 import AssetForm from './pages/assets/AssetForm'
 import LatestAssetCompare from './pages/assets/LatestAssetCompare'
+import SerialDuplicates from './pages/assets/SerialDuplicates'
 import { AssetCheckout, AssetCheckin } from './pages/assets/AssetCheckout'
 import AssetTransfer from './pages/assets/AssetTransfer'
 import {
@@ -116,6 +117,7 @@ export default function App() {
                 <Route path="/labels" element={<LabelsModule />} />
                 <Route path="/hardware/create" element={<AssetForm />} />
                 <Route path="/hardware/latest-data" element={<LatestAssetCompare />} />
+                <Route path="/hardware/serial-duplicates" element={<SerialDuplicates />} />
                 {/* Audit feature — restore when needed
                 <Route path="/hardware/audit/due" element={<AuditDue />} />
                 <Route path="/hardware/bulkaudit" element={<BulkAudit />} />

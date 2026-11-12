@@ -686,6 +686,36 @@ dashboardRouter.get('/', async (req, res) => {
     licenses_seats: licenseSeats,
     licenses_assigned: licenseAssigned,
     licenses_available: Math.max(0, licenseSeats - licenseAssigned),
+    missing_serial: await count(
+      `SELECT COUNT(*) as c FROM assets a WHERE ${assetWhere} AND (a.serial IS NULL OR TRIM(a.serial) = '')`,
+      assetParams,
+    ),
+    duplicate_serials: await count(
+      `SELECT COUNT(*) as c FROM (
+         SELECT UPPER(TRIM(a.serial)) AS serial_key
+         FROM assets a
+         WHERE ${assetWhere} AND a.serial IS NOT NULL AND TRIM(a.serial) <> ''
+         GROUP BY UPPER(TRIM(a.serial))
+         HAVING COUNT(*) > 1
+       ) d`,
+      assetParams,
+    ),
+    duplicate_assets: await count(
+      `SELECT COUNT(*) as c FROM assets a
+       WHERE ${assetWhere}
+         AND a.serial IS NOT NULL AND TRIM(a.serial) <> ''
+         AND UPPER(TRIM(a.serial)) IN (
+           SELECT serial_key FROM (
+             SELECT UPPER(TRIM(a2.serial)) AS serial_key
+             FROM assets a2
+             WHERE ${assetWhere.replaceAll('a.', 'a2.')}
+               AND a2.serial IS NOT NULL AND TRIM(a2.serial) <> ''
+             GROUP BY UPPER(TRIM(a2.serial))
+             HAVING COUNT(*) > 1
+           ) d
+         )`,
+      [...assetParams, ...assetParams],
+    ),
   })
 })
 

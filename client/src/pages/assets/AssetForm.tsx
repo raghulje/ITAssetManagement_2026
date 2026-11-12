@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { JellyPill, useJellyGroup } from '../../components/motion/jelly'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import AppLayout from '../../layout/AppLayout'
 import { DateField, EmployeeSelect, Field, FileInput, PageForm } from '../../components/ui'
 import { MasterSelect, masterPayloadId } from '../../components/MasterSelect'
@@ -129,6 +129,8 @@ export default function AssetForm() {
     domain: activeDomain || defaultDomainCode(domainScope),
   })
   const [error, setError] = useState('')
+  const [serialClash, setSerialClash] = useState<{ id: number; asset_tag: string; name?: string | null } | null>(null)
+  const [loadedSerial, setLoadedSerial] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(isEdit)
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([])
@@ -188,6 +190,33 @@ export default function AssetForm() {
   }, [isEdit])
 
   useEffect(() => {
+    if (form.domain !== 'it') {
+      setSerialClash(null)
+      return
+    }
+    const serial = form.serial.trim()
+    if (!serial || (isEdit && serial === loadedSerial)) {
+      setSerialClash(null)
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      hardwareApi.serialCheck(serial, isEdit && id ? Number(id) : undefined)
+        .then((r) => {
+          if (cancelled) return
+          setSerialClash(r.taken && r.asset ? r.asset : null)
+        })
+        .catch(() => {
+          if (!cancelled) setSerialClash(null)
+        })
+    }, 300)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [form.serial, form.domain, isEdit, id, loadedSerial])
+
+  useEffect(() => {
     let cancelled = false
     mastersApi
       .assetTypes(undefined, form.domain || defaultDomainCode(domainScope))
@@ -237,13 +266,15 @@ export default function AssetForm() {
     hardwareApi
       .get(id)
       .then((a) => {
+        const serial = String(a.serial || '').toUpperCase()
+        setLoadedSerial(serial)
         setForm({
           company_id: nestId(a.company),
           legal_entity_id: nestId(a.legal_entity),
           department_id: nestId(a.department),
           asset_tag: String(a.asset_tag || ''),
           old_asset_tag: String(a.old_asset_tag || ''),
-          serial: String(a.serial || ''),
+          serial,
           category_id: nestId(a.category),
           manufacturer_id: nestId(a.manufacturer),
           model_id: nestId(a.model),
@@ -476,6 +507,24 @@ export default function AssetForm() {
       }
       setError('Attachments are required: Invoice and Other documents (PO is on Details)')
       setTab('attachments')
+      return
+    }
+    if (!isEdit && (form.domain || 'it') === 'it' && form.serial.trim()) {
+      try {
+        const clash = await hardwareApi.serialCheck(form.serial.trim())
+        if (clash.taken && clash.asset) {
+          setSerialClash(clash.asset)
+          setError(`Serial ${form.serial.trim()} is already on ${clash.asset.asset_tag}. Save is blocked.`)
+          setTab('details')
+          return
+        }
+      } catch {
+        // The server still rejects a duplicate serial if this check cannot run.
+      }
+    }
+    if (isEdit && (form.domain || 'it') === 'it' && serialClash) {
+      setError(`Serial ${form.serial.trim()} is already on ${serialClash.asset_tag}. Save is blocked.`)
+      setTab('details')
       return
     }
     setBusy(true)
@@ -752,7 +801,22 @@ export default function AssetForm() {
           </Field>
 
           <Field label="Serial">
-            <input className="form-control" value={form.serial} onChange={(e) => set('serial', e.target.value)} />
+            <input
+              className="form-control"
+              value={form.serial}
+              onChange={(e) => set('serial', e.target.value.toUpperCase())}
+              style={{ textTransform: 'uppercase' }}
+              autoCapitalize="characters"
+              aria-invalid={serialClash ? true : undefined}
+            />
+            {form.domain === 'it' && serialClash ? (
+              <p className="help-block serial-clash" style={{ marginBottom: 0 }}>
+                <span className="count-badge">Duplicate</span>
+                {' '}Already on{' '}
+                <Link to={`/hardware/${serialClash.id}`}>{serialClash.asset_tag}</Link>
+                {serialClash.name ? ` (${serialClash.name})` : ''}. Save is blocked.
+              </p>
+            ) : null}
           </Field>
 
           {form.domain === 'admin' ? (

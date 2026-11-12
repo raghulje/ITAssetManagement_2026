@@ -445,7 +445,7 @@ export async function processImport(opts: {
     try {
       if (opts.type === 'asset') {
         const brandSerial = splitBrandSerial(cell(row, map, 'device_brand_serial'))
-        const serial = cell(row, map, 'serial') || brandSerial.serial
+        const serial = String(cell(row, map, 'serial') || brandSerial.serial || '').trim().toUpperCase()
         const manufacturerName = cell(row, map, 'manufacturer')
         const assetName = cell(row, map, 'name')
         const modelName = cell(row, map, 'model') || brandSerial.brand || manufacturerName || assetName
