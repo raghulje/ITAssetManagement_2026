@@ -11,14 +11,30 @@ export async function openAuthedFile(fileId: number | string, fileName?: string)
     const messages = Array.isArray(data.messages) ? data.messages.join(', ') : data.messages
     throw new Error(messages || 'Could not open file')
   }
-  const blob = await res.blob()
+  const headerType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+  const type = headerType && headerType !== 'application/octet-stream'
+    ? headerType
+    : typeFromName(fileName) || headerType || 'application/octet-stream'
+  const raw = await res.blob()
+  const blob = raw.type === type ? raw : new Blob([raw], { type })
   const url = URL.createObjectURL(blob)
-  const win = window.open(url, '_blank', 'noopener,noreferrer')
+  // Do not pass noopener here: browsers then return null and a download fallback would also run.
+  const win = window.open(url, '_blank')
+  if (win) win.opener = null
   if (!win) {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName || 'file'
-    a.click()
+    URL.revokeObjectURL(url)
+    throw new Error('Allow pop-ups for this site to preview the file')
   }
   window.setTimeout(() => URL.revokeObjectURL(url), 120_000)
+}
+
+function typeFromName(fileName?: string) {
+  const ext = (fileName || '').split('.').pop()?.toLowerCase()
+  if (ext === 'pdf') return 'application/pdf'
+  if (ext === 'png') return 'image/png'
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
+  if (ext === 'gif') return 'image/gif'
+  if (ext === 'webp') return 'image/webp'
+  if (ext === 'txt') return 'text/plain'
+  return ''
 }
