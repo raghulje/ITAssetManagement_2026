@@ -65,7 +65,7 @@ type AgentStatus = {
 export default function AssetDetail() {
   const { id } = useParams()
   const [params] = useSearchParams()
-  const { isItAssetManager } = useAuth()
+  const { isItAssetManager, can } = useAuth()
   const [asset, setAsset] = useState<Record<string, unknown> | null>(null)
   const [tab, setTab] = useState<TabId>(() => (params.get('tab') === 'captures' ? 'captures' : 'overview'))
   const tabJelly = useJellyGroup('asset-record')
@@ -551,7 +551,11 @@ export default function AssetDetail() {
             <div className="vad-panel__bar">
               <h3>Documents</h3>
             </div>
-            <AssetAttachments assetId={id} readOnly />
+            <AssetAttachments
+              assetId={id}
+              readOnly
+              allowDelete={can('assets.edit') || can('assets.delete')}
+            />
           </div>
         ) : null}
 

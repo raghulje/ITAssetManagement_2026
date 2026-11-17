@@ -134,7 +134,6 @@ export default function AssetForm() {
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(isEdit)
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([])
-  const [poOnFile, setPoOnFile] = useState(false)
   const [imagePath, setImagePath] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [pendingImage, setPendingImage] = useState<File | null>(null)
@@ -493,19 +492,8 @@ export default function AssetForm() {
       setTab('details')
       return
     }
-    if (!pendingFiles.some((p) => p.kind === 'po') && !poOnFile) {
-      setError('Purchase Order (PO) upload is required')
-      setTab('details')
-      return
-    }
     if (!isEdit && !hasRequiredCreateAttachments(pendingFiles)) {
-      const missingPo = !pendingFiles.some((p) => p.kind === 'po')
-      if (missingPo) {
-        setError('Purchase Order (PO) is required — attach it above the purchase fields')
-        setTab('details')
-        return
-      }
-      setError('Attachments are required: Invoice and Other documents (PO is on Details)')
+      setError('Other documents are required')
       setTab('attachments')
       return
     }
@@ -906,8 +894,6 @@ export default function AssetForm() {
             onPendingChange={setPendingFiles}
             stagingMode={!isEdit}
             assetId={isEdit ? id : null}
-            required
-            onAttachedChange={setPoOnFile}
             onPoExtracted={applyPoExtracted}
           />
 

@@ -1,20 +1,21 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { getApiBase } from '../api/baseUrl'
+import { openAuthedFile } from '../lib/openAuthedFile'
 import { Box } from './ui'
 
 export type AttachmentKind = 'invoice' | 'po' | 'other'
 
 export const ATTACHMENT_SLOTS: { kind: AttachmentKind; label: string; hint: string; accept?: string }[] = [
-  { kind: 'invoice', label: 'Invoice', hint: 'PDF or image of the invoice', accept: '.pdf,image/*' },
-  { kind: 'po', label: 'Purchase Order (PO)', hint: 'PO document (PDF preferred)', accept: '.pdf,image/*' },
+  { kind: 'invoice', label: 'Tax Invoice', hint: 'PDF or image of the tax invoice (optional)', accept: '.pdf,image/*' },
+  { kind: 'po', label: 'Purchase Order (PO)', hint: 'PO document, PDF preferred (optional)', accept: '.pdf,image/*' },
   { kind: 'other', label: 'Other documents', hint: 'Warranty, delivery note, etc.', accept: undefined },
 ]
 
 export type PendingAttachment = { kind: AttachmentKind; file: File; key: string }
 
-/** Required on create — every Attachments tab slot. */
-export const REQUIRED_CREATE_ATTACHMENT_KINDS: AttachmentKind[] = ['invoice', 'po', 'other']
+/** Required on create. Invoice and Purchase Order are optional. */
+export const REQUIRED_CREATE_ATTACHMENT_KINDS: AttachmentKind[] = ['other']
 
 export function hasRequiredCreateAttachments(pending: PendingAttachment[]): boolean {
   return REQUIRED_CREATE_ATTACHMENT_KINDS.every((k) => pending.some((p) => p.kind === k))
@@ -28,8 +29,10 @@ type Props = {
   onPendingChange?: (files: PendingAttachment[]) => void
   /** Create mode: no asset id yet */
   stagingMode?: boolean
-  /** View-only: list/download attachments, no upload or delete */
+  /** View-only: list attachments, no upload */
   readOnly?: boolean
+  /** Show Delete on a view-only list (asset record). Edit screens always can delete. */
+  allowDelete?: boolean
   /** Create flow: mark Invoice / PO as required */
   requireCreateDocs?: boolean
   /** Called after OCR/parse of a PO file */
@@ -101,6 +104,7 @@ export default function AssetAttachments({
   onPendingChange,
   stagingMode = false,
   readOnly = false,
+  allowDelete = false,
   requireCreateDocs = false,
   onPoExtracted,
   hideKinds = [],
@@ -211,6 +215,14 @@ export default function AssetAttachments({
   }
 
   const hasPo = pendingFor('po').length > 0 || (!stagingMode && filesFor('po').length > 0)
+  const canDelete = !readOnly || allowDelete
+
+  const openFile = (fileId: number, fileName: string) => {
+    setError('')
+    openAuthedFile(fileId, fileName).catch((e: Error) => {
+      setError(e.message || 'Could not open file')
+    })
+  }
 
   return (
     <div className="asset-attachments">
@@ -220,13 +232,15 @@ export default function AssetAttachments({
       <Box title="Attachments" type="primary">
         <p className="help-block" style={{ marginTop: 0, marginBottom: 14 }}>
           {readOnly
-            ? 'Documents attached to this asset. Use Edit to upload or remove files.'
+            ? (allowDelete
+              ? 'Documents attached to this asset. Use Edit to upload a file. Delete removes it from this asset.'
+              : 'Documents attached to this asset. Use Edit to upload or remove files.')
             : hideKinds.includes('po') && stagingMode && requireCreateDocs
-              ? 'Invoice and Other documents are required here. Attach the Purchase Order on the Details tab (above purchase fields).'
+              ? 'Other documents are required. Tax Invoice is optional. Purchase Order is on the Details tab and is optional.'
               : stagingMode && requireCreateDocs
-                ? 'Invoice, Purchase Order, and Other documents are all required before you can create the asset.'
+                ? 'Other documents are required. Tax Invoice and Purchase Order are optional.'
                 : hideKinds.includes('po')
-                  ? 'Upload Invoice and other documents here. Purchase Order is on the Details tab.'
+                  ? 'Upload a tax invoice and other documents here. Purchase Order is on the Details tab.'
                   : stagingMode
                     ? 'Select Invoice, PO, or other documents now — they upload after you create the asset.'
                     : 'Upload Invoice, PO, or other documents for this asset.'}
@@ -301,13 +315,17 @@ export default function AssetAttachments({
                   <ul className="attachment-list">
                     {rows.map((f) => (
                       <li key={String(f.id)}>
-                        <a href={`${getApiBase()}/files/${f.id}/download`} target="_blank" rel="noreferrer">
+                        <button
+                          type="button"
+                          className="attachment-open"
+                          onClick={() => openFile(Number(f.id), String(f.original_filename || f.filename))}
+                        >
                           {String(f.original_filename || f.filename)}
-                        </a>
+                        </button>
                         <span className="attachment-size">
                           {f.filesize ? `${Math.round(Number(f.filesize) / 1024)} KB` : ''}
                         </span>
-                        {!readOnly ? (
+                        {canDelete ? (
                           <button
                             type="button"
                             className="btn btn-xs btn-danger"
@@ -351,13 +369,13 @@ export default function AssetAttachments({
                 <th>Name</th>
                 <th>Type</th>
                 <th>Size</th>
-                {!readOnly ? <th /> : null}
+                {canDelete ? <th /> : null}
               </tr>
             </thead>
             <tbody>
               {docFiles.length === 0 && (
                 <tr>
-                  <td colSpan={readOnly ? 3 : 4} className="text-muted">
+                  <td colSpan={canDelete ? 4 : 3} className="text-muted">
                     {readOnly ? 'No attachments' : 'No attachments yet — use Choose file above'}
                   </td>
                 </tr>
@@ -365,13 +383,17 @@ export default function AssetAttachments({
               {docFiles.map((f) => (
                 <tr key={String(f.id)}>
                   <td>
-                    <a href={`${getApiBase()}/files/${f.id}/download`} target="_blank" rel="noreferrer">
+                    <button
+                      type="button"
+                      className="attachment-open"
+                      onClick={() => openFile(Number(f.id), String(f.original_filename || f.filename))}
+                    >
                       {String(f.original_filename || f.filename)}
-                    </a>
+                    </button>
                   </td>
                   <td><span className="label label-default">{kindLabel(String(f.kind))}</span></td>
                   <td>{f.filesize ? `${Math.round(Number(f.filesize) / 1024)} KB` : '—'}</td>
-                  {!readOnly ? (
+                  {canDelete ? (
                     <td>
                       <button type="button" className="btn btn-xs btn-danger" onClick={() => { void deleteFile(Number(f.id)) }}>
                         Delete
