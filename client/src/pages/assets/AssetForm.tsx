@@ -6,7 +6,6 @@ import { DateField, EmployeeSelect, Field, FileInput, PageForm } from '../../com
 import { MasterSelect, masterPayloadId } from '../../components/MasterSelect'
 import { CompanyEntityFields } from '../../components/CompanyEntityFields'
 import AssetAttachments, {
-  hasRequiredCreateAttachments,
   uploadAssetFile,
   type PendingAttachment,
   type PoParseResult,
@@ -16,7 +15,7 @@ import AssetReceivedCondition, {
   type PendingReceivedImage,
 } from '../../components/AssetReceivedCondition'
 import LocationMapPicker, { type MapLocationValue } from '../../components/LocationMapPicker'
-import { hardwareApi, mastersApi, type SelectOption } from '../../api/client'
+import { api, hardwareApi, mastersApi, type SelectOption } from '../../api/client'
 import { assetImageSrc, getApiBase } from '../../api/baseUrl'
 import { useToast } from '../../components/Toast'
 import { useAuth } from '../../api/AuthContext'
@@ -492,9 +491,21 @@ export default function AssetForm() {
       setTab('details')
       return
     }
-    if (!isEdit && !hasRequiredCreateAttachments(pendingFiles)) {
-      setError('Other documents are required')
-      setTab('attachments')
+    const stagedPo = pendingFiles.some((p) => p.kind === 'po')
+    let poOnFile = stagedPo
+    if (!poOnFile && isEdit && id) {
+      try {
+        const listed = await api<{ rows: Record<string, unknown>[] }>(`/hardware/${id}/files`)
+        poOnFile = (listed.rows || []).some((f) => String(f.kind) === 'po')
+      } catch {
+        setError('Could not check the Purchase Order file. Try again.')
+        setTab('details')
+        return
+      }
+    }
+    if (!poOnFile) {
+      setError('Purchase Order (PO) file is required')
+      setTab('details')
       return
     }
     if (!isEdit && (form.domain || 'it') === 'it' && form.serial.trim()) {
@@ -894,6 +905,7 @@ export default function AssetForm() {
             onPendingChange={setPendingFiles}
             stagingMode={!isEdit}
             assetId={isEdit ? id : null}
+            required
             onPoExtracted={applyPoExtracted}
           />
 

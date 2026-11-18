@@ -8,18 +8,14 @@ export type AttachmentKind = 'invoice' | 'po' | 'other'
 
 export const ATTACHMENT_SLOTS: { kind: AttachmentKind; label: string; hint: string; accept?: string }[] = [
   { kind: 'invoice', label: 'Tax Invoice', hint: 'PDF or image of the tax invoice (optional)', accept: '.pdf,image/*' },
-  { kind: 'po', label: 'Purchase Order (PO)', hint: 'PO document, PDF preferred (optional)', accept: '.pdf,image/*' },
-  { kind: 'other', label: 'Other documents', hint: 'Warranty, delivery note, etc.', accept: undefined },
+  { kind: 'po', label: 'Purchase Order (PO)', hint: 'PO document, PDF preferred (required)', accept: '.pdf,image/*' },
+  { kind: 'other', label: 'Other documents', hint: 'Warranty, delivery note, etc. (optional)', accept: undefined },
 ]
 
 export type PendingAttachment = { kind: AttachmentKind; file: File; key: string }
 
-/** Required on create. Invoice and Purchase Order are optional. */
-export const REQUIRED_CREATE_ATTACHMENT_KINDS: AttachmentKind[] = ['other']
-
-export function hasRequiredCreateAttachments(pending: PendingAttachment[]): boolean {
-  return REQUIRED_CREATE_ATTACHMENT_KINDS.every((k) => pending.some((p) => p.kind === k))
-}
+/** Nothing on the attachments tab is required. The Purchase Order file is required on Details. */
+export const REQUIRED_CREATE_ATTACHMENT_KINDS: AttachmentKind[] = []
 
 type Props = {
   /** When set, uploads go to the server immediately */
@@ -235,15 +231,11 @@ export default function AssetAttachments({
             ? (allowDelete
               ? 'Documents attached to this asset. Use Edit to upload a file. Delete removes it from this asset.'
               : 'Documents attached to this asset. Use Edit to upload or remove files.')
-            : hideKinds.includes('po') && stagingMode && requireCreateDocs
-              ? 'Other documents are required. Tax Invoice is optional. Purchase Order is on the Details tab and is optional.'
-              : stagingMode && requireCreateDocs
-                ? 'Other documents are required. Tax Invoice and Purchase Order are optional.'
-                : hideKinds.includes('po')
-                  ? 'Upload a tax invoice and other documents here. Purchase Order is on the Details tab.'
-                  : stagingMode
-                    ? 'Select Invoice, PO, or other documents now — they upload after you create the asset.'
-                    : 'Upload Invoice, PO, or other documents for this asset.'}
+            : hideKinds.includes('po')
+              ? 'Tax Invoice and other documents are optional. The Purchase Order file is required and is on the Details tab.'
+              : stagingMode
+                ? 'Tax Invoice and other documents are optional. They upload after you create the asset.'
+                : 'Tax Invoice and other documents are optional.'}
         </p>
 
         <div className="attachment-grid">
