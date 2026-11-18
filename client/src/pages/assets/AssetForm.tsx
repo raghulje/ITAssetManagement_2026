@@ -15,7 +15,7 @@ import AssetReceivedCondition, {
   type PendingReceivedImage,
 } from '../../components/AssetReceivedCondition'
 import LocationMapPicker, { type MapLocationValue } from '../../components/LocationMapPicker'
-import { api, hardwareApi, mastersApi, type SelectOption } from '../../api/client'
+import { hardwareApi, mastersApi, type SelectOption } from '../../api/client'
 import { assetImageSrc, getApiBase } from '../../api/baseUrl'
 import { useToast } from '../../components/Toast'
 import { useAuth } from '../../api/AuthContext'
@@ -464,7 +464,7 @@ export default function AssetForm() {
           }
           return next
         })
-        setDraftNote('Draft restored. Choose the Purchase Order file again before you create the asset.')
+        setDraftNote('Draft restored. Files are not kept in the draft, so choose them again if you still want to attach them.')
       })
       .catch((e: Error) => {
         if (!cancelled) setError(e.message || 'Could not open this draft')
@@ -587,23 +587,6 @@ export default function AssetForm() {
     }
     if (!form.order_number.trim()) {
       setError('Purchase Order Number is required')
-      setTab('details')
-      return
-    }
-    const stagedPo = pendingFiles.some((p) => p.kind === 'po')
-    let poOnFile = stagedPo
-    if (!poOnFile && isEdit && id) {
-      try {
-        const listed = await api<{ rows: Record<string, unknown>[] }>(`/hardware/${id}/files`)
-        poOnFile = (listed.rows || []).some((f) => String(f.kind) === 'po')
-      } catch {
-        setError('Could not check the Purchase Order file. Try again.')
-        setTab('details')
-        return
-      }
-    }
-    if (!poOnFile) {
-      setError('Purchase Order (PO) file is required')
       setTab('details')
       return
     }
@@ -736,6 +719,7 @@ export default function AssetForm() {
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
       {!isEdit && draftNote ? <p className="help-block">{draftNote}</p> : null}
 
+      {isEdit ? (
       <div className="nav-tabs" role="tablist">
         <button
           type="button"
@@ -756,11 +740,11 @@ export default function AssetForm() {
         >
           {tab === 'attachments' ? <JellyPill group={tabJelly} radius={10} className="jelly-fill-theme" /> : null}
           Attachments
-          {!isEdit && pendingFiles.length > 0 ? ` (${pendingFiles.length})` : ''}
         </button>
       </div>
+      ) : null}
 
-      {tab === 'details' && (
+      {(!isEdit || tab === 'details') && (
         <PageForm
           cancelTo={isEdit ? assetReturnPath : '/hardware'}
           onSubmit={() => { void submit() }}
@@ -1014,7 +998,6 @@ export default function AssetForm() {
             onPendingChange={(files) => { markDraftTouched(); setPendingFiles(files) }}
             stagingMode={!isEdit}
             assetId={isEdit ? id : null}
-            required
             onPoExtracted={applyPoExtracted}
           />
 
@@ -1120,51 +1103,40 @@ export default function AssetForm() {
               onPendingChange={(files) => { markDraftTouched(); setPendingReceived(files) }}
             />
           </Field>
+
+          {!isEdit ? (
+            <AssetAttachments
+              embedded
+              stagingMode
+              pending={pendingFiles}
+              onPendingChange={(files) => { markDraftTouched(); setPendingFiles(files) }}
+              hideKinds={['po']}
+            />
+          ) : null}
         </PageForm>
       )}
 
-      {tab === 'attachments' && (
+      {isEdit && tab === 'attachments' && (
         <>
           <AssetAttachments
-            assetId={isEdit ? id : null}
-            stagingMode={!isEdit}
-            requireCreateDocs={!isEdit}
+            assetId={id}
             pending={pendingFiles}
             onPendingChange={(files) => { markDraftTouched(); setPendingFiles(files) }}
             hideKinds={['po']}
           />
           <div className="box-footer" style={{ marginTop: 8, padding: '12px 0' }}>
-            {isEdit ? (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-theme"
-                  disabled={busy}
-                  onClick={() => { void submit() }}
-                >
-                  <i className="fas fa-check" /> {busy ? 'Saving…' : 'Update'}
-                </button>
-                {' '}
-                <button type="button" className="btn btn-default" onClick={() => setTab('details')}>
-                  Back to Details
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-theme"
-                  disabled={busy}
-                  onClick={() => { void submit() }}
-                >
-                  <i className="fas fa-check" /> {busy ? 'Saving…' : 'Create asset & upload'}
-                </button>
-                {' '}
-                <button type="button" className="btn btn-default" onClick={() => setTab('details')}>
-                  Back to Details
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              className="btn btn-theme"
+              disabled={busy}
+              onClick={() => { void submit() }}
+            >
+              <i className="fas fa-check" /> {busy ? 'Saving…' : 'Update'}
+            </button>
+            {' '}
+            <button type="button" className="btn btn-default" onClick={() => setTab('details')}>
+              Back to Details
+            </button>
           </div>
         </>
       )}

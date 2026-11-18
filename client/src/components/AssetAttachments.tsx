@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '../api/client'
 import { getApiBase } from '../api/baseUrl'
 import { openAuthedFile } from '../lib/openAuthedFile'
@@ -8,13 +8,13 @@ export type AttachmentKind = 'invoice' | 'po' | 'other'
 
 export const ATTACHMENT_SLOTS: { kind: AttachmentKind; label: string; hint: string; accept?: string }[] = [
   { kind: 'invoice', label: 'Tax Invoice', hint: 'PDF or image of the tax invoice (optional)', accept: '.pdf,image/*' },
-  { kind: 'po', label: 'Purchase Order (PO)', hint: 'PO document, PDF preferred (required)', accept: '.pdf,image/*' },
+  { kind: 'po', label: 'Purchase Order (PO)', hint: 'PO document, PDF preferred (optional)', accept: '.pdf,image/*' },
   { kind: 'other', label: 'Other documents', hint: 'Warranty, delivery note, etc. (optional)', accept: undefined },
 ]
 
 export type PendingAttachment = { kind: AttachmentKind; file: File; key: string }
 
-/** Nothing on the attachments tab is required. The Purchase Order file is required on Details. */
+/** Document uploads are optional. Purchase Cost and Purchase Order Number stay required on the asset form. */
 export const REQUIRED_CREATE_ATTACHMENT_KINDS: AttachmentKind[] = []
 
 type Props = {
@@ -35,6 +35,20 @@ type Props = {
   onPoExtracted?: (fields: PoParseResult) => void | Promise<void>
   /** Hide slots managed elsewhere (e.g. PO on Details tab) */
   hideKinds?: AttachmentKind[]
+  /** Create form: sections under the details fields, with no tab or nested card */
+  embedded?: boolean
+}
+
+function AttachmentFrame({ embedded, children }: { embedded: boolean; children: ReactNode }) {
+  if (embedded) {
+    return (
+      <section className="asset-attach-sections">
+        <h3 className="asset-attach-sections-title">Attachments</h3>
+        {children}
+      </section>
+    )
+  }
+  return <Box title="Attachments" type="primary">{children}</Box>
 }
 
 function kindLabel(k: string) {
@@ -104,6 +118,7 @@ export default function AssetAttachments({
   requireCreateDocs = false,
   onPoExtracted,
   hideKinds = [],
+  embedded = false,
 }: Props) {
   const [files, setFiles] = useState<Record<string, unknown>[]>([])
   const [uploading, setUploading] = useState('')
@@ -225,17 +240,19 @@ export default function AssetAttachments({
       {msg && <div className="callout callout-info"><p>{msg}</p></div>}
       {error && <div className="callout callout-danger"><p>{error}</p></div>}
 
-      <Box title="Attachments" type="primary">
+      <AttachmentFrame embedded={embedded}>
         <p className="help-block" style={{ marginTop: 0, marginBottom: 14 }}>
           {readOnly
             ? (allowDelete
               ? 'Documents attached to this asset. Use Edit to upload a file. Delete removes it from this asset.'
               : 'Documents attached to this asset. Use Edit to upload or remove files.')
             : hideKinds.includes('po')
-              ? 'Tax Invoice and other documents are optional. The Purchase Order file is required and is on the Details tab.'
+              ? (stagingMode
+                ? 'Tax Invoice and other documents are optional. They upload when you create the asset.'
+                : 'Tax Invoice and other documents are optional. The Purchase Order file is on the Details tab.')
               : stagingMode
-                ? 'Tax Invoice and other documents are optional. They upload after you create the asset.'
-                : 'Tax Invoice and other documents are optional.'}
+                ? 'Tax Invoice, Purchase Order, and other documents are optional. They upload when you create the asset.'
+                : 'Tax Invoice, Purchase Order, and other documents are optional.'}
         </p>
 
         <div className="attachment-grid">
@@ -351,7 +368,7 @@ export default function AssetAttachments({
             )
           })}
         </div>
-      </Box>
+      </AttachmentFrame>
 
       {!stagingMode && (
         <Box title={`All documents (${docFiles.length})`}>

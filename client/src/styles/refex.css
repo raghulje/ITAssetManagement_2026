@@ -2175,6 +2175,23 @@ label + .file-field,
   background: #fffafa;
 }
 
+.page-form-fields > .asset-attachments {
+  grid-column: 1 / -1;
+}
+.asset-attach-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e9f2;
+}
+.asset-attach-sections-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
 .po-details-attach {
   display: flex;
   flex-direction: column;

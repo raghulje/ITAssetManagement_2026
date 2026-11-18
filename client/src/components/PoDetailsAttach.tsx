@@ -138,7 +138,7 @@ export default function PoDetailsAttach({
     <Field label="Purchase Order (PO)" required={required}>
       <div className={`po-details-attach${required && !displayName ? ' is-required-missing' : ''}`}>
         <p className="help-block" style={{ marginTop: 0 }}>
-          Required. Attach the PO here — OCR fills Supplier, Purchase Date, Cost, PO Number, and Warranty below.
+          Optional. Attach the PO here — OCR fills Supplier, Purchase Date, Cost, PO Number, and Warranty below.
         </p>
         <FileInput
           accept=".pdf,image/*"
