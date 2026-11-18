@@ -90,6 +90,13 @@ function dayGreeting(now = new Date()) {
   return 'Good evening'
 }
 
+function employeeIsActive(row: Record<string, unknown>) {
+  if (row.active === true || row.active === 1 || row.active === '1') return true
+  const desc = String(row.employment_status_description || '').trim().toLowerCase()
+  const code = String(row.employment_status || '').trim().toLowerCase()
+  return desc === 'active' || code === '1' || code === 'active'
+}
+
 function nestName(v: unknown) {
   if (v && typeof v === 'object' && 'name' in v) return String((v as { name?: string }).name || '—')
   return v != null && v !== '' ? String(v) : '—'
@@ -213,6 +220,8 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false
     setTableLoading(true)
+    setRows([])
+    setTableTotal(0)
     const base = {
       ...filterParams,
       limit: 25,
@@ -326,16 +335,17 @@ export default function Dashboard() {
           })),
         }
       }
-      const res = await employeesApi.list({ active: 1, limit: 25, search: undefined })
+      const res = await employeesApi.list({ active: '1', limit: 25 })
+      const people = (res.rows || []).filter((r) => employeeIsActive(r))
       return {
-        total: res.total || res.rows?.length || 0,
-        rows: (res.rows || []).map((r) => ({
+        total: res.total || people.length,
+        rows: people.map((r) => ({
           id: Number(r.id),
           primary: String(r.name || r.employee_code || `#${r.id}`),
           secondary: String(r.employee_code || '—'),
-          meta: [String(r.department || ''), String(r.email || '')].filter(Boolean).join(' · ') || '—',
-          status: r.active ? 'Active' : 'Inactive',
-          statusType: r.active ? 'deployable' : 'undeployable',
+          meta: [String(r.department_name || r.department || ''), String(r.email || '')].filter(Boolean).join(' · ') || '—',
+          status: 'Active',
+          statusType: 'deployable',
           href: `/employees/${r.id}`,
         })),
       }

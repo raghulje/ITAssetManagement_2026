@@ -10,7 +10,7 @@ import { isAdrenalinConfigured } from '../services/adrenalinHrms.js'
 import { syncMastersFromEmployees } from '../services/hrmsMastersSync.js'
 import { inventoryDomainClause } from '../services/domainAuth.js'
 import { listEmployeeAssignmentHistory, listEmployeeAssignments } from '../services/employeeAssignments.js'
-import { ACTIVE_EMPLOYEE_SQL } from '../services/employeeStatus.js'
+import { ACTIVE_EMPLOYEE_SQL, isActiveEmployee } from '../services/employeeStatus.js'
 
 export const employeesRouter = Router()
 const uploadFile = makeUploader('private_uploads/imports', 'file')
@@ -53,6 +53,7 @@ function transformEmployee(row: Record<string, unknown>) {
     employee_pincode: row.employee_pincode,
     employment_status: row.employment_status,
     employment_status_description: row.employment_status_description,
+    active: isActiveEmployee(row),
     employee_status: row.employee_status,
     employee_status_description: row.employee_status_description,
     emp_added_on: row.emp_added_on,
