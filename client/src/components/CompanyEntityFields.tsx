@@ -13,6 +13,8 @@ type Props = {
   onCompaniesChange: (opts: SelectOption[]) => void
   onCompanyChange: (companyId: string) => void
   onLegalEntityChange: (legalEntityId: string) => void
+  /** Fires when a person picks the entity, not when it is filled in automatically. */
+  onLegalEntityTouched?: () => void
   required?: boolean
   disabled?: boolean
 }
@@ -28,6 +30,7 @@ export function CompanyEntityFields({
   onCompaniesChange,
   onCompanyChange,
   onLegalEntityChange,
+  onLegalEntityTouched,
   required,
   disabled,
 }: Props) {
@@ -114,7 +117,10 @@ export function CompanyEntityFields({
       <Field label="Entity / company code">
         <AppSelect
           value={legalEntityId}
-          onChange={onLegalEntityChange}
+          onChange={(v) => {
+            onLegalEntityTouched?.()
+            onLegalEntityChange(v)
+          }}
           options={entityOptions}
           disabled={disabled || !companyId || loadingEntities || entities.length === 0}
           placeholder="Entity code"

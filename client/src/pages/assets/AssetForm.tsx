@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { JellyPill, useJellyGroup } from '../../components/motion/jelly'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import AppLayout from '../../layout/AppLayout'
@@ -140,6 +140,21 @@ export default function AssetForm() {
   const [imageBusy, setImageBusy] = useState(false)
   const [imageMsg, setImageMsg] = useState('')
   const [pendingReceived, setPendingReceived] = useState<PendingReceivedImage[]>([])
+  const [draftNote, setDraftNote] = useState('')
+  const [draftTouched, setDraftTouched] = useState(false)
+  const touchedRef = useRef(false)
+  const draftIdRef = useRef<number | null>(params.get('draft') ? Number(params.get('draft')) : null)
+  const initialDraftId = useRef(params.get('draft'))
+  const formRef = useRef(form)
+  formRef.current = form
+  const lastSavedRef = useRef('')
+  const aliveRef = useRef(true)
+  const saveChain = useRef<Promise<void>>(Promise.resolve())
+
+  const markDraftTouched = () => {
+    touchedRef.current = true
+    setDraftTouched(true)
+  }
 
   const [companies, setCompanies] = useState<SelectOption[]>([])
   const [departments, setDepartments] = useState<SelectOption[]>([])
@@ -153,6 +168,11 @@ export default function AssetForm() {
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
+
+  const edit = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    markDraftTouched()
+    set(key, value)
+  }
 
   useEffect(() => {
     Promise.all([
@@ -214,14 +234,19 @@ export default function AssetForm() {
     }
   }, [form.serial, form.domain, isEdit, id, loadedSerial])
 
+  const seenDomain = useRef<string | null>(null)
   useEffect(() => {
     let cancelled = false
+    const domain = form.domain || defaultDomainCode(domainScope)
+    const previous = seenDomain.current
+    seenDomain.current = domain
+    const switched = previous != null && previous !== domain
     mastersApi
-      .assetTypes(undefined, form.domain || defaultDomainCode(domainScope))
+      .assetTypes(undefined, domain)
       .then((types) => {
         if (cancelled) return
         setAssetTypes(types.results || [])
-        if (!isEdit) {
+        if (!isEdit && switched) {
           const defaultType = types.results?.find((t) => /laptop/i.test(t.text)) || types.results?.[0]
           setForm((f) => ({
             ...f,
@@ -383,6 +408,7 @@ export default function AssetForm() {
   }
 
   const onPickImage = (f: File | null) => {
+    markDraftTouched()
     if (!f) return
     if (isEdit && id) {
       void uploadImage(f)
@@ -392,7 +418,80 @@ export default function AssetForm() {
     setImageMsg(`${f.name} queued — will upload when you create the asset`)
   }
 
+  const saveDraftNow = (snapshot: FormState) => {
+    if (isEdit || !touchedRef.current) return
+    const key = JSON.stringify(snapshot)
+    if (key === lastSavedRef.current) return
+    saveChain.current = saveChain.current.then(async () => {
+      if (key === lastSavedRef.current || !touchedRef.current) return
+      try {
+        const saved = await hardwareApi.saveDraft({
+          id: draftIdRef.current,
+          domain: snapshot.domain || 'it',
+          payload: snapshot,
+        })
+        draftIdRef.current = saved.id
+        lastSavedRef.current = key
+        if (aliveRef.current) {
+          setDraftNote('Draft saved. Chosen files stay only while this page is open.')
+          if (!initialDraftId.current) {
+            initialDraftId.current = String(saved.id)
+            const next = new URLSearchParams(window.location.search)
+            next.set('draft', String(saved.id))
+            navigate(`/hardware/create?${next.toString()}`, { replace: true })
+          }
+        }
+      } catch {
+        if (aliveRef.current) setDraftNote('Could not save the draft.')
+      }
+    }).catch(() => undefined)
+  }
+
+  useEffect(() => {
+    if (isEdit) return
+    const draftId = initialDraftId.current
+    if (!draftId) return
+    let cancelled = false
+    hardwareApi.draft(draftId)
+      .then((row) => {
+        if (cancelled) return
+        draftIdRef.current = row.id
+        const payload = row.payload || {}
+        setForm((current) => {
+          const next = { ...current }
+          for (const key of Object.keys(empty) as (keyof FormState)[]) {
+            if (payload[key] != null) next[key] = String(payload[key])
+          }
+          return next
+        })
+        setDraftNote('Draft restored. Choose the Purchase Order file again before you create the asset.')
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message || 'Could not open this draft')
+      })
+    return () => { cancelled = true }
+  }, [isEdit])
+
+  useEffect(() => {
+    if (isEdit || !draftTouched) return
+    const timer = window.setTimeout(() => saveDraftNow(form), 700)
+    return () => window.clearTimeout(timer)
+  }, [form, draftTouched, isEdit])
+
+  useEffect(() => {
+    if (isEdit) return
+    aliveRef.current = true
+    const flush = () => saveDraftNow(formRef.current)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      aliveRef.current = false
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [isEdit])
+
   const applyPoExtracted = async (parsed: PoParseResult) => {
+    markDraftTouched()
     const targetsFilled = Boolean(
       form.supplier_id
       || form.purchase_date
@@ -609,6 +708,13 @@ export default function AssetForm() {
         }
       }
       toast.success(form.assign_employee_id ? 'Asset created and assigned' : 'Asset created')
+      if (draftIdRef.current) {
+        const draftId = draftIdRef.current
+        touchedRef.current = false
+        lastSavedRef.current = JSON.stringify(formRef.current)
+        await hardwareApi.discardDraft(draftId).catch(() => undefined)
+        draftIdRef.current = null
+      }
       navigate(newId ? `/hardware/${newId}` : '/hardware')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed')
@@ -628,6 +734,7 @@ export default function AssetForm() {
   return (
     <AppLayout title={isEdit ? 'Update Asset' : 'Create Asset'} subtitle="Company, department & location masters">
       {error ? <div className="callout callout-danger"><p>{error}</p></div> : null}
+      {!isEdit && draftNote ? <p className="help-block">{draftNote}</p> : null}
 
       <div className="nav-tabs" role="tablist">
         <button
@@ -663,7 +770,7 @@ export default function AssetForm() {
           <DomainSelect
             value={form.domain}
             allowed={domainScope.codes}
-            onChange={(code) => set('domain', code)}
+            onChange={(code) => edit('domain', code)}
             required
           />
 
@@ -673,15 +780,16 @@ export default function AssetForm() {
             legalEntityId={form.legal_entity_id}
             companies={companies}
             onCompaniesChange={setCompanies}
-            onCompanyChange={(v) => set('company_id', v)}
+            onCompanyChange={(v) => edit('company_id', v)}
             onLegalEntityChange={(v) => set('legal_entity_id', v)}
+            onLegalEntityTouched={markDraftTouched}
           />
 
           <MasterSelect
             label="Department"
             value={form.department_id}
             options={departments}
-            onChange={(v) => set('department_id', v)}
+            onChange={(v) => edit('department_id', v)}
             onOptionsChange={setDepartments}
             emptyLabel="— Select department —"
             help="From HRMS department names, or add manually"
@@ -699,7 +807,7 @@ export default function AssetForm() {
             required
             value={form.rtd_location_id}
             options={locations}
-            onChange={(v) => set('rtd_location_id', v)}
+            onChange={(v) => edit('rtd_location_id', v)}
             onOptionsChange={setLocations}
             allowEmpty={false}
             emptyLabel="Select location…"
@@ -721,6 +829,7 @@ export default function AssetForm() {
                 address: form.map_address,
               }}
               onChange={(next: MapLocationValue) => {
+                markDraftTouched()
                 setForm((f) => ({
                   ...f,
                   map_latitude: next.latitude != null ? String(next.latitude) : '',
@@ -740,7 +849,7 @@ export default function AssetForm() {
             value={form.category_id}
             options={assetTypes}
             onChange={(v) => {
-              set('category_id', v)
+              edit('category_id', v)
               set('model_id', '')
             }}
             onOptionsChange={setAssetTypes}
@@ -762,7 +871,7 @@ export default function AssetForm() {
             required
             value={form.manufacturer_id}
             options={manufacturers}
-            onChange={(v) => set('manufacturer_id', v)}
+            onChange={(v) => edit('manufacturer_id', v)}
             onOptionsChange={setManufacturers}
             allowEmpty={false}
             emptyLabel="Select manufacturer…"
@@ -791,7 +900,7 @@ export default function AssetForm() {
             <input
               className="form-control"
               value={form.old_asset_tag}
-              onChange={(e) => set('old_asset_tag', e.target.value)}
+              onChange={(e) => edit('old_asset_tag', e.target.value)}
               placeholder="Previous / imported tag"
             />
             <p className="help-block" style={{ marginBottom: 0 }}>
@@ -803,7 +912,7 @@ export default function AssetForm() {
             <input
               className="form-control"
               value={form.serial}
-              onChange={(e) => set('serial', e.target.value.toUpperCase())}
+              onChange={(e) => edit('serial', e.target.value.toUpperCase())}
               style={{ textTransform: 'uppercase' }}
               autoCapitalize="characters"
               aria-invalid={serialClash ? true : undefined}
@@ -821,34 +930,34 @@ export default function AssetForm() {
           {form.domain === 'admin' ? (
             <>
               <Field label="Color">
-                <input className="form-control" value={form.color} onChange={(e) => set('color', e.target.value)} />
+                <input className="form-control" value={form.color} onChange={(e) => edit('color', e.target.value)} />
               </Field>
               <Field label="Material">
-                <input className="form-control" value={form.material} onChange={(e) => set('material', e.target.value)} />
+                <input className="form-control" value={form.material} onChange={(e) => edit('material', e.target.value)} />
               </Field>
               <Field label="Condition">
-                <input className="form-control" value={form.spec_condition} onChange={(e) => set('spec_condition', e.target.value)} />
+                <input className="form-control" value={form.spec_condition} onChange={(e) => edit('spec_condition', e.target.value)} />
               </Field>
             </>
           ) : (
             <>
               <Field label="Processor">
-                <input className="form-control" value={form.processor} onChange={(e) => set('processor', e.target.value)} />
+                <input className="form-control" value={form.processor} onChange={(e) => edit('processor', e.target.value)} />
               </Field>
               <Field label="RAM">
-                <input className="form-control" value={form.ram} onChange={(e) => set('ram', e.target.value)} />
+                <input className="form-control" value={form.ram} onChange={(e) => edit('ram', e.target.value)} />
               </Field>
               <Field label="Storage">
-                <input className="form-control" value={form.storage} onChange={(e) => set('storage', e.target.value)} />
+                <input className="form-control" value={form.storage} onChange={(e) => edit('storage', e.target.value)} />
               </Field>
               <Field label="Operating System">
-                <input className="form-control" value={form.os} onChange={(e) => set('os', e.target.value)} />
+                <input className="form-control" value={form.os} onChange={(e) => edit('os', e.target.value)} />
               </Field>
               <Field label="MAC Address">
-                <input className="form-control" value={form.mac_address} onChange={(e) => set('mac_address', e.target.value)} />
+                <input className="form-control" value={form.mac_address} onChange={(e) => edit('mac_address', e.target.value)} />
               </Field>
               <Field label="IP Address">
-                <input className="form-control" value={form.ip_address} onChange={(e) => set('ip_address', e.target.value)} />
+                <input className="form-control" value={form.ip_address} onChange={(e) => edit('ip_address', e.target.value)} />
               </Field>
             </>
           )}
@@ -858,7 +967,7 @@ export default function AssetForm() {
             required
             value={form.model_id}
             options={models}
-            onChange={(v) => set('model_id', v)}
+            onChange={(v) => edit('model_id', v)}
             onOptionsChange={setModels}
             allowEmpty={false}
             emptyLabel={form.category_id ? 'Select model…' : 'Select asset type first…'}
@@ -879,7 +988,7 @@ export default function AssetForm() {
             <select
               className="form-control"
               value={form.status_id}
-              onChange={(e) => set('status_id', e.target.value)}
+              onChange={(e) => edit('status_id', e.target.value)}
               required
             >
               <option value="">Select status…</option>
@@ -893,7 +1002,7 @@ export default function AssetForm() {
             <Field label="Assign to Employee (optional)">
               <EmployeeSelect
                 value={form.assign_employee_id}
-                onChange={(v) => set('assign_employee_id', v)}
+                onChange={(v) => edit('assign_employee_id', v)}
                 emptyOption="— Do not assign yet —"
               />
               <p className="help-block">Assigns this asset to the HRMS employee after create. Same directory for IT and Admin assets.</p>
@@ -902,7 +1011,7 @@ export default function AssetForm() {
 
           <PoDetailsAttach
             pending={pendingFiles}
-            onPendingChange={setPendingFiles}
+            onPendingChange={(files) => { markDraftTouched(); setPendingFiles(files) }}
             stagingMode={!isEdit}
             assetId={isEdit ? id : null}
             required
@@ -913,7 +1022,7 @@ export default function AssetForm() {
             label="Supplier / Vendor"
             value={form.supplier_id}
             options={suppliers}
-            onChange={(v) => set('supplier_id', v)}
+            onChange={(v) => edit('supplier_id', v)}
             onOptionsChange={setSuppliers}
             emptyLabel="— Select supplier —"
             help="Add a vendor here, or manage / import under Masters → Suppliers"
@@ -926,7 +1035,7 @@ export default function AssetForm() {
           <Field label="Purchase Date">
             <DateField
               value={form.purchase_date}
-              onChange={(v) => set('purchase_date', v)}
+              onChange={(v) => edit('purchase_date', v)}
             />
           </Field>
 
@@ -937,7 +1046,7 @@ export default function AssetForm() {
               step="0.01"
               className="form-control"
               value={form.purchase_cost}
-              onChange={(e) => set('purchase_cost', e.target.value)}
+              onChange={(e) => edit('purchase_cost', e.target.value)}
               placeholder="e.g. 45000"
               required
             />
@@ -947,7 +1056,7 @@ export default function AssetForm() {
             <input
               className="form-control"
               value={form.order_number}
-              onChange={(e) => set('order_number', e.target.value)}
+              onChange={(e) => edit('order_number', e.target.value)}
               placeholder="e.g. PO-2026-00123"
               required
             />
@@ -958,14 +1067,14 @@ export default function AssetForm() {
               type="number"
               className="form-control"
               value={form.warranty_months}
-              onChange={(e) => set('warranty_months', e.target.value)}
+              onChange={(e) => edit('warranty_months', e.target.value)}
             />
           </Field>
 
           <Field label="EOL Date">
             <DateField
               value={form.asset_eol_date}
-              onChange={(v) => set('asset_eol_date', v)}
+              onChange={(v) => edit('asset_eol_date', v)}
               placeholder="Optional EOL date"
             />
             <span className="help-block">Optional override. If empty, EOL is purchase date + model EOL months.</span>
@@ -975,7 +1084,7 @@ export default function AssetForm() {
             <textarea
               className="form-control"
               value={form.notes}
-              onChange={(e) => set('notes', e.target.value)}
+              onChange={(e) => edit('notes', e.target.value)}
             />
           </Field>
 
@@ -1006,9 +1115,9 @@ export default function AssetForm() {
               assetId={isEdit ? id : null}
               stagingMode={!isEdit}
               description={form.received_condition}
-              onDescriptionChange={(v) => set('received_condition', v)}
+              onDescriptionChange={(v) => edit('received_condition', v)}
               pending={pendingReceived}
-              onPendingChange={setPendingReceived}
+              onPendingChange={(files) => { markDraftTouched(); setPendingReceived(files) }}
             />
           </Field>
         </PageForm>
@@ -1021,7 +1130,7 @@ export default function AssetForm() {
             stagingMode={!isEdit}
             requireCreateDocs={!isEdit}
             pending={pendingFiles}
-            onPendingChange={setPendingFiles}
+            onPendingChange={(files) => { markDraftTouched(); setPendingFiles(files) }}
             hideKinds={['po']}
           />
           <div className="box-footer" style={{ marginTop: 8, padding: '12px 0' }}>

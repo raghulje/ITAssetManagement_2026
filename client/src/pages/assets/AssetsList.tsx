@@ -68,7 +68,7 @@ const LIST_COLUMNS = ['asset_tag', 'old_asset_tag', 'serial', 'model', 'status',
 
 export default function AssetsList() {
   const [params] = useSearchParams()
-  const { activeDomain } = useAuth()
+  const { activeDomain, isAdmin } = useAuth()
   const pageJelly = useJellyGroup('assets-page')
   const statusType = params.get('status_type')
   const q = params.get('q') || ''
@@ -101,7 +101,16 @@ export default function AssetsList() {
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkMsg, setBulkMsg] = useState('')
   const [dash, setDash] = useState<Record<string, number>>({})
+  const [draftRows, setDraftRows] = useState<Array<{
+    id: number
+    label: string
+    serial: string
+    order_number: string
+    created_by_name: string
+    updated_at: string | null
+  }>>([])
   const pageSize = 15
+  const draftsMode = statusType === 'Draft'
 
   const listFilterParams = useMemo(() => {
     const p: Record<string, string | number | undefined> = {
@@ -185,6 +194,7 @@ export default function AssetsList() {
     ReadyToAssign: 'In Stock',
     Pending: 'Pending',
     Deleted: 'Deleted Assets',
+    Draft: 'Drafts',
   }
 
   const cell = (v: unknown) => {
@@ -281,6 +291,7 @@ export default function AssetsList() {
 
   // Facet options from actual Status / Assigned To column values (scoped by current list filters)
   useEffect(() => {
+    if (draftsMode) return
     let cancelled = false
     hardwareApi
       .facets({
@@ -306,10 +317,21 @@ export default function AssetsList() {
         }
       })
     return () => { cancelled = true }
-  }, [statusType, search, companyId, locationId, period.range.from, period.range.to, activeDomain])
+  }, [draftsMode, statusType, search, companyId, locationId, period.range.from, period.range.to, activeDomain])
 
   const load = () => {
     setLoading(true)
+    if (draftsMode) {
+      hardwareApi.drafts()
+        .then((res) => {
+          setDraftRows(res.rows || [])
+          setTotal(res.total || (res.rows || []).length)
+          setError('')
+        })
+        .catch((e: Error) => setError(e.message))
+        .finally(() => setLoading(false))
+      return
+    }
     hardwareApi.list({
       ...listFilterParams,
       limit: pageSize,
@@ -633,7 +655,67 @@ export default function AssetsList() {
               </button>
             </div>
           </div>
+        </div>
 
+          {draftsMode ? (
+            <>
+              <p className="help-block">
+                {isAdmin
+                  ? 'All drafts in this domain. Open one to keep filling it in. The purchase order file has to be chosen again.'
+                  : 'Drafts you started in this domain. Open one to keep filling it in. The purchase order file has to be chosen again.'}
+              </p>
+              <div className="table-responsive data-table-desktop">
+                <table className="table table-hover data-list-table">
+                  <thead>
+                    <tr>
+                      <th>Draft</th>
+                      <th>Serial</th>
+                      <th>Purchase Order Number</th>
+                      <th>Updated</th>
+                      <th>Created by</th>
+                      <th className="col-actions">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {draftRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="cell-muted" style={{ textAlign: 'center', padding: '36px 12px' }}>
+                          {loading ? 'Loading…' : 'No drafts yet'}
+                        </td>
+                      </tr>
+                    ) : draftRows.map((draft) => (
+                      <tr key={draft.id}>
+                        <td>
+                          <Link to={`/hardware/create?draft=${draft.id}`} className="asset-tag-link">{draft.label}</Link>
+                        </td>
+                        <td>{draft.serial || <span className="cell-muted">—</span>}</td>
+                        <td>{draft.order_number || <span className="cell-muted">—</span>}</td>
+                        <td>{draft.updated_at ? new Date(draft.updated_at.replace(' ', 'T')).toLocaleString('en-IN') : '—'}</td>
+                        <td>{draft.created_by_name || <span className="cell-muted">—</span>}</td>
+                        <td className="col-actions">
+                          <div className="row-actions">
+                            <Link to={`/hardware/create?draft=${draft.id}`} className="btn btn-theme btn-sm">Continue</Link>
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-sm"
+                              onClick={() => {
+                                if (!confirm('Delete this draft?')) return
+                                void hardwareApi.discardDraft(draft.id).then(() => load()).catch((e: Error) => setError(e.message))
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+          <>
+          <div className="asset-toolbar">
           <div className="asset-toolbar-filters">
             <div className="search-inline">
               <i className="fas fa-search" aria-hidden />
@@ -712,7 +794,7 @@ export default function AssetsList() {
               </button>
             )}
           </div>
-        </div>
+          </div>
 
         {selectedCount > 0 ? (
           <div className="bulk-bar">
@@ -908,6 +990,8 @@ export default function AssetsList() {
             {total === 0 ? '0 items' : `${page * pageSize + 1}–${Math.min(total, (page + 1) * pageSize)} of ${total}`}
           </span>
         </div>
+          </>
+          )}
       </Box>
     </AppLayout>
   )

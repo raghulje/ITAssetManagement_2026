@@ -24,6 +24,13 @@ import { findItSerialClash, listItSerialDuplicates, normalizeSerial } from '../s
 import { requireActiveEmployee } from '../services/employeeStatus.js'
 import { requireItAssetManager } from '../services/permissions.js'
 import { generateMissingAssetQr, deviceBrandSerial, publicAssetPageUrl } from '../services/assetQr.js'
+import {
+  discardAssetDraft,
+  draftViewerSeesAll,
+  getAssetDraft,
+  listAssetDrafts,
+  saveAssetDraft,
+} from '../services/assetDrafts.js'
 import { applyLatestAssetUpdates, compareLatestAssetUpload } from '../services/latestAssetData.js'
 import { makeUploader } from '../services/uploads.js'
 import { ensureP2pAssetColumns } from '../services/p2pColumns.js'
@@ -588,7 +595,7 @@ router.post('/qr/generate-missing', async (req, res) => {
   }
 })
 
-/** CSV: QR, Asset Name, Company , Device Brand and Serial Number Details, Old asset tag, Serial */
+/** CSV: QR, Asset Name, Company , Device Brand and Serial Number Details, Old asset tag, Serial, Assigned To */
 router.get('/qr/export', async (req, res) => {
   try {
     const domain = await inventoryDomainClause(req.user?.permissions, req.query.domain || req.query.domain_id, 'a')
@@ -601,11 +608,36 @@ router.get('/qr/export', async (req, res) => {
       company_name: string | null
       manufacturer_name: string | null
       model_name: string | null
+      assigned_to_name: string | null
     }>(`
       SELECT a.asset_tag, a.old_asset_tag, a.serial, a.qr_token,
         c.name AS company_name,
         ${hasAssetMfr ? 'COALESCE(am.name, mm.name)' : 'mm.name'} AS manufacturer_name,
-        m.name AS model_name
+        m.name AS model_name,
+        COALESCE(
+          CASE
+            WHEN a.assigned_to IS NULL THEN ''
+            WHEN a.assigned_type = 'employee' THEN (
+              SELECT TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')))
+              FROM employees WHERE id = a.assigned_to
+            )
+            WHEN a.assigned_type = 'consultant' THEN (
+              SELECT TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')))
+              FROM consultants WHERE id = a.assigned_to
+            )
+            WHEN a.assigned_type = 'location' THEN (
+              SELECT name FROM locations WHERE id = a.assigned_to
+            )
+            WHEN a.assigned_type = 'asset' THEN (
+              SELECT asset_tag FROM assets WHERE id = a.assigned_to
+            )
+            ELSE (
+              SELECT TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')))
+              FROM users WHERE id = a.assigned_to
+            )
+          END,
+          ''
+        ) AS assigned_to_name
       FROM assets a
       LEFT JOIN companies c ON c.id = a.company_id
       LEFT JOIN models m ON m.id = a.model_id
@@ -614,10 +646,10 @@ router.get('/qr/export', async (req, res) => {
       WHERE a.deleted_at IS NULL
         AND a.qr_token IS NOT NULL AND TRIM(a.qr_token) <> ''
         ${domain.sql}
-      ORDER BY a.asset_tag ASC, a.id ASC
+      ORDER BY a.created_at ASC, a.id ASC
     `, domain.params)
 
-    const header = 'QR,Asset Name,Company ,Device Brand and Serial Number Details,Old asset tag,Serial'
+    const header = 'QR,Asset Name,Company ,Device Brand and Serial Number Details,Old asset tag,Serial,Assigned To'
     const lines = rows.map((row) => {
       const cells = [
         publicAssetPageUrl(String(row.qr_token)),
@@ -630,6 +662,7 @@ router.get('/qr/export', async (req, res) => {
         ),
         String(row.old_asset_tag || '').trim(),
         String(row.serial || '').trim(),
+        String(row.assigned_to_name || '').trim(),
       ]
       return cells.map((cell) => {
         const s = String(cell ?? '')
@@ -696,6 +729,51 @@ router.get('/serial-check', async (req, res) => {
 
 router.get('/serial-duplicates', async (req, res) => {
   return okItem(res, await listItSerialDuplicates(req.user?.permissions))
+})
+
+router.get('/drafts', async (req, res) => {
+  const userId = Number(req.user?.id || 0)
+  if (!userId) return fail(res, 'Unauthorized', 401)
+  try {
+    const rows = await listAssetDrafts({
+      userId,
+      seeAll: draftViewerSeesAll(req.user?.permissions),
+      domain: req.query.domain || req.query.domain_id,
+    })
+    return okList(res, rows)
+  } catch (e) {
+    return fail(res, e instanceof Error ? e.message : 'Could not load drafts', 500)
+  }
+})
+
+router.get('/drafts/:id', async (req, res) => {
+  const userId = Number(req.user?.id || 0)
+  if (!userId) return fail(res, 'Unauthorized', 401)
+  const row = await getAssetDraft(Number(req.params.id), userId, draftViewerSeesAll(req.user?.permissions))
+  if (!row) return fail(res, 'Draft not found', 404)
+  return okItem(res, row)
+})
+
+router.post('/drafts', async (req, res) => {
+  const userId = Number(req.user?.id || 0)
+  if (!userId) return fail(res, 'Unauthorized', 401)
+  const saved = await saveAssetDraft({
+    id: req.body?.id ? Number(req.body.id) : null,
+    userId,
+    seeAll: draftViewerSeesAll(req.user?.permissions),
+    domain: req.body?.domain || req.query.domain,
+    payload: req.body?.payload,
+  })
+  if (!saved) return fail(res, 'Draft not found', 404)
+  return okItem(res, saved)
+})
+
+router.post('/drafts/:id/discard', async (req, res) => {
+  const userId = Number(req.user?.id || 0)
+  if (!userId) return fail(res, 'Unauthorized', 401)
+  const ok = await discardAssetDraft(Number(req.params.id), userId, draftViewerSeesAll(req.user?.permissions))
+  if (!ok) return fail(res, 'Draft not found', 404)
+  return okMessage(res, 'Draft deleted')
 })
 
 router.get('/:id', async (req, res) => {

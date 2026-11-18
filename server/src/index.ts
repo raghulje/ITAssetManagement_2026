@@ -22,6 +22,12 @@ try {
   console.warn('ensureConsultants failed:', e instanceof Error ? e.message : e)
 }
 try {
+  const { ensureAssetDrafts } = await import('./services/assetDrafts.js')
+  await ensureAssetDrafts()
+} catch (e) {
+  console.warn('ensureAssetDrafts failed:', e instanceof Error ? e.message : e)
+}
+try {
   const { ensureDefaultRoles } = await import('./services/permissions.js')
   await ensureDefaultRoles()
   console.log('Roles & permissions ready')

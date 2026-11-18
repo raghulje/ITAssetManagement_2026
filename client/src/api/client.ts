@@ -131,6 +131,37 @@ export const hardwareApi = {
       { method: 'POST' },
     )
   },
+  drafts: () => {
+    const q = new URLSearchParams()
+    const domain = storedInventoryDomain()
+    if (domain) q.set('domain', domain)
+    const qs = q.toString()
+    return api<{
+      total: number
+      rows: Array<{
+        id: number
+        label: string
+        serial: string
+        order_number: string
+        created_by: number | null
+        created_by_name: string
+        created_at: string | null
+        updated_at: string | null
+      }>
+    }>(`/hardware/drafts${qs ? `?${qs}` : ''}`)
+  },
+  draft: (id: number | string) => api<{
+    id: number
+    domain: string
+    payload: Record<string, unknown>
+    created_by: number | null
+    created_by_name: string
+    updated_at: string | null
+  }>(`/hardware/drafts/${id}`),
+  saveDraft: (body: { id?: number | null; domain?: string; payload: Record<string, unknown> }) =>
+    api<{ id: number; updated_at: string }>('/hardware/drafts', { method: 'POST', json: body }),
+  discardDraft: (id: number | string) =>
+    api(`/hardware/drafts/${id}/discard`, { method: 'POST' }),
   qrExportPath: () => {
     const q = new URLSearchParams()
     const domain = storedInventoryDomain()

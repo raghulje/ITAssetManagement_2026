@@ -65,6 +65,12 @@ const SECTION_TABS: Record<SectionKey, SectionTab[]> = {
       group: 'status',
       isActive: (p, s) => p === '/hardware' && new URLSearchParams(s).get('status_type') === 'RTD',
     },
+    {
+      to: '/hardware?status_type=Draft',
+      label: 'Drafts',
+      group: 'status',
+      isActive: (p, s) => p === '/hardware' && new URLSearchParams(s).get('status_type') === 'Draft',
+    },
     // Pending / Deleted — not used at Refex for now; restore when needed
     // {
     //   to: '/hardware?status_type=Pending',
