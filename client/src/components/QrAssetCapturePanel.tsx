@@ -331,7 +331,7 @@ export default function QrAssetCapturePanel({
         : kind === 'license'
           ? 'Windows license photo'
           : 'side photo'
-    if (!window.confirm(`Replace this ${label}? The other captures stay, and you take a new one for this slot only.`)) return
+    if (!window.confirm(`Retake this ${label}? The other captures stay, and you take a new one for this slot only.`)) return
     setBusy(true)
     setError('')
     try {
@@ -574,7 +574,7 @@ export default function QrAssetCapturePanel({
       {savedOnAsset ? (
         <div className="qr-capture-saved-bar">
           <p>
-            {submitHint} To fix one or two shots, tap Replace on that photo or video. The rest stay.
+            {submitHint} To fix one or two shots, tap Retake this photo on that card. The rest stay.
             Re-capture latest location starts the whole pack again.
           </p>
           <button
@@ -679,34 +679,39 @@ function Gallery({
           <figure key={mediaItem.key} className={`qr-capture-card${video ? ' qr-capture-card--video' : ''}`}>
             <CaptureThumb item={mediaItem} onOpen={() => onOpen({ items: media, index })} />
             <figcaption>
-              <span>{mediaItem.caption}</span>
-              {stagedItem ? (
+              <span className="qr-capture-meta">{mediaItem.caption}</span>
+            </figcaption>
+            {stagedItem ? (
+              <div className="qr-capture-card__actions">
                 <button
                   type="button"
-                  className="btn btn-link btn-sm"
+                  className="qr-capture-retake"
                   disabled={busy}
                   onClick={(e) => {
                     e.stopPropagation()
                     onRemoveStaged(stagedItem.localId)
                   }}
                 >
-                  Remove
+                  <i className="fas fa-times" /> Remove this {video ? 'video' : 'photo'}
                 </button>
-              ) : null}
-              {live && onReplaceLive ? (
+              </div>
+            ) : null}
+            {live && onReplaceLive ? (
+              <div className="qr-capture-card__actions">
                 <button
                   type="button"
-                  className="btn btn-link btn-sm"
+                  className="qr-capture-retake"
                   disabled={busy}
                   onClick={(e) => {
                     e.stopPropagation()
                     void onReplaceLive(live.id, live.kind)
                   }}
                 >
-                  Replace
+                  <i className={`fas ${video || live.kind === 'video' ? 'fa-video' : 'fa-camera'}`} />
+                  {video || live.kind === 'video' ? 'Retake this video' : 'Retake this photo'}
                 </button>
-              ) : null}
-            </figcaption>
+              </div>
+            ) : null}
           </figure>
         )
       })}

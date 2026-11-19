@@ -64,7 +64,7 @@ export default function AssetCapturesTab({
         : row.kind === 'license'
           ? 'Windows license photo'
           : 'side photo'
-    if (!window.confirm(`Replace this ${label}? The other captures stay, and you take a new one for this slot only.`)) return
+    if (!window.confirm(`Retake this ${label}? The other captures stay, and you take a new one for this slot only.`)) return
     setBusy(true)
     setError('')
     try {
@@ -120,7 +120,7 @@ export default function AssetCapturesTab({
       ) : null}
       {error ? <p className="text-danger">{error}</p> : null}
       <p className="help-block">
-        Tap <strong>Replace</strong> on a photo or the video to retake only that one. The other captures stay.
+        Use <strong>Retake this photo</strong> on the shot that is wrong. Only that file is replaced. The other captures stay.
         When the asset moves, tap <strong>Re-capture latest location</strong> and submit a new pack.
         {recaptureHint ? (
           <>
@@ -217,6 +217,11 @@ function CaptureGroup({
   return (
     <div className="qr-capture-block">
       <h3 className="qr-capture-panel__sub">{title}</h3>
+      {onReplace && items.length ? (
+        <p className="help-block" style={{ marginTop: 0 }}>
+          Wrong {video ? 'video' : 'photo'}? Tap Retake on that card. The other captures stay.
+        </p>
+      ) : null}
       {!items.length ? (
         <p className="text-muted">None yet.</p>
       ) : (
@@ -225,19 +230,22 @@ function CaptureGroup({
             <figure key={item.key} className={`qr-capture-card${item.isVideo ? ' qr-capture-card--video' : ''}`}>
               <CaptureThumb item={item} onOpen={() => onOpen({ items: media, index })} />
               <figcaption>
-                <span>{item.caption}</span>
-                {item.coords ? <span>{item.coords}</span> : null}
-                {onReplace ? (
+                <span className="qr-capture-meta">{item.caption}</span>
+                {item.coords ? <span className="qr-capture-meta">{item.coords}</span> : null}
+              </figcaption>
+              {onReplace ? (
+                <div className="qr-capture-card__actions">
                   <button
                     type="button"
-                    className="btn btn-link btn-sm"
+                    className="qr-capture-retake"
                     disabled={busy}
                     onClick={() => onReplace(items[index])}
                   >
-                    Replace
+                    <i className={`fas ${video ? 'fa-video' : 'fa-camera'}`} />
+                    {video ? 'Retake this video' : 'Retake this photo'}
                   </button>
-                ) : null}
-              </figcaption>
+                </div>
+              ) : null}
             </figure>
           ))}
         </div>
