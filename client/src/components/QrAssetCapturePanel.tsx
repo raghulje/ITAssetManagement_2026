@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { getApiBase } from '../api/baseUrl'
 import { api, ApiError } from '../api/client'
 import AssetVideoCapture from './AssetVideoCapture'
@@ -201,6 +201,9 @@ export default function QrAssetCapturePanel({
   const [gps, setGps] = useState<PrecisePosition | null>(null)
   const [viewer, setViewer] = useState<{ items: CaptureMediaItem[]; index: number } | null>(null)
   const [justSubmitted, setJustSubmitted] = useState(false)
+  const [listReady, setListReady] = useState(staged)
+  const shotHandled = useRef(false)
+  const [searchParams, setSearchParams] = useSearchParams()
   const licenseRequired = !isAppleManufacturer(manufacturer)
 
   const pending = staged ? stagedItems : localStaged
@@ -220,6 +223,7 @@ export default function QrAssetCapturePanel({
       ...r,
       kind: r.kind === 'serial' || r.kind === 'license' || r.kind === 'video' ? r.kind : 'photo',
     })))
+    setListReady(true)
   }, [token, staged])
 
   useEffect(() => {
@@ -297,17 +301,50 @@ export default function QrAssetCapturePanel({
     setVideoOpen(true)
   }
 
-  async function removeLive(id: number) {
-    if (!window.confirm('Delete this capture?')) return
+  useEffect(() => {
+    if (staged || !listReady || shotHandled.current) return
+    const shot = searchParams.get('shot')
+    if (shot !== 'photo' && shot !== 'serial' && shot !== 'license' && shot !== 'video') return
+    shotHandled.current = true
+    const next = new URLSearchParams(searchParams)
+    next.delete('shot')
+    setSearchParams(next, { replace: true })
+    const open = shot === 'photo'
+      ? pack.sides < MIN_SIDE_PHOTOS
+      : shot === 'serial'
+        ? !pack.serialOk
+        : shot === 'license'
+          ? licenseRequired && !pack.licenseOk
+          : !pack.videoOk
+    if (!open) return
+    if (shot === 'video') void openVideo()
+    else void openCamera(shot)
+    // Open the requested slot once after the saved captures have loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listReady, staged])
+
+  async function replaceLive(id: number, kind: CaptureKind) {
+    const label = kind === 'video'
+      ? 'video'
+      : kind === 'serial'
+        ? 'serial number photo'
+        : kind === 'license'
+          ? 'Windows license photo'
+          : 'side photo'
+    if (!window.confirm(`Replace this ${label}? The other captures stay, and you take a new one for this slot only.`)) return
     setBusy(true)
+    setError('')
     try {
       await api(`/public/assets/${encodeURIComponent(token)}/captures/${id}`, { method: 'DELETE' })
       await loadList()
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof Error ? e.message : 'Delete failed')
-    } finally {
+      setError(e instanceof ApiError || e instanceof Error ? e.message : 'Could not replace this capture')
       setBusy(false)
+      return
     }
+    setBusy(false)
+    if (kind === 'video') await openVideo()
+    else await openCamera(kind === 'serial' || kind === 'license' ? kind : 'photo')
   }
 
   function removeStaged(localId: string) {
@@ -383,7 +420,11 @@ export default function QrAssetCapturePanel({
       ? `${assetTag} · Windows/Apple license key`
       : `${assetTag} · all sides`
 
-  const savedOnAsset = !staged && rows.length > 0 && pending.length === 0 && !justSubmitted
+  const savedOnAsset = !staged && rows.length > 0 && pending.length === 0 && pack.complete && !justSubmitted
+  const showSideCapture = staged || pack.sides < MIN_SIDE_PHOTOS
+  const showSerialCapture = staged || !pack.serialOk
+  const showLicenseCapture = licenseRequired && (staged || !pack.licenseOk)
+  const showVideoCapture = staged || !pack.videoOk
   const showSubmit = staged
     ? pack.complete
     : canUploadSubmit
@@ -450,20 +491,19 @@ export default function QrAssetCapturePanel({
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">All sides ({pack.sides}/{MIN_SIDE_PHOTOS})</h3>
-          {savedOnAsset ? null : (
+          {showSideCapture ? (
             <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('photo') }}>
               <i className="fas fa-camera" /> Capture all sides
             </button>
-          )}
+          ) : null}
         </div>
         <p className="help-block">Walk around the asset and take at least 4 GPS-stamped photos (front, back, and both sides).</p>
         <Gallery
           items={sideItems}
           busy={working}
           empty="No side photos yet."
-          hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
-          onRemoveLive={removeLive}
+          onReplaceLive={staged ? undefined : replaceLive}
           onOpen={setViewer}
         />
       </div>
@@ -471,20 +511,19 @@ export default function QrAssetCapturePanel({
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">Serial number ({pack.serialOk ? '1/1' : '0/1'})</h3>
-          {savedOnAsset ? null : (
+          {showSerialCapture ? (
             <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('serial') }}>
               <i className="fas fa-barcode" /> Capture serial no.
             </button>
-          )}
+          ) : null}
         </div>
         <p className="help-block">Photograph the serial number sticker / label so it is readable. This is mandatory.</p>
         <Gallery
           items={serialItems}
           busy={working}
           empty="No serial number photo yet."
-          hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
-          onRemoveLive={removeLive}
+          onReplaceLive={staged ? undefined : replaceLive}
           onOpen={setViewer}
         />
       </div>
@@ -493,20 +532,19 @@ export default function QrAssetCapturePanel({
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">Windows license key ({pack.licenseOk ? '1/1' : '0/1'})</h3>
-          {savedOnAsset || !licenseRequired ? null : (
+          {showLicenseCapture ? (
             <button type="button" className="btn btn-theme btn-sm" disabled={working} onClick={() => { void openCamera('license') }}>
               <i className="fas fa-key" /> Capture Windows license
             </button>
-          )}
+          ) : null}
         </div>
         <p className="help-block">Photograph the Windows license key so the characters are readable.</p>
         <Gallery
           items={licenseItems}
           busy={working}
           empty="No license key photo yet."
-          hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
-          onRemoveLive={removeLive}
+          onReplaceLive={staged ? undefined : replaceLive}
           onOpen={setViewer}
         />
       </div>
@@ -515,11 +553,11 @@ export default function QrAssetCapturePanel({
       <div className="qr-capture-block">
         <div className="qr-capture-block__head">
           <h3 className="qr-capture-panel__sub">Video ({pack.videos}/1)</h3>
-          {savedOnAsset ? null : (
+          {showVideoCapture ? (
             <button type="button" className="btn btn-default btn-sm" disabled={working} onClick={() => { void openVideo() }}>
               <i className="fas fa-video" /> Record 10s video
             </button>
-          )}
+          ) : null}
         </div>
         <p className="help-block">A 10-second walk-around video is mandatory for first-time registration.</p>
         <Gallery
@@ -527,16 +565,18 @@ export default function QrAssetCapturePanel({
           busy={working}
           empty="No video yet."
           video
-          hideRemove={savedOnAsset}
           onRemoveStaged={removeStaged}
-          onRemoveLive={removeLive}
+          onReplaceLive={staged ? undefined : replaceLive}
           onOpen={setViewer}
         />
       </div>
 
       {savedOnAsset ? (
         <div className="qr-capture-saved-bar">
-          <p>{submitHint} If the asset moved, start a new pack at the latest site.</p>
+          <p>
+            {submitHint} To fix one or two shots, tap Replace on that photo or video. The rest stay.
+            Re-capture latest location starts the whole pack again.
+          </p>
           <button
             type="button"
             className="qr-capture-recapture-btn"
@@ -615,18 +655,16 @@ function Gallery({
   busy,
   empty,
   video,
-  hideRemove,
   onRemoveStaged,
-  onRemoveLive,
+  onReplaceLive,
   onOpen,
 }: {
   items: Array<StagedCapture | CaptureRow>
   busy: boolean
   empty: string
   video?: boolean
-  hideRemove?: boolean
   onRemoveStaged: (id: string) => void
-  onRemoveLive: (id: number) => void
+  onReplaceLive?: (id: number, kind: CaptureKind) => void
   onOpen: (next: { items: CaptureMediaItem[]; index: number }) => void
 }) {
   if (!items.length) return <p className="text-muted">{empty}</p>
@@ -642,20 +680,32 @@ function Gallery({
             <CaptureThumb item={mediaItem} onOpen={() => onOpen({ items: media, index })} />
             <figcaption>
               <span>{mediaItem.caption}</span>
-              {hideRemove ? null : (
+              {stagedItem ? (
                 <button
                   type="button"
                   className="btn btn-link btn-sm"
                   disabled={busy}
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (stagedItem) onRemoveStaged(stagedItem.localId)
-                    else if (live) void onRemoveLive(live.id)
+                    onRemoveStaged(stagedItem.localId)
                   }}
                 >
                   Remove
                 </button>
-              )}
+              ) : null}
+              {live && onReplaceLive ? (
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm"
+                  disabled={busy}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void onReplaceLive(live.id, live.kind)
+                  }}
+                >
+                  Replace
+                </button>
+              ) : null}
             </figcaption>
           </figure>
         )

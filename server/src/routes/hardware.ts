@@ -42,6 +42,7 @@ import {
   listAssetCaptures,
   presentCapture,
   sendCaptureFile,
+  softDeleteAssetCapture,
 } from '../services/assetCaptures.js'
 
 const router = Router()
@@ -806,6 +807,14 @@ router.delete('/:id/captures', requireItAssetManager, async (req, res) => {
     meta: { photos_removed: result.removed, source: 'asset' },
   })
   return okMessage(res, 'Captures deregistered. Recapture at the new location and Submit.', result)
+})
+
+router.delete('/:id/captures/:cid', requireItAssetManager, async (req, res) => {
+  const scoped = await requireAssetDomain(req, res, Number(req.params.id))
+  if (!scoped) return
+  const row = await softDeleteAssetCapture(Number(req.params.cid), scoped.id)
+  if (!row) return fail(res, 'Capture not found', 404)
+  return okMessage(res, 'Capture removed. Take a new one for this slot. The other captures stay.')
 })
 
 router.get('/:id/captures/:cid/file', async (req, res) => {

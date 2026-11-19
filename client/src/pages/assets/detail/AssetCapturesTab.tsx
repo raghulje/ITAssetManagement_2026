@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { hardwareApi } from '../../../api/client'
 import { formatAppDateTime } from '../../../lib/datetime'
 import { authorizedMediaUrl } from '../../../lib/authorizedMedia'
@@ -40,6 +40,7 @@ export default function AssetCapturesTab({
   const [archived, setArchived] = useState<CaptureRow[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const navigate = useNavigate()
   const [viewer, setViewer] = useState<{ items: CaptureMediaItem[]; index: number } | null>(null)
   const apple = isAppleManufacturer(manufacturer)
   const pack = firstPackStatus(rows, { licenseRequired: !apple })
@@ -54,6 +55,30 @@ export default function AssetCapturesTab({
       .then((r) => setArchived(normalizeCaptureRows(r.rows || [])))
       .catch(() => setArchived([]))
   }, [assetId, rows])
+
+  async function replaceOne(row: CaptureRow) {
+    const label = row.kind === 'video'
+      ? 'video'
+      : row.kind === 'serial'
+        ? 'serial number photo'
+        : row.kind === 'license'
+          ? 'Windows license photo'
+          : 'side photo'
+    if (!window.confirm(`Replace this ${label}? The other captures stay, and you take a new one for this slot only.`)) return
+    setBusy(true)
+    setError('')
+    try {
+      await hardwareApi.deleteCapture(assetId, row.id)
+      onDeregistered?.()
+      if (recaptureHint) {
+        navigate(`${recaptureHint}?shot=${row.kind === 'photo' ? 'photo' : row.kind}`)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not replace this capture')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function deregister() {
     if (!window.confirm(DEREGISTER_CONFIRM)) return
@@ -95,8 +120,8 @@ export default function AssetCapturesTab({
       ) : null}
       {error ? <p className="text-danger">{error}</p> : null}
       <p className="help-block">
-        After an employee is relieved or the asset moves to another site, tap
-        <strong> Re-capture latest location</strong> and submit a new GPS-stamped pack.
+        Tap <strong>Replace</strong> on a photo or the video to retake only that one. The other captures stay.
+        When the asset moves, tap <strong>Re-capture latest location</strong> and submit a new pack.
         {recaptureHint ? (
           <>
             {' '}Scan the QR label or open{' '}
@@ -120,12 +145,12 @@ export default function AssetCapturesTab({
             )}
             <li className={pack.videoOk ? 'is-done' : ''}>10-second video — {pack.videoOk ? 'yes' : 'missing'}</li>
           </ul>
-          <CaptureGroup title={`All sides (${photos.length})`} items={photos} onOpen={setViewer} />
-          <CaptureGroup title={`Serial number (${serials.length})`} items={serials} onOpen={setViewer} />
+          <CaptureGroup title={`All sides (${photos.length})`} items={photos} onOpen={setViewer} onReplace={canDeregister ? replaceOne : undefined} busy={busy} />
+          <CaptureGroup title={`Serial number (${serials.length})`} items={serials} onOpen={setViewer} onReplace={canDeregister ? replaceOne : undefined} busy={busy} />
           {apple && !licenses.length ? null : (
-            <CaptureGroup title={`Windows license key (${licenses.length})`} items={licenses} onOpen={setViewer} />
+            <CaptureGroup title={`Windows license key (${licenses.length})`} items={licenses} onOpen={setViewer} onReplace={canDeregister ? replaceOne : undefined} busy={busy} />
           )}
-          <CaptureGroup title={`Video (${videos.length})`} items={videos} onOpen={setViewer} video />
+          <CaptureGroup title={`Video (${videos.length})`} items={videos} onOpen={setViewer} video onReplace={canDeregister ? replaceOne : undefined} busy={busy} />
         </>
       )}
 
@@ -135,7 +160,7 @@ export default function AssetCapturesTab({
           {historyGroups.map((group) => (
             <section key={group.key} className="qr-capture-block">
               <p className="help-block" style={{ marginBottom: 8 }}>
-                Deregistered {formatAppDateTime(group.at)}
+                {group.rows.length <= 2 ? 'Replaced' : 'Deregistered'} {formatAppDateTime(group.at)}
                 {group.address ? ` · ${group.address}` : ''}
               </p>
               <CaptureGroup title={`Pack (${group.rows.length})`} items={group.rows} onOpen={setViewer} />
@@ -178,11 +203,15 @@ function CaptureGroup({
   items,
   video,
   onOpen,
+  onReplace,
+  busy,
 }: {
   title: string
   items: CaptureRow[]
   video?: boolean
   onOpen: (next: { items: CaptureMediaItem[]; index: number }) => void
+  onReplace?: (row: CaptureRow) => void
+  busy?: boolean
 }) {
   const media = useMemo(() => toMediaItems(items), [items])
   return (
@@ -198,6 +227,16 @@ function CaptureGroup({
               <figcaption>
                 <span>{item.caption}</span>
                 {item.coords ? <span>{item.coords}</span> : null}
+                {onReplace ? (
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm"
+                    disabled={busy}
+                    onClick={() => onReplace(items[index])}
+                  >
+                    Replace
+                  </button>
+                ) : null}
               </figcaption>
             </figure>
           ))}

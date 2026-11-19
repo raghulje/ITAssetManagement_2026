@@ -276,6 +276,8 @@ export const hardwareApi = {
       `/hardware/${id}/captures`,
       { method: 'DELETE' },
     ),
+  deleteCapture: (id: number | string, captureId: number | string) =>
+    api(`/hardware/${id}/captures/${captureId}`, { method: 'DELETE' }),
   maintenances: (id: number | string) =>
     api<ApiList<Record<string, unknown>>>(`/maintenances?asset_id=${encodeURIComponent(String(id))}`),
   agentStatus: (id: number | string) => api<Record<string, unknown>>(`/hardware/${id}/agent`),
