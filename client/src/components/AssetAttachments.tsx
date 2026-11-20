@@ -14,7 +14,7 @@ export const ATTACHMENT_SLOTS: { kind: AttachmentKind; label: string; hint: stri
 
 export type PendingAttachment = { kind: AttachmentKind; file: File; key: string }
 
-/** Document uploads are optional. Purchase Cost and Purchase Order Number stay required on the asset form. */
+/** Document uploads are optional. Purchase Cost stays required on the asset form. */
 export const REQUIRED_CREATE_ATTACHMENT_KINDS: AttachmentKind[] = []
 
 type Props = {

@@ -585,11 +585,6 @@ export default function AssetForm() {
       setTab('details')
       return
     }
-    if (!form.order_number.trim()) {
-      setError('Purchase Order Number is required')
-      setTab('details')
-      return
-    }
     if (!isEdit && (form.domain || 'it') === 'it' && form.serial.trim()) {
       try {
         const clash = await hardwareApi.serialCheck(form.serial.trim())
@@ -1035,13 +1030,12 @@ export default function AssetForm() {
             />
           </Field>
 
-          <Field label="Purchase Order Number" required>
+          <Field label="Purchase Order Number">
             <input
               className="form-control"
               value={form.order_number}
               onChange={(e) => edit('order_number', e.target.value)}
-              placeholder="e.g. PO-2026-00123"
-              required
+              placeholder="Optional, e.g. PO-2026-00123"
             />
           </Field>
 

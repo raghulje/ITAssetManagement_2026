@@ -918,9 +918,6 @@ router.post('/', async (req, res) => {
   if (b.purchase_cost == null || b.purchase_cost === '' || !Number.isFinite(purchaseCost) || purchaseCost <= 0) {
     return fail(res, 'Purchase cost is required')
   }
-  if (!String(b.order_number || '').trim()) {
-    return fail(res, 'Purchase order number is required')
-  }
 
   // Prefer explicit category; else take from model
   let categoryId = b.category_id ? Number(b.category_id) : null
@@ -1088,9 +1085,6 @@ async function updateAsset(req: import('express').Request, res: import('express'
       return fail(res, 'Purchase cost is required')
     }
   }
-  if (b.order_number !== undefined && !String(b.order_number || '').trim()) {
-    return fail(res, 'Purchase order number is required')
-  }
   if (b.domain_id !== undefined || b.domain !== undefined || b.domain_code !== undefined) {
     try {
       const domain = await resolveWriteDomainId(req.user?.permissions, b)
@@ -1157,6 +1151,10 @@ async function updateAsset(req: import('express').Request, res: import('express'
       if (f === 'serial') {
         const s = v == null ? '' : String(v).trim()
         v = s ? s.toUpperCase() : null
+      }
+      if (f === 'order_number') {
+        const s = v == null ? '' : String(v).trim()
+        v = s || null
       }
       if (f === 'location_text') {
         const s = v == null ? '' : String(v).trim()
